@@ -1569,17 +1569,15 @@ function Styles() {
       @keyframes tz-spin { to { transform: rotate(360deg); } }
 
       /* ---------- HEADER ---------- */
-      /* Fixed en vez de sticky: en navegadores embebidos (WhatsApp, IG, etc.)
-         sticky suele fallar por los cambios de tamaño del viewport. Fixed
-         se ancla de forma confiable tanto en PC como en móvil.
-         overflow: visible + padding generoso evitan que el resplandow
+      /* El logo y el texto ya NO son una barra fija/flotante: viven en el
+         flujo normal del documento, al principio de la página, como
+         cualquier otro contenido. Así es estructuralmente imposible que
+         tapen a los medidores de más abajo (se desplazan con el scroll
+         igual que todo lo demás).
+         overflow: visible + padding generoso evitan que el resplandor
          (drop-shadow) del logo se vea recortado en un "cuadrado". */
       .tz-header {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        z-index: 50;
+        position: static;
         width: 100%;
         box-sizing: border-box;
         overflow: visible;
@@ -1587,7 +1585,6 @@ function Styles() {
         justify-content: center;
         padding: 28px 16px 24px;
         background: rgba(10, 7, 22, 0.85);
-        backdrop-filter: blur(10px);
         border-bottom: 1px solid rgba(43,232,255,0.15);
       }
       .tz-header-inner {
@@ -1621,11 +1618,12 @@ function Styles() {
       /* ---------- CONTENEDOR PRINCIPAL (mobile-first) ---------- */
       /* 100% del ancho + box-sizing: border-box para que ningún hijo
          (medidores, tarjetas, textos) se corte por los bordes.
-         padding-top FIJO y generoso (no depende de medición por JS)
-         para garantizar que el header nunca tape los medidores, ni en
-         PC ni en móvil. El padding-bottom sí usa la altura real del
-         footer (--tz-footer-h), porque ese sí cambia de tamaño según
-         cuántos productos hay seleccionados (o desaparece del todo). */
+         El header ya NO es fixed (ver arriba), así que solo hace falta
+         un padding-top chico de respiro, no uno gigante para "esquivar"
+         nada. El padding-bottom sí usa la altura real del footer
+         (--tz-footer-h), porque esa barra sí es fixed y cambia de
+         tamaño según cuántos productos hay seleccionados (o
+         desaparece del todo). */
       .tz-main {
         width: 100%;
         max-width: 100%;
@@ -1633,7 +1631,7 @@ function Styles() {
         margin: 0;
         padding-left: 12px;
         padding-right: 12px;
-        padding-top: 180px;
+        padding-top: 20px;
         padding-bottom: calc(var(--tz-footer-h, 0px) + 24px);
         overflow-x: hidden;
       }
@@ -2681,8 +2679,7 @@ function Styles() {
 
       /* ---------- TABLET (>= 768px) ---------- */
       @media (min-width: 768px) {
-        .tz-header-inner,
-        .tz-submitbar {
+        .tz-header-inner {
           max-width: 700px;
         }
         .tz-main {
@@ -2690,7 +2687,7 @@ function Styles() {
           margin: 0 auto;
           padding-left: 20px;
           padding-right: 20px;
-          padding-top: 200px;
+          padding-top: 24px;
           padding-bottom: calc(var(--tz-footer-h, 0px) + 26px);
         }
         .tz-header { padding: 32px 20px 26px; }
@@ -2701,6 +2698,10 @@ function Styles() {
         .tz-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
 
         .tz-submitbar {
+          /* left:0/right:0 + width acotado + márgenes auto = centrado real
+             (antes le faltaba margin:auto y quedaba pegada a la izquierda) */
+          max-width: 700px;
+          margin: 0 auto;
           border-radius: 16px 16px 0 0;
           border-left: 1px solid rgba(43,232,255,0.25);
           border-right: 1px solid rgba(43,232,255,0.25);
@@ -2720,11 +2721,13 @@ function Styles() {
         .tz-submitbar {
           width: 95%;
           max-width: 1400px;
+          margin-left: auto;
+          margin-right: auto;
         }
         .tz-main {
           padding-left: 28px;
           padding-right: 28px;
-          padding-top: 210px;
+          padding-top: 28px;
           padding-bottom: calc(var(--tz-footer-h, 0px) + 30px);
         }
         .tz-header { padding: 36px 16px 30px; }
