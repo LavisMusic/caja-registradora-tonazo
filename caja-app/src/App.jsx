@@ -360,32 +360,32 @@ export default function App() {
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const fileInputRef = useRef(null);
-  const headerRef = useRef(null);
   const submitBarRef = useRef(null);
 
-  /* ---- header y footer quedan fijos (fixed): medimos su altura real
-     para que el contenido nunca quede tapado debajo/encima de ellos,
-     tanto en PC como en móvil. ---- */
+  /* ---- la barra de "Enviar Venta" (footer) es fixed y de altura
+     variable (crece con la lista de productos seleccionados, o
+     desaparece por completo si no hay nada seleccionado). Medimos su
+     altura real para que el contenido nunca quede tapado detrás de
+     ella. El header, en cambio, usa un padding-top fijo y generoso en
+     el CSS (no depende de medición por JS) para eliminar cualquier
+     posibilidad de que quede tapando los medidores. ---- */
   useEffect(() => {
-    if (!headerRef.current || !submitBarRef.current) return undefined;
-
-    const updateOffsets = () => {
-      const headerH = headerRef.current?.offsetHeight || 0;
+    const updateFooterOffset = () => {
       const footerH = submitBarRef.current?.offsetHeight || 0;
-      document.documentElement.style.setProperty("--tz-header-h", `${headerH}px`);
       document.documentElement.style.setProperty("--tz-footer-h", `${footerH}px`);
     };
 
-    updateOffsets();
-    const ro = new ResizeObserver(updateOffsets);
-    ro.observe(headerRef.current);
+    updateFooterOffset();
+    if (!submitBarRef.current) return undefined;
+
+    const ro = new ResizeObserver(updateFooterOffset);
     ro.observe(submitBarRef.current);
-    window.addEventListener("resize", updateOffsets);
+    window.addEventListener("resize", updateFooterOffset);
     return () => {
       ro.disconnect();
-      window.removeEventListener("resize", updateOffsets);
+      window.removeEventListener("resize", updateFooterOffset);
     };
-  }, [loading]);
+  }, [loading, selection, submitError, successMsg]);
 
   /* ---- carga inicial: SELECT a Supabase (tablas 'stock' y 'historial') ---- */
   useEffect(() => {
@@ -967,7 +967,7 @@ export default function App() {
       <Styles />
 
       {/* ---------------- HEADER ---------------- */}
-      <header className="tz-header" ref={headerRef}>
+      <header className="tz-header">
         <div className="tz-header-inner">
           <img src={LOGO_SRC} alt="TONAZO!" className="tz-logo" />
           <p className="tz-subtitle">Caja Registradora</p>
@@ -1220,31 +1220,53 @@ export default function App() {
         </section>
 
         {/* ---------------- BARRA DE ENVÍO ---------------- */}
-        <div className="tz-submitbar" ref={submitBarRef}>
-          <div className="tz-submitbar-info">
-            {submitError ? (
-              <p className="tz-error">
-                <AlertTriangle size={16} /> {submitError}
-              </p>
-            ) : successMsg ? (
-              <p className="tz-success">
-                <Check size={16} /> {successMsg}
-              </p>
-            ) : (
-              <p className="tz-submitbar-summary">
-                <ShoppingCart size={16} />
-                {selectedCount === 0
-                  ? "Ningún producto seleccionado"
-                  : `${selectedCount} producto${selectedCount > 1 ? "s" : ""} · ${totalItems} unidad${
+        {/* Se oculta por completo cuando no hay nada seleccionado y no hay
+           ningún mensaje de error/éxito que mostrar. */}
+        {(selectedCount > 0 || submitError || successMsg) && (
+          <div className="tz-submitbar" ref={submitBarRef}>
+            <div className="tz-submitbar-content">
+              {submitError ? (
+                <p className="tz-error tz-submitbar-message">
+                  <AlertTriangle size={16} /> {submitError}
+                </p>
+              ) : successMsg ? (
+                <p className="tz-success tz-submitbar-message">
+                  <Check size={16} /> {successMsg}
+                </p>
+              ) : (
+                <>
+                  <div className="tz-cart-list">
+                    {selectedIds.map((id) => {
+                      const product = PRODUCTS_BY_ID[id];
+                      const qty = selection[id];
+                      return (
+                        <div key={id} className="tz-cart-row">
+                          <span className="tz-cart-row-name">
+                            {product.name}
+                            {product.detail ? ` · ${product.detail}` : ""}
+                          </span>
+                          <span className="tz-cart-row-qty">x{qty}</span>
+                          <span className="tz-cart-row-amount">
+                            {formatSoles(product.price * qty)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="tz-submitbar-summary">
+                    <ShoppingCart size={16} />
+                    {`${selectedCount} producto${selectedCount > 1 ? "s" : ""} · ${totalItems} unidad${
                       totalItems > 1 ? "es" : ""
                     } · Total ${formatSoles(totalPrice)}`}
-              </p>
-            )}
+                  </p>
+                </>
+              )}
+            </div>
+            <button className="tz-submit-btn" onClick={handleSubmit}>
+              Enviar Venta
+            </button>
           </div>
-          <button className="tz-submit-btn" onClick={handleSubmit}>
-            Enviar Venta
-          </button>
-        </div>
+        )}
 
         {/* ---------------- HISTORIAL ---------------- */}
         <section className="tz-history">
@@ -1518,7 +1540,6 @@ function Styles() {
         --green: #39ffb0;
         --green-bg: rgba(57,255,176,0.12);
 
-        --tz-header-h: 96px;
         --tz-footer-h: 84px;
 
         min-height: 100vh;
@@ -1550,7 +1571,9 @@ function Styles() {
       /* ---------- HEADER ---------- */
       /* Fixed en vez de sticky: en navegadores embebidos (WhatsApp, IG, etc.)
          sticky suele fallar por los cambios de tamaño del viewport. Fixed
-         se ancla de forma confiable tanto en PC como en móvil. */
+         se ancla de forma confiable tanto en PC como en móvil.
+         overflow: visible + padding generoso evitan que el resplandow
+         (drop-shadow) del logo se vea recortado en un "cuadrado". */
       .tz-header {
         position: fixed;
         top: 0;
@@ -1559,9 +1582,10 @@ function Styles() {
         z-index: 50;
         width: 100%;
         box-sizing: border-box;
+        overflow: visible;
         display: flex;
         justify-content: center;
-        padding: 12px 12px 10px;
+        padding: 28px 16px 24px;
         background: rgba(10, 7, 22, 0.85);
         backdrop-filter: blur(10px);
         border-bottom: 1px solid rgba(43,232,255,0.15);
@@ -1569,15 +1593,17 @@ function Styles() {
       .tz-header-inner {
         width: 100%;
         max-width: 100%;
+        overflow: visible;
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 2px;
+        gap: 4px;
       }
       .tz-logo {
         max-width: 150px;
         width: 100%;
         height: auto;
+        overflow: visible;
         filter:
           drop-shadow(0 0 18px rgba(43,232,255,0.55))
           drop-shadow(0 0 34px rgba(255,47,158,0.35));
@@ -1594,10 +1620,12 @@ function Styles() {
 
       /* ---------- CONTENEDOR PRINCIPAL (mobile-first) ---------- */
       /* 100% del ancho + box-sizing: border-box para que ningún hijo
-         (medidores, tarjetas, textos) se corte por los bordes. El
-         padding-top/bottom compensa el header y el footer fijos usando
-         su altura real medida por JS (--tz-header-h / --tz-footer-h),
-         más un pequeño margen de aire. */
+         (medidores, tarjetas, textos) se corte por los bordes.
+         padding-top FIJO y generoso (no depende de medición por JS)
+         para garantizar que el header nunca tape los medidores, ni en
+         PC ni en móvil. El padding-bottom sí usa la altura real del
+         footer (--tz-footer-h), porque ese sí cambia de tamaño según
+         cuántos productos hay seleccionados (o desaparece del todo). */
       .tz-main {
         width: 100%;
         max-width: 100%;
@@ -1605,8 +1633,8 @@ function Styles() {
         margin: 0;
         padding-left: 12px;
         padding-right: 12px;
-        padding-top: calc(var(--tz-header-h, 90px) + 14px);
-        padding-bottom: calc(var(--tz-footer-h, 96px) + 18px);
+        padding-top: 180px;
+        padding-bottom: calc(var(--tz-footer-h, 0px) + 24px);
         overflow-x: hidden;
       }
 
@@ -2098,7 +2126,9 @@ function Styles() {
       /* ---------- SUBMIT BAR ---------- */
       /* Igual que el header: fixed en vez de sticky para que quede
          anclada de forma confiable en móvil (incluidos navegadores
-         embebidos) y también en PC. */
+         embebidos) y también en PC. Altura dinámica (auto): crece
+         hacia arriba según la cantidad de productos seleccionados,
+         con un límite (max-height + overflow-y) en la lista interna. */
       .tz-submitbar {
         position: fixed;
         left: 0;
@@ -2109,10 +2139,10 @@ function Styles() {
         max-width: 100%;
         box-sizing: border-box;
         margin: 0;
+        height: auto;
         display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
+        flex-direction: column;
+        align-items: stretch;
         gap: 10px;
         background: rgba(15, 10, 30, 0.94);
         backdrop-filter: blur(10px);
@@ -2121,14 +2151,63 @@ function Styles() {
         border-right: none;
         border-bottom: none;
         border-radius: 0;
-        padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+        padding: 14px 12px calc(14px + env(safe-area-inset-bottom, 0px));
         box-shadow: 0 -8px 30px rgba(0,0,0,0.4);
       }
-      .tz-submitbar-info { flex: 1 1 100%; min-width: 0; }
+      .tz-submitbar-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .tz-submitbar-message { margin: 0; justify-content: center; }
+
+      .tz-cart-list {
+        width: 100%;
+        max-height: 40vh;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding-right: 2px;
+      }
+      .tz-cart-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 7px 10px;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-soft);
+        font-size: 12.5px;
+      }
+      .tz-cart-row-name {
+        flex: 1 1 auto;
+        min-width: 0;
+        text-align: left;
+        color: var(--text);
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .tz-cart-row-qty {
+        flex: 0 0 auto;
+        color: var(--text-dim);
+        font-weight: 700;
+      }
+      .tz-cart-row-amount {
+        flex: 0 0 auto;
+        color: var(--pink);
+        font-weight: 700;
+      }
+
       .tz-submitbar-summary {
         margin: 0;
         display: flex;
         align-items: center;
+        justify-content: center;
         flex-wrap: wrap;
         gap: 8px;
         color: var(--text-dim);
@@ -2611,10 +2690,10 @@ function Styles() {
           margin: 0 auto;
           padding-left: 20px;
           padding-right: 20px;
-          padding-top: calc(var(--tz-header-h, 96px) + 18px);
-          padding-bottom: calc(var(--tz-footer-h, 90px) + 22px);
+          padding-top: 200px;
+          padding-bottom: calc(var(--tz-footer-h, 0px) + 26px);
         }
-        .tz-header { padding: 14px 20px 12px; }
+        .tz-header { padding: 32px 20px 26px; }
         .tz-logo { max-width: 190px; }
 
         .tz-stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -2625,10 +2704,8 @@ function Styles() {
           border-radius: 16px 16px 0 0;
           border-left: 1px solid rgba(43,232,255,0.25);
           border-right: 1px solid rgba(43,232,255,0.25);
-          padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+          padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
         }
-        .tz-submitbar-info { flex: 1 1 260px; }
-        .tz-submit-btn { width: auto; }
         .tz-fab { right: 20px; padding: 12px 18px; font-size: 12px; }
       }
 
@@ -2647,9 +2724,10 @@ function Styles() {
         .tz-main {
           padding-left: 28px;
           padding-right: 28px;
-          padding-top: calc(var(--tz-header-h, 110px) + 22px);
-          padding-bottom: calc(var(--tz-footer-h, 96px) + 26px);
+          padding-top: 210px;
+          padding-bottom: calc(var(--tz-footer-h, 0px) + 30px);
         }
+        .tz-header { padding: 36px 16px 30px; }
         .tz-logo { max-width: 210px; }
 
         .tz-stats { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
