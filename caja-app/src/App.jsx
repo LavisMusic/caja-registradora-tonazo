@@ -1558,23 +1558,24 @@ function Styles() {
         right: 0;
         z-index: 50;
         width: 100%;
+        box-sizing: border-box;
         display: flex;
         justify-content: center;
-        padding: 14px 16px 12px;
+        padding: 12px 12px 10px;
         background: rgba(10, 7, 22, 0.85);
         backdrop-filter: blur(10px);
         border-bottom: 1px solid rgba(43,232,255,0.15);
       }
       .tz-header-inner {
         width: 100%;
-        max-width: 1100px;
+        max-width: 100%;
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 2px;
       }
       .tz-logo {
-        max-width: 180px;
+        max-width: 150px;
         width: 100%;
         height: auto;
         filter:
@@ -1585,26 +1586,43 @@ function Styles() {
         margin: 0;
         font-family: 'Orbitron', sans-serif;
         font-size: 11px;
-        letter-spacing: 0.35em;
+        letter-spacing: 0.3em;
         text-transform: uppercase;
         color: var(--text-dim);
+        text-align: center;
       }
 
+      /* ---------- CONTENEDOR PRINCIPAL (mobile-first) ---------- */
+      /* 100% del ancho + box-sizing: border-box para que ningún hijo
+         (medidores, tarjetas, textos) se corte por los bordes. El
+         padding-top/bottom compensa el header y el footer fijos usando
+         su altura real medida por JS (--tz-header-h / --tz-footer-h),
+         más un pequeño margen de aire. */
       .tz-main {
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: calc(var(--tz-header-h, 96px) + 18px) 16px
-          calc(var(--tz-footer-h, 84px) + 26px);
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: calc(var(--tz-header-h, 90px) + 14px);
+        padding-bottom: calc(var(--tz-footer-h, 96px) + 18px);
+        overflow-x: hidden;
       }
 
       /* ---------- STATS ---------- */
+      /* 1 sola columna en móvil: con auto-fit + minmax fijo el texto sin
+         cortes (p. ej. "GANANCIA NETA (HOY)") podía forzar el ancho de la
+         pista más allá de la pantalla y desbordar el layout. */
       .tz-stats {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-        gap: 12px;
-        margin-bottom: 22px;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-bottom: 20px;
       }
       .tz-stat-chip {
+        min-width: 0;
+        box-sizing: border-box;
         background: var(--panel);
         border: 1px solid var(--border-soft);
         border-radius: 14px;
@@ -1615,23 +1633,26 @@ function Styles() {
       }
       .tz-stat-label {
         font-size: 11px;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
         color: var(--text-dim);
         font-weight: 600;
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 5px;
       }
       .tz-stat-value {
         font-family: 'Orbitron', sans-serif;
         font-size: 22px;
         font-weight: 700;
+        overflow-wrap: anywhere;
       }
       .tz-stat-sub {
         font-size: 11px;
         color: var(--text-dim);
         font-weight: 600;
+        overflow-wrap: anywhere;
       }
       .tz-cyan { color: var(--cyan); text-shadow: 0 0 14px rgba(43,232,255,0.5); }
       .tz-pink { color: var(--pink); text-shadow: 0 0 14px rgba(255,47,158,0.5); }
@@ -1663,15 +1684,17 @@ function Styles() {
         margin-bottom: 22px;
       }
       .tz-tab {
-        flex: 1 1 150px;
-        padding: 13px 14px;
+        flex: 1 1 calc(50% - 5px);
+        min-width: 0;
+        box-sizing: border-box;
+        padding: 13px 10px;
         border-radius: 12px;
         border: 1px solid var(--border-soft);
         background: rgba(255,255,255,0.02);
         color: var(--text-dim);
         font-family: 'Orbitron', sans-serif;
-        font-size: 12px;
-        letter-spacing: 0.06em;
+        font-size: 11.5px;
+        letter-spacing: 0.04em;
         text-transform: uppercase;
         font-weight: 700;
         cursor: pointer;
@@ -1713,14 +1736,16 @@ function Styles() {
 
       .tz-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-        gap: 16px;
+        grid-template-columns: 1fr;
+        gap: 14px;
       }
 
       .tz-card {
         position: relative;
         cursor: pointer;
         border-radius: 16px;
+        min-width: 0;
+        box-sizing: border-box;
         padding: 18px;
         background:
           linear-gradient(var(--panel-solid), var(--panel-solid)) padding-box,
@@ -2080,27 +2105,31 @@ function Styles() {
         right: 0;
         bottom: 0;
         z-index: 45;
-        max-width: 1100px;
         width: 100%;
-        margin: 0 auto;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin: 0;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         justify-content: space-between;
-        gap: 14px;
-        background: rgba(15, 10, 30, 0.92);
+        gap: 10px;
+        background: rgba(15, 10, 30, 0.94);
         backdrop-filter: blur(10px);
         border: 1px solid rgba(43,232,255,0.25);
+        border-left: none;
+        border-right: none;
         border-bottom: none;
-        border-radius: 16px 16px 0 0;
-        padding: 14px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+        border-radius: 0;
+        padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
         box-shadow: 0 -8px 30px rgba(0,0,0,0.4);
       }
-      .tz-submitbar-info { flex: 1 1 260px; }
+      .tz-submitbar-info { flex: 1 1 100%; min-width: 0; }
       .tz-submitbar-summary {
         margin: 0;
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
         gap: 8px;
         color: var(--text-dim);
         font-weight: 600;
@@ -2125,6 +2154,8 @@ function Styles() {
         font-size: 14px;
       }
       .tz-submit-btn {
+        width: 100%;
+        box-sizing: border-box;
         font-family: 'Orbitron', sans-serif;
         font-weight: 800;
         font-size: 13px;
@@ -2209,21 +2240,23 @@ function Styles() {
       /* ---------- FLOATING BUTTON ---------- */
       .tz-fab {
         position: fixed;
-        right: 18px;
-        bottom: calc(var(--tz-footer-h, 84px) + 14px);
+        right: 12px;
+        bottom: calc(var(--tz-footer-h, 96px) + 12px);
         z-index: 46;
+        max-width: calc(100vw - 24px);
+        box-sizing: border-box;
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         background: var(--yellow);
         color: #16190a;
         border: none;
         border-radius: 999px;
-        padding: 12px 18px;
+        padding: 11px 14px;
         font-family: 'Orbitron', sans-serif;
         font-weight: 800;
-        font-size: 12px;
-        letter-spacing: 0.04em;
+        font-size: 11px;
+        letter-spacing: 0.03em;
         text-transform: uppercase;
         cursor: pointer;
         box-shadow: 0 0 24px rgba(215,255,59,0.45);
@@ -2551,17 +2584,80 @@ function Styles() {
       }
       .tz-scan-processing p { margin: 0; font-weight: 600; font-size: 13.5px; }
 
-      @media (max-width: 560px) {
+      /* ==================================================================
+         RESPONSIVE: el diseño base de arriba es "mobile-first" (1 columna,
+         100% de ancho, padding lateral chico). Estas media queries SOLO
+         amplían el layout para pantallas más grandes.
+         ================================================================== */
+
+      /* Elimina las franjas laterales del boilerplate de Vite (#root)
+         para que la app aproveche todo el ancho de la ventana. */
+      #root {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-inline: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      /* ---------- TABLET (>= 768px) ---------- */
+      @media (min-width: 768px) {
+        .tz-header-inner,
         .tz-submitbar {
-          flex-direction: column;
-          align-items: stretch;
-          border-radius: 0;
-          border-left: none;
-          border-right: none;
+          max-width: 700px;
         }
-        .tz-submit-btn { width: 100%; }
-        .tz-fab { right: 14px; padding: 11px 14px; }
-        .tz-logo { max-width: 140px; }
+        .tz-main {
+          max-width: 700px;
+          margin: 0 auto;
+          padding-left: 20px;
+          padding-right: 20px;
+          padding-top: calc(var(--tz-header-h, 96px) + 18px);
+          padding-bottom: calc(var(--tz-footer-h, 90px) + 22px);
+        }
+        .tz-header { padding: 14px 20px 12px; }
+        .tz-logo { max-width: 190px; }
+
+        .tz-stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .tz-tab { flex: 1 1 150px; font-size: 12px; padding: 13px 14px; }
+        .tz-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+
+        .tz-submitbar {
+          border-radius: 16px 16px 0 0;
+          border-left: 1px solid rgba(43,232,255,0.25);
+          border-right: 1px solid rgba(43,232,255,0.25);
+          padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+        }
+        .tz-submitbar-info { flex: 1 1 260px; }
+        .tz-submit-btn { width: auto; }
+        .tz-fab { right: 20px; padding: 12px 18px; font-size: 12px; }
+      }
+
+      /* ---------- ESCRITORIO (>= 1024px) ---------- */
+      /* Aquí sí se "libera" el ancho: la app pasa a ocupar el 95% de la
+         ventana (en vez de quedar encajonada en ~1100px con franjas a
+         los lados) y la grilla de productos pasa a 3 columnas
+         panorámicas. */
+      @media (min-width: 1024px) {
+        .tz-header-inner,
+        .tz-main,
+        .tz-submitbar {
+          width: 95%;
+          max-width: 1400px;
+        }
+        .tz-main {
+          padding-left: 28px;
+          padding-right: 28px;
+          padding-top: calc(var(--tz-header-h, 110px) + 22px);
+          padding-bottom: calc(var(--tz-footer-h, 96px) + 26px);
+        }
+        .tz-logo { max-width: 210px; }
+
+        .tz-stats { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+
+        /* Tarjetas panorámicas: 3+ columnas, cada tarjeta más ancha que alta */
+        .tz-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+        .tz-card { min-height: 168px; }
+        .tz-card-metrics { align-items: center; }
       }
     `}</style>
   );

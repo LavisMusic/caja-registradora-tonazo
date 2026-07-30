@@ -1,184 +1,1160 @@
-.counter {
-  font-size: 16px;
-  padding: 5px 10px;
-  border-radius: 5px;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 2px solid transparent;
-  transition: border-color 0.3s;
-  margin-bottom: 24px;
 
-  &:hover {
-    border-color: var(--accent-border);
-  }
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-}
+      @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@600;700;800;900&family=Rajdhani:wght@500;600;700&display=swap');
 
-.hero {
-  position: relative;
+      .tz-root {
+        --bg-1: #0a0716;
+        --bg-2: #170e2e;
+        --panel: rgba(26, 19, 48, 0.55);
+        --panel-solid: #140d28;
+        --border-soft: rgba(255,255,255,0.08);
+        --cyan: #2be8ff;
+        --pink: #ff2f9e;
+        --yellow: #d7ff3b;
+        --text: #f4f2ff;
+        --text-dim: #9c93c2;
+        --danger: #ff5470;
+        --green: #39ffb0;
+        --green-bg: rgba(57,255,176,0.12);
 
-  .base,
-  .framework,
-  .vite {
-    inset-inline: 0;
-    margin: 0 auto;
-  }
+        --tz-header-h: 96px;
+        --tz-footer-h: 84px;
 
-  .base {
-    width: 170px;
-    position: relative;
-    z-index: 0;
-  }
+        min-height: 100vh;
+        width: 100%;
+        background:
+          radial-gradient(ellipse 900px 500px at 20% -10%, rgba(43,232,255,0.10), transparent 60%),
+          radial-gradient(ellipse 900px 500px at 90% 10%, rgba(255,47,158,0.10), transparent 60%),
+          linear-gradient(160deg, var(--bg-1), var(--bg-2) 55%, var(--bg-1));
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        box-sizing: border-box;
+      }
+      .tz-root *, .tz-root *::before, .tz-root *::after { box-sizing: border-box; }
 
-  .framework,
-  .vite {
-    position: absolute;
-  }
+      .tz-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        min-height: 100vh;
+        color: var(--text-dim);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 18px;
+      }
+      .tz-spin { animation: tz-spin 1s linear infinite; color: var(--cyan); }
+      @keyframes tz-spin { to { transform: rotate(360deg); } }
 
-  .framework {
-    z-index: 1;
-    top: 34px;
-    height: 28px;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
-      scale(1.4);
-  }
+      /* ---------- HEADER ---------- */
+      /* Fixed en vez de sticky: en navegadores embebidos (WhatsApp, IG, etc.)
+         sticky suele fallar por los cambios de tamaño del viewport. Fixed
+         se ancla de forma confiable tanto en PC como en móvil. */
+      .tz-header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 50;
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        justify-content: center;
+        padding: 12px 12px 10px;
+        background: rgba(10, 7, 22, 0.85);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(43,232,255,0.15);
+      }
+      .tz-header-inner {
+        width: 100%;
+        max-width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+      }
+      .tz-logo {
+        max-width: 150px;
+        width: 100%;
+        height: auto;
+        filter:
+          drop-shadow(0 0 18px rgba(43,232,255,0.55))
+          drop-shadow(0 0 34px rgba(255,47,158,0.35));
+      }
+      .tz-subtitle {
+        margin: 0;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 11px;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        text-align: center;
+      }
 
-  .vite {
-    z-index: 0;
-    top: 107px;
-    height: 26px;
-    width: auto;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
-      scale(0.8);
-  }
-}
+      /* ---------- CONTENEDOR PRINCIPAL (mobile-first) ---------- */
+      /* 100% del ancho + box-sizing: border-box para que ningún hijo
+         (medidores, tarjetas, textos) se corte por los bordes. El
+         padding-top/bottom compensa el header y el footer fijos usando
+         su altura real medida por JS (--tz-header-h / --tz-footer-h),
+         más un pequeño margen de aire. */
+      .tz-main {
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: calc(var(--tz-header-h, 90px) + 14px);
+        padding-bottom: calc(var(--tz-footer-h, 96px) + 18px);
+        overflow-x: hidden;
+      }
 
-#center {
-  display: flex;
-  flex-direction: column;
-  gap: 25px;
-  place-content: center;
-  place-items: center;
-  flex-grow: 1;
+      /* ---------- STATS ---------- */
+      /* 1 sola columna en móvil: con auto-fit + minmax fijo el texto sin
+         cortes (p. ej. "GANANCIA NETA (HOY)") podía forzar el ancho de la
+         pista más allá de la pantalla y desbordar el layout. */
+      .tz-stats {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-bottom: 20px;
+      }
+      .tz-stat-chip {
+        min-width: 0;
+        box-sizing: border-box;
+        background: var(--panel);
+        border: 1px solid var(--border-soft);
+        border-radius: 14px;
+        padding: 12px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .tz-stat-label {
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+      .tz-stat-value {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 22px;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }
+      .tz-stat-sub {
+        font-size: 11px;
+        color: var(--text-dim);
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .tz-cyan { color: var(--cyan); text-shadow: 0 0 14px rgba(43,232,255,0.5); }
+      .tz-pink { color: var(--pink); text-shadow: 0 0 14px rgba(255,47,158,0.5); }
+      .tz-yellow { color: var(--yellow); text-shadow: 0 0 14px rgba(215,255,59,0.5); }
+      .tz-green { color: var(--green); text-shadow: 0 0 14px rgba(57,255,176,0.5); }
 
-  @media (max-width: 1024px) {
-    padding: 32px 20px 24px;
-    gap: 18px;
-  }
-}
+      .tz-stat-chip-green {
+        border-color: rgba(57,255,176,0.35);
+        background: linear-gradient(180deg, var(--green-bg), var(--panel));
+      }
+      .tz-stat-chip-star {
+        border-color: rgba(215,255,59,0.4);
+        background: linear-gradient(180deg, rgba(215,255,59,0.10), var(--panel));
+      }
+      .tz-star-text {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--yellow);
+        text-shadow: 0 0 12px rgba(215,255,59,0.45);
+        line-height: 1.25;
+      }
 
-#next-steps {
-  display: flex;
-  border-top: 1px solid var(--border);
-  text-align: left;
+      /* ---------- TABS ---------- */
+      .tz-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 22px;
+      }
+      .tz-tab {
+        flex: 1 1 calc(50% - 5px);
+        min-width: 0;
+        box-sizing: border-box;
+        padding: 13px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.02);
+        color: var(--text-dim);
+        font-family: 'Orbitron', sans-serif;
+        font-size: 11.5px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .tz-tab:hover { border-color: rgba(43,232,255,0.4); color: var(--text); }
+      .tz-tab-active {
+        background: var(--cyan);
+        color: #06131a;
+        border-color: var(--cyan);
+        box-shadow: 0 0 22px rgba(43,232,255,0.45);
+      }
 
-  & > div {
-    flex: 1 1 0;
-    padding: 32px;
-    @media (max-width: 1024px) {
-      padding: 24px 20px;
-    }
-  }
+      /* ---------- GROUPS / PRODUCTS ---------- */
+      .tz-group { margin-bottom: 26px; }
+      .tz-group-heading {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .tz-badge {
+        background: var(--yellow);
+        color: #16190a;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 13px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        box-shadow: 0 0 16px rgba(215,255,59,0.4);
+      }
+      .tz-group-heading h2 {
+        margin: 0;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 15px;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
 
-  .icon {
-    margin-bottom: 16px;
-    width: 22px;
-    height: 22px;
-  }
+      .tz-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
 
-  @media (max-width: 1024px) {
-    flex-direction: column;
-    text-align: center;
-  }
-}
+      .tz-card {
+        position: relative;
+        cursor: pointer;
+        border-radius: 16px;
+        min-width: 0;
+        box-sizing: border-box;
+        padding: 18px;
+        background:
+          linear-gradient(var(--panel-solid), var(--panel-solid)) padding-box,
+          linear-gradient(135deg, rgba(43,232,255,0.55), rgba(255,47,158,0.5)) border-box;
+        border: 1px solid transparent;
+        transition: transform 0.12s ease, box-shadow 0.15s ease;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        min-height: 148px;
+      }
+      .tz-card:hover { transform: translateY(-2px); }
+      .tz-card-checked {
+        box-shadow: 0 0 0 1.5px var(--cyan), 0 0 26px rgba(43,232,255,0.35);
+      }
+      .tz-card-disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+        filter: grayscale(0.4);
+      }
+      .tz-card-disabled:hover { transform: none; }
 
-#docs {
-  border-right: 1px solid var(--border);
+      .tz-card-star {
+        background:
+          linear-gradient(var(--panel-solid), var(--panel-solid)) padding-box,
+          linear-gradient(135deg, rgba(215,255,59,0.9), rgba(215,255,59,0.35)) border-box;
+        box-shadow: 0 0 0 1.5px var(--yellow), 0 0 30px rgba(215,255,59,0.4);
+      }
+      .tz-card-star.tz-card-checked {
+        box-shadow: 0 0 0 1.5px var(--yellow), 0 0 8px var(--cyan) inset, 0 0 30px rgba(215,255,59,0.45);
+      }
+      .tz-star-ribbon {
+        position: absolute;
+        top: -13px;
+        left: 18px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        background: var(--yellow);
+        color: #16190a;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        padding: 5px 10px 4px;
+        border-radius: 7px 7px 0 0;
+        box-shadow: 0 0 16px rgba(215,255,59,0.55);
+      }
 
-  @media (max-width: 1024px) {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
-}
+      .tz-card-top { display: flex; justify-content: space-between; gap: 10px; }
+      .tz-combo {
+        display: block;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 10.5px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--cyan);
+        margin-bottom: 6px;
+      }
+      .tz-card-name {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.25;
+      }
+      .tz-card-plus { color: var(--yellow); }
+      .tz-card-detail {
+        margin: 4px 0 0;
+        font-size: 13px;
+        color: var(--text-dim);
+        font-weight: 600;
+      }
 
-#next-steps ul {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  gap: 8px;
-  margin: 32px 0 0;
+      .tz-checkbox {
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        border: 1.5px solid rgba(255,255,255,0.25);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #06131a;
+      }
+      .tz-checkbox-on {
+        background: var(--cyan);
+        border-color: var(--cyan);
+        box-shadow: 0 0 14px rgba(43,232,255,0.6);
+      }
 
-  .logo {
-    height: 18px;
-  }
+      .tz-card-bottom {
+        margin-top: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        border-top: 1px dashed rgba(255,255,255,0.12);
+        padding-top: 12px;
+      }
+      .tz-card-stockrow { display: flex; }
+      .tz-tag {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        padding: 4px 9px;
+        border-radius: 999px;
+        text-transform: uppercase;
+      }
+      .tz-tag-ok { color: var(--cyan); background: rgba(43,232,255,0.12); }
+      .tz-tag-warn { color: var(--yellow); background: rgba(215,255,59,0.12); }
+      .tz-tag-danger { color: var(--danger); background: rgba(255,84,112,0.14); }
 
-  a {
-    color: var(--text-h);
-    font-size: 16px;
-    border-radius: 6px;
-    background: var(--social-bg);
-    display: flex;
-    padding: 6px 12px;
-    align-items: center;
-    gap: 8px;
-    text-decoration: none;
-    transition: box-shadow 0.3s;
+      .tz-card-priceqty {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .tz-price-block { display: flex; flex-direction: column; align-items: flex-end; margin-left: auto; }
+      .tz-price-label {
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+      .tz-price {
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 21px;
+        color: var(--pink);
+        text-shadow: 0 0 16px rgba(255,47,158,0.5);
+      }
 
-    &:hover {
-      box-shadow: var(--shadow);
-    }
-    .button-icon {
-      height: 18px;
-      width: 18px;
-    }
-  }
+      .tz-qty-stepper {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-soft);
+        border-radius: 999px;
+        padding: 4px 10px;
+      }
+      .tz-qty-stepper button {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(255,255,255,0.08);
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .tz-qty-stepper button:disabled { opacity: 0.3; cursor: not-allowed; }
+      .tz-qty-stepper span {
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 700;
+        min-width: 16px;
+        text-align: center;
+      }
 
-  @media (max-width: 1024px) {
-    margin-top: 20px;
-    flex-wrap: wrap;
-    justify-content: center;
+      /* ---------- MEDIDORES POR PRODUCTO ---------- */
+      .tz-card-metrics {
+        margin-top: 4px;
+        padding-top: 12px;
+        border-top: 1px dashed rgba(255,255,255,0.12);
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        cursor: default;
+      }
 
-    li {
-      flex: 1 1 calc(50% - 8px);
-    }
+      .tz-gauge {
+        position: relative;
+        width: 64px;
+        height: 64px;
+        flex-shrink: 0;
+      }
+      .tz-gauge-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+      .tz-gauge-track {
+        fill: none;
+        stroke: rgba(255,255,255,0.08);
+        stroke-width: 6;
+      }
+      .tz-gauge-fill {
+        fill: none;
+        stroke: var(--green);
+        stroke-width: 6;
+        stroke-linecap: round;
+        filter: drop-shadow(0 0 6px rgba(57,255,176,0.65));
+        transition: stroke-dashoffset 0.4s ease;
+      }
+      .tz-gauge-center {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1px;
+      }
+      .tz-gauge-pct {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 13px;
+        font-weight: 800;
+        color: var(--green);
+      }
+      .tz-gauge-amount {
+        font-size: 8.5px;
+        color: var(--text-dim);
+        font-weight: 700;
+        max-width: 52px;
+        text-align: center;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
 
-    a {
-      width: 100%;
-      justify-content: center;
-      box-sizing: border-box;
-    }
-  }
-}
+      .tz-breakdown { flex: 1; min-width: 0; }
+      .tz-breakdown-toggle {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        width: 100%;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 9px 12px;
+        color: var(--text-dim);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 12.5px;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+      }
+      .tz-breakdown-toggle:hover { color: var(--text); border-color: rgba(43,232,255,0.35); }
+      .tz-breakdown-toggle svg:last-child { margin-left: auto; }
 
-#spacer {
-  height: 88px;
-  border-top: 1px solid var(--border);
-  @media (max-width: 1024px) {
-    height: 48px;
-  }
-}
+      .tz-breakdown-panel {
+        margin-top: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        animation: tz-drop-in 0.15s ease;
+      }
+      @keyframes tz-drop-in {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
 
-.ticks {
-  position: relative;
-  width: 100%;
+      .tz-breakdown-buttons {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .tz-method-btn {
+        flex: 1 1 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 9px 8px;
+        border-radius: 9px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.03);
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 12.5px;
+        cursor: pointer;
+        transition: border-color 0.15s ease, background 0.15s ease;
+      }
+      .tz-method-yape { border-color: rgba(124,58,237,0.4); }
+      .tz-method-yape:hover { background: rgba(124,58,237,0.15); border-color: #7c3aed; }
+      .tz-method-plin { border-color: rgba(43,232,255,0.4); }
+      .tz-method-plin:hover { background: rgba(43,232,255,0.15); border-color: var(--cyan); }
+      .tz-method-otros { border-color: rgba(255,255,255,0.25); }
+      .tz-method-otros:hover { background: rgba(255,255,255,0.08); }
 
-  &::before,
-  &::after {
-    content: '';
-    position: absolute;
-    top: -4.5px;
-    border: 5px solid transparent;
-  }
+      .tz-product-history {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .tz-product-history-label {
+        font-size: 10.5px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        font-weight: 700;
+      }
+      .tz-product-history-empty {
+        margin: 0;
+        font-size: 12px;
+        color: var(--text-dim);
+        opacity: 0.8;
+      }
+      .tz-history-rows {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 180px;
+        overflow-y: auto;
+      }
+      .tz-history-row {
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        background: rgba(255,255,255,0.02);
+        overflow: hidden;
+      }
+      .tz-history-row-head {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: transparent;
+        border: none;
+        padding: 8px 10px;
+        cursor: pointer;
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+      }
+      .tz-history-row-method {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        color: var(--cyan);
+        text-transform: uppercase;
+      }
+      .tz-history-row-amount {
+        margin-left: auto;
+        font-weight: 700;
+        color: var(--pink);
+        font-size: 12.5px;
+      }
+      .tz-history-row-detail {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 2px 12px 10px;
+        font-size: 12px;
+        color: var(--text-dim);
+      }
+      .tz-history-row-detail strong { color: var(--text); font-weight: 700; }
 
-  &::before {
-    left: 0;
-    border-left-color: var(--border);
-  }
-  &::after {
-    right: 0;
-    border-right-color: var(--border);
-  }
-}
+      /* ---------- SUBMIT BAR ---------- */
+      /* Igual que el header: fixed en vez de sticky para que quede
+         anclada de forma confiable en móvil (incluidos navegadores
+         embebidos) y también en PC. */
+      .tz-submitbar {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 45;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        background: rgba(15, 10, 30, 0.94);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(43,232,255,0.25);
+        border-left: none;
+        border-right: none;
+        border-bottom: none;
+        border-radius: 0;
+        padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+        box-shadow: 0 -8px 30px rgba(0,0,0,0.4);
+      }
+      .tz-submitbar-info { flex: 1 1 100%; min-width: 0; }
+      .tz-submitbar-summary {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        color: var(--text-dim);
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .tz-error {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--danger);
+        font-weight: 700;
+        font-size: 13.5px;
+      }
+      .tz-success {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--cyan);
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .tz-submit-btn {
+        width: 100%;
+        box-sizing: border-box;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 13px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #16190a;
+        background: var(--yellow);
+        border: none;
+        border-radius: 12px;
+        padding: 14px 26px;
+        cursor: pointer;
+        box-shadow: 0 0 24px rgba(215,255,59,0.4);
+        transition: transform 0.12s ease;
+      }
+      .tz-submit-btn:hover { transform: translateY(-1px); }
+      .tz-submit-btn:active { transform: translateY(0); }
+
+      /* ---------- HISTORIAL ---------- */
+      .tz-history { margin-top: 40px; }
+      .tz-history-heading {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--cyan);
+        margin-bottom: 14px;
+      }
+      .tz-history-heading h2 {
+        margin: 0;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 15px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--text);
+      }
+
+      .tz-empty {
+        border: 1px dashed rgba(255,255,255,0.15);
+        border-radius: 14px;
+        padding: 28px;
+        text-align: center;
+        color: var(--text-dim);
+      }
+      .tz-empty p { margin: 0 0 6px; }
+      .tz-empty-sub { font-size: 13px; opacity: 0.8; }
+
+      .tz-table-wrap {
+        overflow-x: auto;
+        border-radius: 14px;
+        border: 1px solid var(--border-soft);
+      }
+      .tz-table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 640px;
+        font-size: 13.5px;
+      }
+      .tz-table thead th {
+        text-align: left;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 10.5px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        background: rgba(255,255,255,0.03);
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .tz-table tbody td {
+        padding: 12px 14px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        font-weight: 600;
+      }
+      .tz-table tbody tr:hover { background: rgba(43,232,255,0.04); }
+      .tz-id-cell {
+        font-family: 'Orbitron', sans-serif;
+        color: var(--yellow);
+        font-size: 12px;
+      }
+      .tz-pink-cell { color: var(--pink); font-weight: 700; }
+      .tz-dim-cell { color: var(--text-dim); }
+
+      /* ---------- FLOATING BUTTON ---------- */
+      .tz-fab {
+        position: fixed;
+        right: 12px;
+        bottom: calc(var(--tz-footer-h, 96px) + 12px);
+        z-index: 46;
+        max-width: calc(100vw - 24px);
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--yellow);
+        color: #16190a;
+        border: none;
+        border-radius: 999px;
+        padding: 11px 14px;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 11px;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 0 24px rgba(215,255,59,0.45);
+      }
+      .tz-fab:hover { transform: translateY(-1px); }
+
+      /* ---------- MODAL ---------- */
+      .tz-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        background: rgba(5, 3, 12, 0.75);
+        backdrop-filter: blur(4px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .tz-modal {
+        position: relative;
+        width: 100%;
+        max-width: 460px;
+        max-height: 86vh;
+        overflow-y: auto;
+        background: var(--panel-solid);
+        border: 1px solid rgba(43,232,255,0.25);
+        border-radius: 18px;
+        padding: 28px 24px 24px;
+        box-shadow: 0 0 50px rgba(43,232,255,0.15);
+      }
+      .tz-modal-close {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.04);
+        color: var(--text-dim);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+
+      .tz-pw-form {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 6px;
+      }
+      .tz-pw-icon {
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        background: rgba(43,232,255,0.1);
+        color: var(--cyan);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 6px;
+      }
+      .tz-pw-form h2 {
+        margin: 0;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .tz-pw-form p { margin: 0 0 10px; color: var(--text-dim); font-size: 13.5px; }
+      .tz-pw-form input {
+        width: 100%;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 12px 14px;
+        color: var(--text);
+        font-size: 15px;
+        font-family: 'Rajdhani', sans-serif;
+        text-align: center;
+        letter-spacing: 0.1em;
+      }
+      .tz-pw-form input:focus { outline: none; border-color: var(--cyan); }
+      .tz-pw-submit {
+        margin-top: 10px;
+        width: 100%;
+        background: var(--cyan);
+        color: #06131a;
+        border: none;
+        border-radius: 10px;
+        padding: 12px;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 12.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 0 20px rgba(43,232,255,0.35);
+      }
+
+      .tz-stock-editor h2 {
+        margin: 0 0 4px;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .tz-stock-editor-sub {
+        margin: 0 0 18px;
+        color: var(--text-dim);
+        font-size: 13px;
+      }
+      .tz-stock-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 46vh;
+        overflow-y: auto;
+        padding-right: 4px;
+        margin-bottom: 14px;
+      }
+      .tz-stock-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .tz-stock-row-info { display: flex; flex-direction: column; gap: 2px; }
+      .tz-stock-row-name { font-weight: 700; font-size: 13.5px; }
+      .tz-stock-row-current { font-size: 11.5px; color: var(--text-dim); }
+      .tz-stock-row-input {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        padding: 4px 8px;
+      }
+      .tz-stock-plus { color: var(--yellow); font-weight: 800; }
+      .tz-stock-row-input input {
+        width: 52px;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 700;
+        font-size: 14px;
+        text-align: center;
+      }
+      .tz-stock-row-input input:focus { outline: none; }
+
+      .tz-stock-saved {
+        margin: 0 0 12px;
+        color: var(--cyan);
+        font-weight: 700;
+        font-size: 13px;
+        text-align: center;
+      }
+      .tz-stock-save {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: var(--yellow);
+        color: #16190a;
+        border: none;
+        border-radius: 10px;
+        padding: 13px;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 12.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 0 20px rgba(215,255,59,0.35);
+      }
+      .tz-stock-save:disabled { opacity: 0.6; cursor: not-allowed; }
+
+      /* ---------- MODAL: PAGO / ESCANEO ---------- */
+      .tz-payment-modal {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .tz-payment-modal h2 {
+        margin: 0;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 15px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        text-align: center;
+      }
+      .tz-payment-modal-sub {
+        margin: -4px 0 4px;
+        text-align: center;
+        color: var(--text-dim);
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .tz-field-label {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        font-weight: 700;
+      }
+      .tz-amount-input {
+        width: 100%;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 12px 14px;
+        color: var(--text);
+        font-family: 'Orbitron', sans-serif;
+        font-size: 18px;
+        font-weight: 700;
+        text-align: center;
+      }
+      .tz-amount-input:focus { outline: none; border-color: var(--green); }
+
+      .tz-scan-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        background: rgba(43,232,255,0.1);
+        border: 1px solid rgba(43,232,255,0.4);
+        color: var(--cyan);
+        border-radius: 10px;
+        padding: 11px;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 13.5px;
+        cursor: pointer;
+      }
+      .tz-scan-btn:hover { background: rgba(43,232,255,0.18); }
+
+      .tz-camera-note {
+        margin: -4px 0 0;
+        font-size: 11.5px;
+        color: var(--text-dim);
+        text-align: center;
+      }
+
+      .tz-payment-save {
+        margin-top: 2px;
+        background: var(--green);
+        box-shadow: 0 0 20px rgba(57,255,176,0.35);
+      }
+
+      .tz-scan-result {
+        background: rgba(57,255,176,0.08);
+        border: 1px solid rgba(57,255,176,0.3);
+        border-radius: 10px;
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .tz-scan-result-title {
+        margin: 0 0 2px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--green);
+        font-weight: 800;
+        font-size: 12.5px;
+      }
+      .tz-scan-result-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        font-size: 12.5px;
+        color: var(--text-dim);
+      }
+      .tz-scan-result-row strong { color: var(--text); }
+
+      .tz-camera-view {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .tz-camera-video {
+        width: 100%;
+        max-height: 55vh;
+        border-radius: 12px;
+        background: #000;
+        border: 1px solid var(--border-soft);
+        object-fit: cover;
+      }
+      .tz-camera-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .tz-camera-actions .tz-scan-btn { flex: 1; }
+      .tz-camera-cancel {
+        flex: 0 0 auto;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-soft);
+        color: var(--text-dim);
+        border-radius: 10px;
+        padding: 11px 16px;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .tz-scan-processing {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 24px 0;
+        color: var(--text-dim);
+      }
+      .tz-scan-processing p { margin: 0; font-weight: 600; font-size: 13.5px; }
+
+      /* ==================================================================
+         RESPONSIVE: el diseño base de arriba es "mobile-first" (1 columna,
+         100% de ancho, padding lateral chico). Estas media queries SOLO
+         amplían el layout para pantallas más grandes.
+         ================================================================== */
+
+      /* Elimina las franjas laterales del boilerplate de Vite (#root)
+         para que la app aproveche todo el ancho de la ventana. */
+      #root {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-inline: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      /* ---------- TABLET (>= 768px) ---------- */
+      @media (min-width: 768px) {
+        .tz-header-inner,
+        .tz-submitbar {
+          max-width: 700px;
+        }
+        .tz-main {
+          max-width: 700px;
+          margin: 0 auto;
+          padding-left: 20px;
+          padding-right: 20px;
+          padding-top: calc(var(--tz-header-h, 96px) + 18px);
+          padding-bottom: calc(var(--tz-footer-h, 90px) + 22px);
+        }
+        .tz-header { padding: 14px 20px 12px; }
+        .tz-logo { max-width: 190px; }
+
+        .tz-stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .tz-tab { flex: 1 1 150px; font-size: 12px; padding: 13px 14px; }
+        .tz-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+
+        .tz-submitbar {
+          border-radius: 16px 16px 0 0;
+          border-left: 1px solid rgba(43,232,255,0.25);
+          border-right: 1px solid rgba(43,232,255,0.25);
+          padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+        }
+        .tz-submitbar-info { flex: 1 1 260px; }
+        .tz-submit-btn { width: auto; }
+        .tz-fab { right: 20px; padding: 12px 18px; font-size: 12px; }
+      }
+
+      /* ---------- ESCRITORIO (>= 1024px) ---------- */
+      /* Aquí sí se "libera" el ancho: la app pasa a ocupar el 95% de la
+         ventana (en vez de quedar encajonada en ~1100px con franjas a
+         los lados) y la grilla de productos pasa a 3 columnas
+         panorámicas. */
+      @media (min-width: 1024px) {
+        .tz-header-inner,
+        .tz-main,
+        .tz-submitbar {
+          width: 95%;
+          max-width: 1400px;
+        }
+        .tz-main {
+          padding-left: 28px;
+          padding-right: 28px;
+          padding-top: calc(var(--tz-header-h, 110px) + 22px);
+          padding-bottom: calc(var(--tz-footer-h, 96px) + 26px);
+        }
+        .tz-logo { max-width: 210px; }
+
+        .tz-stats { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+
+        /* Tarjetas panorámicas: 3+ columnas, cada tarjeta más ancha que alta */
+        .tz-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+        .tz-card { min-height: 168px; }
+        .tz-card-metrics { align-items: center; }
+      }
+    
