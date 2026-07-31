@@ -57,23 +57,34 @@
         width: 100%;
         box-sizing: border-box;
         overflow: visible;
-        display: flex;
-        justify-content: center;
-        padding: 28px 16px 24px;
+        padding: 20px 14px 22px;
         background: rgba(10, 7, 22, 0.85);
         border-bottom: 1px solid rgba(43,232,255,0.15);
       }
-      .tz-header-inner {
+      /* Distribución en 3 zonas: izquierda (Fiados) / centro (logo) /
+         derecha (Métodos de pago). */
+      .tz-header-row {
         width: 100%;
         max-width: 100%;
+        margin: 0 auto;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
         overflow: visible;
+      }
+      .tz-header-center {
+        flex: 1 1 auto;
+        min-width: 0;
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 4px;
+        overflow: visible;
       }
       .tz-logo {
-        max-width: 150px;
+        max-width: 130px;
         width: 100%;
         height: auto;
         overflow: visible;
@@ -89,6 +100,81 @@
         text-transform: uppercase;
         color: var(--text-dim);
         text-align: center;
+      }
+
+      /* Botones del header (Fiados / Métodos de pago). En móvil (base,
+         mobile-first) solo se ve el ícono, para ahorrar espacio. */
+      .tz-header-btn {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-soft);
+        color: var(--text-dim);
+        border-radius: 12px;
+        padding: 9px;
+        cursor: pointer;
+        transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+      }
+      .tz-header-btn:hover {
+        color: var(--text);
+        border-color: rgba(43,232,255,0.35);
+        background: rgba(43,232,255,0.08);
+      }
+      .tz-header-btn-label {
+        display: none;
+        font-size: 9px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .tz-header-payment-wrap { position: relative; flex: 0 0 auto; }
+
+      .tz-payment-menu {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 60;
+        background: var(--panel-solid);
+        border: 1px solid var(--border-soft);
+        border-radius: 12px;
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 170px;
+        max-width: calc(100vw - 28px);
+        box-sizing: border-box;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+      }
+      .tz-payment-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        box-sizing: border-box;
+        background: transparent;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 10px;
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+        text-align: left;
+      }
+      .tz-payment-menu-item:hover { background: rgba(43,232,255,0.1); }
+      .tz-payment-menu-amount {
+        margin-left: auto;
+        color: var(--green);
+        font-size: 11.5px;
+        font-weight: 800;
       }
 
       /* ---------- CONTENEDOR PRINCIPAL (mobile-first) ---------- */
@@ -467,84 +553,89 @@
         text-overflow: ellipsis;
       }
 
-      .tz-breakdown { flex: 1; min-width: 0; }
-      .tz-breakdown-toggle {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        width: 100%;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid var(--border-soft);
-        border-radius: 10px;
-        padding: 9px 12px;
+      /* pequeña leyenda debajo del medidor circular de cada tarjeta */
+      .tz-card-metrics-label {
+        flex: 1;
+        min-width: 0;
+        font-size: 11px;
+        line-height: 1.35;
         color: var(--text-dim);
-        font-family: 'Rajdhani', sans-serif;
-        font-weight: 700;
-        font-size: 12.5px;
-        letter-spacing: 0.03em;
-        cursor: pointer;
+        font-weight: 600;
       }
-      .tz-breakdown-toggle:hover { color: var(--text); border-color: rgba(43,232,255,0.35); }
-      .tz-breakdown-toggle svg:last-child { margin-left: auto; }
 
-      .tz-breakdown-panel {
-        margin-top: 10px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        animation: tz-drop-in 0.15s ease;
-      }
       @keyframes tz-drop-in {
         from { opacity: 0; transform: translateY(-6px); }
         to { opacity: 1; transform: translateY(0); }
       }
 
-      .tz-breakdown-buttons {
+      /* ---------- MODAL GLOBAL DE MÉTODOS DE PAGO ---------- */
+      .tz-method-totals {
         display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
+        gap: 10px;
       }
-      .tz-method-btn {
-        flex: 1 1 80px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 9px 8px;
-        border-radius: 9px;
-        border: 1px solid var(--border-soft);
-        background: rgba(255,255,255,0.03);
-        color: var(--text);
-        font-family: 'Rajdhani', sans-serif;
-        font-weight: 700;
-        font-size: 12.5px;
-        cursor: pointer;
-        transition: border-color 0.15s ease, background 0.15s ease;
-      }
-      .tz-method-yape { border-color: rgba(124,58,237,0.4); }
-      .tz-method-yape:hover { background: rgba(124,58,237,0.15); border-color: #7c3aed; }
-      .tz-method-plin { border-color: rgba(43,232,255,0.4); }
-      .tz-method-plin:hover { background: rgba(43,232,255,0.15); border-color: var(--cyan); }
-      .tz-method-otros { border-color: rgba(255,255,255,0.25); }
-      .tz-method-otros:hover { background: rgba(255,255,255,0.08); }
-
-      .tz-product-history {
+      .tz-method-total {
+        flex: 1;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        align-items: center;
+        gap: 2px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 10px 8px;
       }
-      .tz-product-history-label {
+      .tz-method-total span {
         font-size: 10.5px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--text-dim);
         font-weight: 700;
       }
-      .tz-product-history-empty {
+      .tz-method-total strong {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 16px;
+        font-weight: 800;
+      }
+
+      .tz-add-entry-toggle { justify-content: center; }
+      .tz-add-entry {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border: 1px dashed var(--border-soft);
+        border-radius: 12px;
+        animation: tz-drop-in 0.15s ease;
+      }
+      .tz-add-entry-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .tz-add-entry-actions .tz-camera-cancel { flex: 1; }
+      .tz-add-entry-actions .tz-payment-save { flex: 2; margin-top: 0; }
+
+      .tz-method-history {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .tz-method-history-label {
+        font-size: 10.5px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        font-weight: 700;
+      }
+      .tz-method-history-empty {
         margin: 0;
         font-size: 12px;
         color: var(--text-dim);
         opacity: 0.8;
+      }
+      .tz-history-row-manual-note {
+        font-size: 12px;
+        color: var(--text-dim);
+        font-style: italic;
       }
       .tz-history-rows {
         list-style: none;
@@ -553,7 +644,7 @@
         display: flex;
         flex-direction: column;
         gap: 6px;
-        max-height: 180px;
+        max-height: 240px;
         overflow-y: auto;
       }
       .tz-history-row {
@@ -588,6 +679,7 @@
         font-size: 12.5px;
       }
       .tz-history-row-detail {
+        height: auto;
         display: flex;
         flex-direction: column;
         gap: 4px;
@@ -826,18 +918,18 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 16px;
+        padding: 10px;
       }
       .tz-modal {
         position: relative;
         width: 100%;
         max-width: 460px;
-        max-height: 86vh;
+        max-height: 88vh;
         overflow-y: auto;
         background: var(--panel-solid);
         border: 1px solid rgba(43,232,255,0.25);
         border-radius: 18px;
-        padding: 28px 24px 24px;
+        padding: 26px 18px 20px;
         box-shadow: 0 0 50px rgba(43,232,255,0.15);
       }
       .tz-modal-close {
@@ -1004,18 +1096,15 @@
       }
       .tz-payment-modal h2 {
         margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
         font-family: 'Orbitron', sans-serif;
         font-size: 15px;
         text-transform: uppercase;
         letter-spacing: 0.03em;
         text-align: center;
-      }
-      .tz-payment-modal-sub {
-        margin: -4px 0 4px;
-        text-align: center;
-        color: var(--text-dim);
-        font-size: 13px;
-        font-weight: 600;
       }
       .tz-field-label {
         font-size: 11px;
@@ -1155,9 +1244,15 @@
 
       /* ---------- TABLET (>= 768px) ---------- */
       @media (min-width: 768px) {
-        .tz-header-inner {
+        .tz-header-row {
           max-width: 700px;
+          margin: 0 auto;
         }
+        .tz-header-btn {
+          flex-direction: row;
+          padding: 9px 14px;
+        }
+        .tz-header-btn-label { display: inline; font-size: 11px; }
         .tz-main {
           max-width: 700px;
           margin: 0 auto;
@@ -1166,8 +1261,8 @@
           padding-top: 24px;
           padding-bottom: calc(var(--tz-footer-h, 0px) + 26px);
         }
-        .tz-header { padding: 32px 20px 26px; }
-        .tz-logo { max-width: 190px; }
+        .tz-header { padding: 24px 20px; }
+        .tz-logo { max-width: 170px; }
 
         .tz-stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
         .tz-tab { flex: 1 1 150px; font-size: 12px; padding: 13px 14px; }
@@ -1192,7 +1287,7 @@
          los lados) y la grilla de productos pasa a 3 columnas
          panorámicas. */
       @media (min-width: 1024px) {
-        .tz-header-inner,
+        .tz-header-row,
         .tz-main,
         .tz-submitbar {
           width: 95%;
@@ -1206,8 +1301,8 @@
           padding-top: 28px;
           padding-bottom: calc(var(--tz-footer-h, 0px) + 30px);
         }
-        .tz-header { padding: 36px 16px 30px; }
-        .tz-logo { max-width: 210px; }
+        .tz-header { padding: 26px 16px; }
+        .tz-logo { max-width: 190px; }
 
         .tz-stats { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
 

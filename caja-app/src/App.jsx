@@ -18,6 +18,7 @@ import {
   TrendingUp,
   Wallet,
   CreditCard,
+  BookOpen,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
@@ -341,12 +342,13 @@ export default function App() {
   const [savingStock, setSavingStock] = useState(false);
   const [stockSavedMsg, setStockSavedMsg] = useState("");
 
-  /* ---- desglose por método de pago / ingreso manual / OCR ---- */
+  /* ---- módulo global de "Métodos de Pago" (header) ---- */
   const [comprobantes, setComprobantes] = useState([]);
-  const [openBreakdownId, setOpenBreakdownId] = useState(null); // product id con el desglose abierto
-  const [expandedHistoryRow, setExpandedHistoryRow] = useState(null); // comprobante id expandido
+  const [paymentMenuOpen, setPaymentMenuOpen] = useState(false); // menú Yape/Plin/Otros del header
+  const [activeMethodModal, setActiveMethodModal] = useState(null); // 'YAPE' | 'PLIN' | 'OTROS' | null
+  const [addEntryOpen, setAddEntryOpen] = useState(false); // sub-panel "agregar ingreso" dentro del modal
+  const [expandedEntryId, setExpandedEntryId] = useState(null); // acordeón de boleta expandido
 
-  const [paymentModal, setPaymentModal] = useState(null); // { productId, method } | null
   const [modalView, setModalView] = useState("manual"); // 'manual' | 'camera' | 'processing' | 'review'
   const [manualAmount, setManualAmount] = useState("");
   const [manualSaving, setManualSaving] = useState(false);
@@ -355,6 +357,13 @@ export default function App() {
   const [scanDetected, setScanDetected] = useState({ method: "", opId: "" });
   const [scanError, setScanError] = useState("");
   const [cameraSupported, setCameraSupported] = useState(true);
+
+  /* ---- módulo de Libreta (Fiados) — placeholder, se implementa en la
+     siguiente fase; por ahora solo el botón del header y un panel
+     vacío para no dejar un botón muerto. ---- */
+  const [libretaOpen, setLibretaOpen] = useState(false);
+
+  const paymentMenuRef = useRef(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -386,6 +395,22 @@ export default function App() {
       window.removeEventListener("resize", updateFooterOffset);
     };
   }, [loading, selection, submitError, successMsg]);
+
+  /* ---- cierra el menú "Métodos de Pago" del header al hacer clic afuera ---- */
+  useEffect(() => {
+    if (!paymentMenuOpen) return undefined;
+    const handleClickOutside = (e) => {
+      if (paymentMenuRef.current && !paymentMenuRef.current.contains(e.target)) {
+        setPaymentMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, [paymentMenuOpen]);
 
   /* ---- carga inicial: SELECT a Supabase (tablas 'stock' y 'historial') ---- */
   useEffect(() => {
@@ -696,28 +721,29 @@ export default function App() {
     setStockSavedMsg("Stock actualizado correctamente.");
   };
 
-  /* ---- desglose por método de pago (por tarjeta de producto) ---- */
-  const toggleBreakdown = (productId) => {
-    setOpenBreakdownId((prev) => (prev === productId ? null : productId));
+  /* ---- menú global "Métodos de Pago" (header) ---- */
+  const openMethodModal = (method) => {
+    setActiveMethodModal(method);
+    setPaymentMenuOpen(false);
+    setAddEntryOpen(false);
+    setExpandedEntryId(null);
+    resetEntryForm();
   };
 
-  const toggleHistoryRow = (comprobanteId) => {
-    setExpandedHistoryRow((prev) => (prev === comprobanteId ? null : comprobanteId));
-  };
-
-  /* ---- modal de ingreso manual / escaneo de comprobante ---- */
-  const openPaymentModal = (productId, method) => {
-    setPaymentModal({ productId, method });
-    setModalView("manual");
-    setManualAmount("");
-    setManualError("");
-    setScanDetected({ method: "", opId: "" });
-    setScanError("");
-  };
-
-  const closePaymentModal = () => {
+  const closeMethodModal = () => {
     stopCamera();
-    setPaymentModal(null);
+    setActiveMethodModal(null);
+    setAddEntryOpen(false);
+    setExpandedEntryId(null);
+    resetEntryForm();
+  };
+
+  const toggleEntryRow = (comprobanteId) => {
+    setExpandedEntryId((prev) => (prev === comprobanteId ? null : comprobanteId));
+  };
+
+  /* ---- formulario de ingreso manual / escaneo de comprobante ---- */
+  const resetEntryForm = () => {
     setModalView("manual");
     setManualAmount("");
     setManualError("");
@@ -733,7 +759,7 @@ export default function App() {
 
   /* ---- guardar comprobante (manual o detectado por OCR): INSERT a 'comprobantes' ---- */
   const saveComprobante = async () => {
-    if (!paymentModal) return;
+    if (!activeMethodModal) return;
     const amountNum = parseFloat(manualAmount);
     if (!manualAmount || isNaN(amountNum) || amountNum <= 0) {
       setManualError("Ingresa un monto válido en Soles.");
@@ -743,16 +769,15 @@ export default function App() {
     setManualSaving(true);
     setManualError("");
 
-    const product = PRODUCTS_BY_ID[paymentModal.productId];
-    const effectiveMethod = scanDetected.opId ? scanDetected.method : paymentModal.method;
+    const effectiveMethod = scanDetected.opId ? scanDetected.method : activeMethodModal;
     const timestamp = Date.now();
 
     const { data: inserted, error } = await supabase
       .from("comprobantes")
       .insert([
         {
-          product_id: paymentModal.productId,
-          product_name: product?.name ?? "",
+          product_id: null,
+          product_name: null,
           metodo: effectiveMethod,
           monto: amountNum,
           comprobante_id: scanDetected.opId || null,
@@ -771,9 +796,9 @@ export default function App() {
 
     const row = inserted && inserted[0];
     const newEntry = {
-      id: row?.id ?? `${paymentModal.productId}-${timestamp}`,
-      productId: paymentModal.productId,
-      productName: product?.name ?? "",
+      id: row?.id ?? `${effectiveMethod}-${timestamp}`,
+      productId: null,
+      productName: null,
       method: effectiveMethod,
       amount: amountNum,
       opId: scanDetected.opId || null,
@@ -781,7 +806,8 @@ export default function App() {
     };
 
     setComprobantes((prev) => [newEntry, ...prev]);
-    closePaymentModal();
+    setAddEntryOpen(false);
+    resetEntryForm();
   };
 
   /* ---- escaneo de comprobante con cámara + Tesseract.js OCR ---- */
@@ -900,11 +926,37 @@ export default function App() {
     return { total, items, purchaseCount, cost, manualToday, netProfit, recaudadoTotal };
   }, [sales, comprobantes]);
 
-  /* ---- estadísticas por producto (para medidores individuales) ---- */
+  /* ---- estadísticas globales por método de pago (para el modal de
+     "Métodos de Pago" del header). El totalizador de "hoy" es el que
+     se mantiene sincronizado en tiempo real con "Recaudado Hoy". ---- */
+  const methodStats = useMemo(() => {
+    const stats = {};
+    PAYMENT_METHODS.forEach((m) => {
+      stats[m.key] = { todayTotal: 0, allTimeTotal: 0, entries: [] };
+    });
+    const todayStr = formatDate(Date.now());
+
+    comprobantes.forEach((c) => {
+      if (!stats[c.method]) return;
+      stats[c.method].allTimeTotal += c.amount;
+      stats[c.method].entries.push(c);
+      if (formatDate(c.timestamp) === todayStr) {
+        stats[c.method].todayTotal += c.amount;
+      }
+    });
+
+    Object.values(stats).forEach((st) => {
+      st.entries.sort((a, b) => b.timestamp - a.timestamp);
+    });
+
+    return stats;
+  }, [comprobantes]);
+
+  /* ---- estadísticas por producto (para el medidor de Ticket Promedio) ---- */
   const productStats = useMemo(() => {
     const stats = {};
     Object.values(PRODUCTS_BY_ID).forEach((p) => {
-      stats[p.id] = { unitsSold: 0, revenue: 0, salesCount: 0, manualTotal: 0, comprobantes: [] };
+      stats[p.id] = { unitsSold: 0, revenue: 0, salesCount: 0 };
     });
 
     sales.forEach((s) => {
@@ -918,20 +970,12 @@ export default function App() {
       }
     });
 
-    comprobantes.forEach((c) => {
-      if (stats[c.productId]) {
-        stats[c.productId].manualTotal += c.amount;
-        stats[c.productId].comprobantes.push(c);
-      }
-    });
-
     Object.values(stats).forEach((st) => {
-      st.comprobantes.sort((a, b) => b.timestamp - a.timestamp);
       st.avgTicket = st.salesCount > 0 ? st.revenue / st.salesCount : 0;
     });
 
     return stats;
-  }, [sales, comprobantes]);
+  }, [sales]);
 
   const totalRevenueAll = useMemo(
     () => Object.values(productStats).reduce((sum, st) => sum + st.revenue, 0),
@@ -968,9 +1012,51 @@ export default function App() {
 
       {/* ---------------- HEADER ---------------- */}
       <header className="tz-header">
-        <div className="tz-header-inner">
-          <img src={LOGO_SRC} alt="TONAZO!" className="tz-logo" />
-          <p className="tz-subtitle">Caja Registradora</p>
+        <div className="tz-header-row">
+          <button
+            className="tz-header-btn"
+            onClick={() => setLibretaOpen(true)}
+            aria-label="Libreta (Fiados)"
+          >
+            <BookOpen size={19} />
+            <span className="tz-header-btn-label">Fiados</span>
+          </button>
+
+          <div className="tz-header-center">
+            <img src={LOGO_SRC} alt="TONAZO!" className="tz-logo" />
+            <p className="tz-subtitle">Caja Registradora</p>
+          </div>
+
+          <div className="tz-header-payment-wrap" ref={paymentMenuRef}>
+            <button
+              className="tz-header-btn"
+              onClick={() => setPaymentMenuOpen((o) => !o)}
+              aria-label="Métodos de pago"
+            >
+              <Wallet size={19} />
+              <span className="tz-header-btn-label">Pagos</span>
+            </button>
+
+            {paymentMenuOpen && (
+              <div className="tz-payment-menu">
+                {PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m.key}
+                    className="tz-payment-menu-item"
+                    onClick={() => openMethodModal(m.key)}
+                  >
+                    <CreditCard size={14} />
+                    {m.label}
+                    {methodStats[m.key].todayTotal > 0 && (
+                      <span className="tz-payment-menu-amount">
+                        {formatSoles(methodStats[m.key].todayTotal)}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1050,7 +1136,6 @@ export default function App() {
                   const pStats = productStats[item.id];
                   const contributionPct =
                     totalRevenueAll > 0 ? (pStats.revenue / totalRevenueAll) * 100 : 0;
-                  const breakdownOpen = openBreakdownId === item.id;
 
                   return (
                     <div
@@ -1123,7 +1208,9 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* ---------- MEDIDORES POR PRODUCTO ---------- */}
+                      {/* ---------- MEDIDOR DE PRODUCTO (Ticket Promedio) ---------- */}
+                      {/* El desglose por método de pago ya no vive aquí: ahora es
+                         global, desde el botón "Métodos de Pago" del header. */}
                       <div className="tz-card-metrics" onClick={(e) => e.stopPropagation()}>
                         <CircularGauge
                           percent={contributionPct}
@@ -1131,85 +1218,9 @@ export default function App() {
                             pStats.salesCount > 0 ? formatSoles(pStats.avgTicket) : "Sin datos"
                           }
                         />
-
-                        <div className="tz-breakdown">
-                          <button
-                            className="tz-breakdown-toggle"
-                            onClick={() => toggleBreakdown(item.id)}
-                          >
-                            <Wallet size={14} />
-                            Métodos de pago
-                            {breakdownOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-                          </button>
-
-                          {breakdownOpen && (
-                            <div className="tz-breakdown-panel">
-                              <div className="tz-breakdown-buttons">
-                                {PAYMENT_METHODS.map((m) => (
-                                  <button
-                                    key={m.key}
-                                    className={`tz-method-btn tz-method-${m.key.toLowerCase()}`}
-                                    onClick={() => openPaymentModal(item.id, m.key)}
-                                  >
-                                    <CreditCard size={13} />
-                                    {m.label}
-                                  </button>
-                                ))}
-                              </div>
-
-                              <div className="tz-product-history">
-                                <span className="tz-product-history-label">
-                                  Historial de ingresos manuales
-                                </span>
-                                {pStats.comprobantes.length === 0 ? (
-                                  <p className="tz-product-history-empty">
-                                    Aún no hay ingresos registrados para este producto.
-                                  </p>
-                                ) : (
-                                  <ul className="tz-history-rows">
-                                    {pStats.comprobantes.map((c) => {
-                                      const rowOpen = expandedHistoryRow === c.id;
-                                      return (
-                                        <li key={c.id} className="tz-history-row">
-                                          <button
-                                            className="tz-history-row-head"
-                                            onClick={() => toggleHistoryRow(c.id)}
-                                          >
-                                            <span className="tz-history-row-method">
-                                              {c.method}
-                                            </span>
-                                            <span className="tz-history-row-amount">
-                                              {formatSoles(c.amount)}
-                                            </span>
-                                            {rowOpen ? (
-                                              <ChevronUp size={14} />
-                                            ) : (
-                                              <ChevronDown size={14} />
-                                            )}
-                                          </button>
-                                          {rowOpen && (
-                                            <div className="tz-history-row-detail">
-                                              <span>
-                                                <strong>Hora:</strong> {formatTime(c.timestamp)}
-                                              </span>
-                                              <span>
-                                                <strong>Fecha:</strong> {formatDate(c.timestamp)}
-                                              </span>
-                                              <span>
-                                                <strong>ID comprobante:</strong>{" "}
-                                                {c.opId || "— (ingreso manual)"}
-                                              </span>
-                                            </div>
-                                          )}
-                                        </li>
-                                      );
-                                    })}
-                                  </ul>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <span className="tz-card-metrics-label">
+                          Ticket promedio · % de participación en ingresos
+                        </span>
                       </div>
                     </div>
                   );
@@ -1395,109 +1406,205 @@ export default function App() {
         </div>
       )}
 
-      {/* ---------------- MODAL: INGRESO MANUAL / ESCANEO DE COMPROBANTE ---------------- */}
-      {paymentModal && (
-        <div className="tz-modal-backdrop" onClick={closePaymentModal}>
+      {/* ---------------- MODAL: MÉTODO DE PAGO (Yape / Plin / Otros) ---------------- */}
+      {activeMethodModal && (
+        <div className="tz-modal-backdrop" onClick={closeMethodModal}>
           <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="tz-modal-close" onClick={closePaymentModal} aria-label="Cerrar">
+            <button className="tz-modal-close" onClick={closeMethodModal} aria-label="Cerrar">
               <X size={18} />
             </button>
 
             <div className="tz-payment-modal">
               <h2>
-                Registrar pago · {PAYMENT_METHODS.find((m) => m.key === paymentModal.method)?.label}
+                <CreditCard size={17} />{" "}
+                {PAYMENT_METHODS.find((m) => m.key === activeMethodModal)?.label}
               </h2>
-              <p className="tz-payment-modal-sub">
-                {PRODUCTS_BY_ID[paymentModal.productId]?.name}
-              </p>
 
-              {(modalView === "manual" || modalView === "review") && (
-                <>
-                  {modalView === "review" && (
-                    <div className="tz-scan-result">
-                      <p className="tz-scan-result-title">
-                        <Check size={14} /> Comprobante detectado
-                      </p>
-                      <div className="tz-scan-result-row">
-                        <span>Método:</span>
-                        <strong>{scanDetected.method || "OTROS"}</strong>
+              {/* ---- totalizador interno, sincronizado con "Recaudado Hoy" ---- */}
+              <div className="tz-method-totals">
+                <div className="tz-method-total">
+                  <span>Hoy</span>
+                  <strong className="tz-green">
+                    {formatSoles(methodStats[activeMethodModal].todayTotal)}
+                  </strong>
+                </div>
+                <div className="tz-method-total">
+                  <span>Histórico</span>
+                  <strong>{formatSoles(methodStats[activeMethodModal].allTimeTotal)}</strong>
+                </div>
+              </div>
+
+              {/* ---- agregar ingreso (manual o por escaneo OCR) ---- */}
+              {!addEntryOpen ? (
+                <button
+                  className="tz-scan-btn tz-add-entry-toggle"
+                  onClick={() => setAddEntryOpen(true)}
+                >
+                  <Plus size={16} /> Agregar ingreso
+                </button>
+              ) : (
+                <div className="tz-add-entry">
+                  {(modalView === "manual" || modalView === "review") && (
+                    <>
+                      {modalView === "review" && (
+                        <div className="tz-scan-result">
+                          <p className="tz-scan-result-title">
+                            <Check size={14} /> Comprobante detectado
+                          </p>
+                          <div className="tz-scan-result-row">
+                            <span>Método:</span>
+                            <strong>{scanDetected.method || "OTROS"}</strong>
+                          </div>
+                          <div className="tz-scan-result-row">
+                            <span>ID operación:</span>
+                            <strong>{scanDetected.opId || "No detectado"}</strong>
+                          </div>
+                          <div className="tz-scan-result-row">
+                            <span>Fecha / Hora:</span>
+                            <strong>
+                              {formatDate(Date.now())} · {formatTime(Date.now())}
+                            </strong>
+                          </div>
+                        </div>
+                      )}
+
+                      <label className="tz-field-label">Monto (S/)</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        autoFocus
+                        className="tz-amount-input"
+                        placeholder="0.00"
+                        value={manualAmount}
+                        onChange={(e) => handleManualAmountChange(e.target.value)}
+                      />
+
+                      {manualError && <p className="tz-error">{manualError}</p>}
+
+                      <button className="tz-scan-btn" onClick={startCamera}>
+                        <Camera size={16} />
+                        {modalView === "review"
+                          ? "Escanear otro comprobante"
+                          : "Escanear comprobante"}
+                      </button>
+                      {!cameraSupported && (
+                        <p className="tz-camera-note">
+                          No se pudo acceder a la cámara del navegador; se abrirá el selector de
+                          fotos de tu equipo.
+                        </p>
+                      )}
+
+                      <div className="tz-add-entry-actions">
+                        <button
+                          className="tz-camera-cancel"
+                          onClick={() => {
+                            setAddEntryOpen(false);
+                            resetEntryForm();
+                          }}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          className="tz-pw-submit tz-payment-save"
+                          onClick={saveComprobante}
+                          disabled={manualSaving}
+                        >
+                          {manualSaving ? (
+                            <Loader2 size={16} className="tz-spin" />
+                          ) : (
+                            <Save size={16} />
+                          )}
+                          Guardar
+                        </button>
                       </div>
-                      <div className="tz-scan-result-row">
-                        <span>ID operación:</span>
-                        <strong>{scanDetected.opId || "No detectado"}</strong>
-                      </div>
-                      <div className="tz-scan-result-row">
-                        <span>Fecha / Hora:</span>
-                        <strong>
-                          {formatDate(Date.now())} · {formatTime(Date.now())}
-                        </strong>
+                    </>
+                  )}
+
+                  {modalView === "camera" && (
+                    <div className="tz-camera-view">
+                      <video ref={videoRef} className="tz-camera-video" muted playsInline />
+                      <div className="tz-camera-actions">
+                        <button className="tz-scan-btn" onClick={captureFromCamera}>
+                          <Camera size={16} /> Capturar y leer
+                        </button>
+                        <button
+                          className="tz-camera-cancel"
+                          onClick={() => {
+                            stopCamera();
+                            setModalView("manual");
+                          }}
+                        >
+                          Cancelar
+                        </button>
                       </div>
                     </div>
                   )}
 
-                  <label className="tz-field-label">Monto (S/)</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    autoFocus
-                    className="tz-amount-input"
-                    placeholder="0.00"
-                    value={manualAmount}
-                    onChange={(e) => handleManualAmountChange(e.target.value)}
-                  />
-
-                  {manualError && <p className="tz-error">{manualError}</p>}
-
-                  <button className="tz-scan-btn" onClick={startCamera}>
-                    <Camera size={16} />
-                    {modalView === "review" ? "Escanear otro comprobante" : "Escanear comprobante"}
-                  </button>
-                  {!cameraSupported && (
-                    <p className="tz-camera-note">
-                      No se pudo acceder a la cámara del navegador; se abrirá el selector de
-                      fotos de tu equipo.
-                    </p>
+                  {modalView === "processing" && (
+                    <div className="tz-scan-processing">
+                      <Loader2 size={30} className="tz-spin" />
+                      <p>Leyendo comprobante con OCR…</p>
+                    </div>
                   )}
 
-                  <button
-                    className="tz-pw-submit tz-payment-save"
-                    onClick={saveComprobante}
-                    disabled={manualSaving}
-                  >
-                    {manualSaving ? <Loader2 size={16} className="tz-spin" /> : <Save size={16} />}
-                    Guardar
-                  </button>
-                </>
-              )}
-
-              {modalView === "camera" && (
-                <div className="tz-camera-view">
-                  <video ref={videoRef} className="tz-camera-video" muted playsInline />
-                  <div className="tz-camera-actions">
-                    <button className="tz-scan-btn" onClick={captureFromCamera}>
-                      <Camera size={16} /> Capturar y leer
-                    </button>
-                    <button
-                      className="tz-camera-cancel"
-                      onClick={() => {
-                        stopCamera();
-                        setModalView("manual");
-                      }}
-                    >
-                      Cancelar
-                    </button>
-                  </div>
+                  {scanError && <p className="tz-error">{scanError}</p>}
                 </div>
               )}
 
-              {modalView === "processing" && (
-                <div className="tz-scan-processing">
-                  <Loader2 size={30} className="tz-spin" />
-                  <p>Leyendo comprobante con OCR…</p>
-                </div>
-              )}
-
-              {scanError && <p className="tz-error">{scanError}</p>}
+              {/* ---- historial exclusivo de este método, en acordeón ---- */}
+              <div className="tz-method-history">
+                <span className="tz-method-history-label">Historial</span>
+                {methodStats[activeMethodModal].entries.length === 0 ? (
+                  <p className="tz-method-history-empty">
+                    Aún no hay ingresos registrados por esta vía.
+                  </p>
+                ) : (
+                  <ul className="tz-history-rows">
+                    {methodStats[activeMethodModal].entries.map((c) => {
+                      const rowOpen = expandedEntryId === c.id;
+                      return (
+                        <li key={c.id} className="tz-history-row">
+                          <button
+                            className="tz-history-row-head"
+                            onClick={() => toggleEntryRow(c.id)}
+                          >
+                            <span className="tz-history-row-method">
+                              {formatDate(c.timestamp)}
+                            </span>
+                            <span className="tz-history-row-amount">
+                              {formatSoles(c.amount)}
+                            </span>
+                            {rowOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </button>
+                          {rowOpen &&
+                            (c.opId ? (
+                              <div className="tz-history-row-detail">
+                                <span>
+                                  <strong>Hora:</strong> {formatTime(c.timestamp)}
+                                </span>
+                                <span>
+                                  <strong>Fecha:</strong> {formatDate(c.timestamp)}
+                                </span>
+                                <span>
+                                  <strong>ID comprobante:</strong> {c.opId}
+                                </span>
+                              </div>
+                            ) : (
+                              // Ingreso manual (sin escaneo): sin ID, sin fecha
+                              // detallada por separado y sin foto, para no
+                              // dejar espacios vacíos en la boleta.
+                              <div className="tz-history-row-detail">
+                                <span className="tz-history-row-manual-note">
+                                  Ingreso manual · {formatTime(c.timestamp)}
+                                </span>
+                              </div>
+                            ))}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
 
               <canvas ref={canvasRef} style={{ display: "none" }} />
               <input
@@ -1508,6 +1615,32 @@ export default function App() {
                 style={{ display: "none" }}
                 onChange={handleFileCapture}
               />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- MODAL: LIBRETA (Fiados) ---------------- */}
+      {/* Placeholder de la próxima fase: solo evita un botón muerto en el
+         header mientras se construye el módulo completo de cuentas por
+         cobrar. */}
+      {libretaOpen && (
+        <div className="tz-modal-backdrop" onClick={() => setLibretaOpen(false)}>
+          <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="tz-modal-close"
+              onClick={() => setLibretaOpen(false)}
+              aria-label="Cerrar"
+            >
+              <X size={18} />
+            </button>
+            <div className="tz-payment-modal">
+              <h2>
+                <BookOpen size={17} /> Libreta (Fiados)
+              </h2>
+              <p className="tz-method-history-empty" style={{ textAlign: "center" }}>
+                Este módulo (cuentas por cobrar) se construye en la siguiente fase.
+              </p>
             </div>
           </div>
         </div>
@@ -1581,23 +1714,34 @@ function Styles() {
         width: 100%;
         box-sizing: border-box;
         overflow: visible;
-        display: flex;
-        justify-content: center;
-        padding: 28px 16px 24px;
+        padding: 20px 14px 22px;
         background: rgba(10, 7, 22, 0.85);
         border-bottom: 1px solid rgba(43,232,255,0.15);
       }
-      .tz-header-inner {
+      /* Distribución en 3 zonas: izquierda (Fiados) / centro (logo) /
+         derecha (Métodos de pago). */
+      .tz-header-row {
         width: 100%;
         max-width: 100%;
+        margin: 0 auto;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
         overflow: visible;
+      }
+      .tz-header-center {
+        flex: 1 1 auto;
+        min-width: 0;
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 4px;
+        overflow: visible;
       }
       .tz-logo {
-        max-width: 150px;
+        max-width: 130px;
         width: 100%;
         height: auto;
         overflow: visible;
@@ -1613,6 +1757,81 @@ function Styles() {
         text-transform: uppercase;
         color: var(--text-dim);
         text-align: center;
+      }
+
+      /* Botones del header (Fiados / Métodos de pago). En móvil (base,
+         mobile-first) solo se ve el ícono, para ahorrar espacio. */
+      .tz-header-btn {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-soft);
+        color: var(--text-dim);
+        border-radius: 12px;
+        padding: 9px;
+        cursor: pointer;
+        transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+      }
+      .tz-header-btn:hover {
+        color: var(--text);
+        border-color: rgba(43,232,255,0.35);
+        background: rgba(43,232,255,0.08);
+      }
+      .tz-header-btn-label {
+        display: none;
+        font-size: 9px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .tz-header-payment-wrap { position: relative; flex: 0 0 auto; }
+
+      .tz-payment-menu {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 60;
+        background: var(--panel-solid);
+        border: 1px solid var(--border-soft);
+        border-radius: 12px;
+        padding: 6px;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 170px;
+        max-width: calc(100vw - 28px);
+        box-sizing: border-box;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+      }
+      .tz-payment-menu-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        box-sizing: border-box;
+        background: transparent;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 10px;
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+        text-align: left;
+      }
+      .tz-payment-menu-item:hover { background: rgba(43,232,255,0.1); }
+      .tz-payment-menu-amount {
+        margin-left: auto;
+        color: var(--green);
+        font-size: 11.5px;
+        font-weight: 800;
       }
 
       /* ---------- CONTENEDOR PRINCIPAL (mobile-first) ---------- */
@@ -1991,84 +2210,89 @@ function Styles() {
         text-overflow: ellipsis;
       }
 
-      .tz-breakdown { flex: 1; min-width: 0; }
-      .tz-breakdown-toggle {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        width: 100%;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid var(--border-soft);
-        border-radius: 10px;
-        padding: 9px 12px;
+      /* pequeña leyenda debajo del medidor circular de cada tarjeta */
+      .tz-card-metrics-label {
+        flex: 1;
+        min-width: 0;
+        font-size: 11px;
+        line-height: 1.35;
         color: var(--text-dim);
-        font-family: 'Rajdhani', sans-serif;
-        font-weight: 700;
-        font-size: 12.5px;
-        letter-spacing: 0.03em;
-        cursor: pointer;
+        font-weight: 600;
       }
-      .tz-breakdown-toggle:hover { color: var(--text); border-color: rgba(43,232,255,0.35); }
-      .tz-breakdown-toggle svg:last-child { margin-left: auto; }
 
-      .tz-breakdown-panel {
-        margin-top: 10px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        animation: tz-drop-in 0.15s ease;
-      }
       @keyframes tz-drop-in {
         from { opacity: 0; transform: translateY(-6px); }
         to { opacity: 1; transform: translateY(0); }
       }
 
-      .tz-breakdown-buttons {
+      /* ---------- MODAL GLOBAL DE MÉTODOS DE PAGO ---------- */
+      .tz-method-totals {
         display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
+        gap: 10px;
       }
-      .tz-method-btn {
-        flex: 1 1 80px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        padding: 9px 8px;
-        border-radius: 9px;
-        border: 1px solid var(--border-soft);
-        background: rgba(255,255,255,0.03);
-        color: var(--text);
-        font-family: 'Rajdhani', sans-serif;
-        font-weight: 700;
-        font-size: 12.5px;
-        cursor: pointer;
-        transition: border-color 0.15s ease, background 0.15s ease;
-      }
-      .tz-method-yape { border-color: rgba(124,58,237,0.4); }
-      .tz-method-yape:hover { background: rgba(124,58,237,0.15); border-color: #7c3aed; }
-      .tz-method-plin { border-color: rgba(43,232,255,0.4); }
-      .tz-method-plin:hover { background: rgba(43,232,255,0.15); border-color: var(--cyan); }
-      .tz-method-otros { border-color: rgba(255,255,255,0.25); }
-      .tz-method-otros:hover { background: rgba(255,255,255,0.08); }
-
-      .tz-product-history {
+      .tz-method-total {
+        flex: 1;
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        align-items: center;
+        gap: 2px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 10px 8px;
       }
-      .tz-product-history-label {
+      .tz-method-total span {
         font-size: 10.5px;
         letter-spacing: 0.08em;
         text-transform: uppercase;
         color: var(--text-dim);
         font-weight: 700;
       }
-      .tz-product-history-empty {
+      .tz-method-total strong {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 16px;
+        font-weight: 800;
+      }
+
+      .tz-add-entry-toggle { justify-content: center; }
+      .tz-add-entry {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border: 1px dashed var(--border-soft);
+        border-radius: 12px;
+        animation: tz-drop-in 0.15s ease;
+      }
+      .tz-add-entry-actions {
+        display: flex;
+        gap: 8px;
+      }
+      .tz-add-entry-actions .tz-camera-cancel { flex: 1; }
+      .tz-add-entry-actions .tz-payment-save { flex: 2; margin-top: 0; }
+
+      .tz-method-history {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .tz-method-history-label {
+        font-size: 10.5px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        font-weight: 700;
+      }
+      .tz-method-history-empty {
         margin: 0;
         font-size: 12px;
         color: var(--text-dim);
         opacity: 0.8;
+      }
+      .tz-history-row-manual-note {
+        font-size: 12px;
+        color: var(--text-dim);
+        font-style: italic;
       }
       .tz-history-rows {
         list-style: none;
@@ -2077,7 +2301,7 @@ function Styles() {
         display: flex;
         flex-direction: column;
         gap: 6px;
-        max-height: 180px;
+        max-height: 240px;
         overflow-y: auto;
       }
       .tz-history-row {
@@ -2112,6 +2336,7 @@ function Styles() {
         font-size: 12.5px;
       }
       .tz-history-row-detail {
+        height: auto;
         display: flex;
         flex-direction: column;
         gap: 4px;
@@ -2350,18 +2575,18 @@ function Styles() {
         display: flex;
         align-items: center;
         justify-content: center;
-        padding: 16px;
+        padding: 10px;
       }
       .tz-modal {
         position: relative;
         width: 100%;
         max-width: 460px;
-        max-height: 86vh;
+        max-height: 88vh;
         overflow-y: auto;
         background: var(--panel-solid);
         border: 1px solid rgba(43,232,255,0.25);
         border-radius: 18px;
-        padding: 28px 24px 24px;
+        padding: 26px 18px 20px;
         box-shadow: 0 0 50px rgba(43,232,255,0.15);
       }
       .tz-modal-close {
@@ -2528,18 +2753,15 @@ function Styles() {
       }
       .tz-payment-modal h2 {
         margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
         font-family: 'Orbitron', sans-serif;
         font-size: 15px;
         text-transform: uppercase;
         letter-spacing: 0.03em;
         text-align: center;
-      }
-      .tz-payment-modal-sub {
-        margin: -4px 0 4px;
-        text-align: center;
-        color: var(--text-dim);
-        font-size: 13px;
-        font-weight: 600;
       }
       .tz-field-label {
         font-size: 11px;
@@ -2679,9 +2901,15 @@ function Styles() {
 
       /* ---------- TABLET (>= 768px) ---------- */
       @media (min-width: 768px) {
-        .tz-header-inner {
+        .tz-header-row {
           max-width: 700px;
+          margin: 0 auto;
         }
+        .tz-header-btn {
+          flex-direction: row;
+          padding: 9px 14px;
+        }
+        .tz-header-btn-label { display: inline; font-size: 11px; }
         .tz-main {
           max-width: 700px;
           margin: 0 auto;
@@ -2690,8 +2918,8 @@ function Styles() {
           padding-top: 24px;
           padding-bottom: calc(var(--tz-footer-h, 0px) + 26px);
         }
-        .tz-header { padding: 32px 20px 26px; }
-        .tz-logo { max-width: 190px; }
+        .tz-header { padding: 24px 20px; }
+        .tz-logo { max-width: 170px; }
 
         .tz-stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
         .tz-tab { flex: 1 1 150px; font-size: 12px; padding: 13px 14px; }
@@ -2716,7 +2944,7 @@ function Styles() {
          los lados) y la grilla de productos pasa a 3 columnas
          panorámicas. */
       @media (min-width: 1024px) {
-        .tz-header-inner,
+        .tz-header-row,
         .tz-main,
         .tz-submitbar {
           width: 95%;
@@ -2730,8 +2958,8 @@ function Styles() {
           padding-top: 28px;
           padding-bottom: calc(var(--tz-footer-h, 0px) + 30px);
         }
-        .tz-header { padding: 36px 16px 30px; }
-        .tz-logo { max-width: 210px; }
+        .tz-header { padding: 26px 16px; }
+        .tz-logo { max-width: 190px; }
 
         .tz-stats { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
 
