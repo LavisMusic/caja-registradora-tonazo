@@ -290,37 +290,6 @@ function nextPurchaseId(sales) {
 }
 
 /* ------------------------------------------------------------------ */
-/* MEDIDOR CIRCULAR (Ticket Promedio)                                  */
-/* ------------------------------------------------------------------ */
-
-function CircularGauge({ percent, amountLabel }) {
-  const clamped = Math.max(0, Math.min(100, percent || 0));
-  const radius = 26;
-  const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (clamped / 100) * circumference;
-
-  return (
-    <div className="tz-gauge" title="Ticket promedio: % de participación en los ingresos">
-      <svg viewBox="0 0 64 64" className="tz-gauge-svg">
-        <circle cx="32" cy="32" r={radius} className="tz-gauge-track" />
-        <circle
-          cx="32"
-          cy="32"
-          r={radius}
-          className="tz-gauge-fill"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-        />
-      </svg>
-      <div className="tz-gauge-center">
-        <span className="tz-gauge-pct">{clamped.toFixed(0)}%</span>
-        <span className="tz-gauge-amount">{amountLabel}</span>
-      </div>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* APP                                                                  */
 /* ------------------------------------------------------------------ */
 
@@ -923,7 +892,10 @@ export default function App() {
     const netProfit = total - cost + manualToday;
     const recaudadoTotal = total + manualToday;
 
-    return { total, items, purchaseCount, cost, manualToday, netProfit, recaudadoTotal };
+    // Ticket General: monto promedio por venta registrada hoy.
+    const avgTicket = purchaseCount > 0 ? total / purchaseCount : 0;
+
+    return { total, items, purchaseCount, cost, manualToday, netProfit, recaudadoTotal, avgTicket };
   }, [sales, comprobantes]);
 
   /* ---- estadísticas globales por método de pago (para el modal de
@@ -976,11 +948,6 @@ export default function App() {
 
     return stats;
   }, [sales]);
-
-  const totalRevenueAll = useMemo(
-    () => Object.values(productStats).reduce((sum, st) => sum + st.revenue, 0),
-    [productStats]
-  );
 
   const bestSellerId = useMemo(() => {
     let best = null;
@@ -1100,6 +1067,13 @@ export default function App() {
               </span>
             )}
           </div>
+          <div className="tz-stat-chip">
+            <span className="tz-stat-label">
+              <Receipt size={13} /> Ticket General
+            </span>
+            <span className="tz-stat-value tz-cyan">{formatSoles(todayStats.avgTicket)}</span>
+            <span className="tz-stat-sub">promedio por venta, hoy</span>
+          </div>
         </section>
 
         {/* ---------------- TABS ---------------- */}
@@ -1133,9 +1107,6 @@ export default function App() {
                   const soldOut = avail <= 0;
                   const low = avail > 0 && avail <= 3;
                   const isStar = item.id === bestSellerId;
-                  const pStats = productStats[item.id];
-                  const contributionPct =
-                    totalRevenueAll > 0 ? (pStats.revenue / totalRevenueAll) * 100 : 0;
 
                   return (
                     <div
@@ -1206,21 +1177,6 @@ export default function App() {
                             </span>
                           </div>
                         </div>
-                      </div>
-
-                      {/* ---------- MEDIDOR DE PRODUCTO (Ticket Promedio) ---------- */}
-                      {/* El desglose por método de pago ya no vive aquí: ahora es
-                         global, desde el botón "Métodos de Pago" del header. */}
-                      <div className="tz-card-metrics" onClick={(e) => e.stopPropagation()}>
-                        <CircularGauge
-                          percent={contributionPct}
-                          amountLabel={
-                            pStats.salesCount > 0 ? formatSoles(pStats.avgTicket) : "Sin datos"
-                          }
-                        />
-                        <span className="tz-card-metrics-label">
-                          Ticket promedio · % de participación en ingresos
-                        </span>
                       </div>
                     </div>
                   );
@@ -1672,6 +1628,8 @@ function Styles() {
         --danger: #ff5470;
         --green: #39ffb0;
         --green-bg: rgba(57,255,176,0.12);
+        --orange: #ff9500;
+        --orange-glow: rgba(255,149,0,0.5);
 
         --tz-footer-h: 84px;
 
@@ -1760,7 +1718,8 @@ function Styles() {
       }
 
       /* Botones del header (Fiados / Métodos de pago). En móvil (base,
-         mobile-first) solo se ve el ícono, para ahorrar espacio. */
+         mobile-first) solo se ve el ícono, para ahorrar espacio.
+         Naranja neón en el ícono/texto y el borde. */
       .tz-header-btn {
         flex: 0 0 auto;
         display: flex;
@@ -1768,18 +1727,24 @@ function Styles() {
         align-items: center;
         justify-content: center;
         gap: 3px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid var(--border-soft);
-        color: var(--text-dim);
+        background: rgba(255,149,0,0.06);
+        border: 1px solid rgba(255,149,0,0.45);
+        color: var(--orange);
         border-radius: 12px;
         padding: 9px;
         cursor: pointer;
-        transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+        box-shadow: 0 0 10px rgba(255,149,0,0.15);
+        transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+      .tz-header-btn svg {
+        filter: drop-shadow(0 0 4px var(--orange-glow));
       }
       .tz-header-btn:hover {
-        color: var(--text);
-        border-color: rgba(43,232,255,0.35);
-        background: rgba(43,232,255,0.08);
+        color: var(--orange);
+        border-color: var(--orange);
+        background: rgba(255,149,0,0.16);
+        box-shadow: 0 0 16px rgba(255,149,0,0.4);
       }
       .tz-header-btn-label {
         display: none;
@@ -1856,13 +1821,16 @@ function Styles() {
       }
 
       /* ---------- STATS ---------- */
-      /* 1 sola columna en móvil: con auto-fit + minmax fijo el texto sin
-         cortes (p. ej. "GANANCIA NETA (HOY)") podía forzar el ancho de la
-         pista más allá de la pantalla y desbordar el layout. */
+      /* 6 medidores en 2 filas x 3 columnas, en todo tamaño de pantalla.
+         Usamos fracciones (1fr) en vez de minmax(): las columnas siempre
+         suman exactamente el ancho disponible, así que nunca desbordan
+         (a diferencia de minmax(160px,1fr), que sí podía forzar overflow
+         en pantallas angostas). El texto largo solo se envuelve más,
+         nunca corta el layout. */
       .tz-stats {
         display: grid;
-        grid-template-columns: 1fr;
-        gap: 10px;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
         margin-bottom: 20px;
       }
       .tz-stat-chip {
@@ -1870,34 +1838,37 @@ function Styles() {
         box-sizing: border-box;
         background: var(--panel);
         border: 1px solid var(--border-soft);
-        border-radius: 14px;
-        padding: 12px 16px;
+        border-radius: 12px;
+        padding: 9px 8px;
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 3px;
       }
       .tz-stat-label {
-        font-size: 11px;
-        letter-spacing: 0.1em;
+        font-size: 9.5px;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
         color: var(--text-dim);
         font-weight: 600;
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 5px;
+        gap: 4px;
+        line-height: 1.2;
       }
       .tz-stat-value {
         font-family: 'Orbitron', sans-serif;
-        font-size: 22px;
+        font-size: 15px;
         font-weight: 700;
         overflow-wrap: anywhere;
+        line-height: 1.15;
       }
       .tz-stat-sub {
-        font-size: 11px;
+        font-size: 9px;
         color: var(--text-dim);
         font-weight: 600;
         overflow-wrap: anywhere;
+        line-height: 1.2;
       }
       .tz-cyan { color: var(--cyan); text-shadow: 0 0 14px rgba(43,232,255,0.5); }
       .tz-pink { color: var(--pink); text-shadow: 0 0 14px rgba(255,47,158,0.5); }
@@ -2150,74 +2121,6 @@ function Styles() {
         font-weight: 700;
         min-width: 16px;
         text-align: center;
-      }
-
-      /* ---------- MEDIDORES POR PRODUCTO ---------- */
-      .tz-card-metrics {
-        margin-top: 4px;
-        padding-top: 12px;
-        border-top: 1px dashed rgba(255,255,255,0.12);
-        display: flex;
-        align-items: flex-start;
-        gap: 14px;
-        cursor: default;
-      }
-
-      .tz-gauge {
-        position: relative;
-        width: 64px;
-        height: 64px;
-        flex-shrink: 0;
-      }
-      .tz-gauge-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-      .tz-gauge-track {
-        fill: none;
-        stroke: rgba(255,255,255,0.08);
-        stroke-width: 6;
-      }
-      .tz-gauge-fill {
-        fill: none;
-        stroke: var(--green);
-        stroke-width: 6;
-        stroke-linecap: round;
-        filter: drop-shadow(0 0 6px rgba(57,255,176,0.65));
-        transition: stroke-dashoffset 0.4s ease;
-      }
-      .tz-gauge-center {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 1px;
-      }
-      .tz-gauge-pct {
-        font-family: 'Orbitron', sans-serif;
-        font-size: 13px;
-        font-weight: 800;
-        color: var(--green);
-      }
-      .tz-gauge-amount {
-        font-size: 8.5px;
-        color: var(--text-dim);
-        font-weight: 700;
-        max-width: 52px;
-        text-align: center;
-        line-height: 1.15;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-
-      /* pequeña leyenda debajo del medidor circular de cada tarjeta */
-      .tz-card-metrics-label {
-        flex: 1;
-        min-width: 0;
-        font-size: 11px;
-        line-height: 1.35;
-        color: var(--text-dim);
-        font-weight: 600;
       }
 
       @keyframes tz-drop-in {
@@ -2921,7 +2824,11 @@ function Styles() {
         .tz-header { padding: 24px 20px; }
         .tz-logo { max-width: 170px; }
 
-        .tz-stats { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .tz-stats { gap: 12px; }
+        .tz-stat-chip { padding: 12px 14px; border-radius: 14px; gap: 5px; }
+        .tz-stat-label { font-size: 11px; letter-spacing: 0.09em; gap: 5px; }
+        .tz-stat-value { font-size: 20px; }
+        .tz-stat-sub { font-size: 10.5px; }
         .tz-tab { flex: 1 1 150px; font-size: 12px; padding: 13px 14px; }
         .tz-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
 
@@ -2961,12 +2868,15 @@ function Styles() {
         .tz-header { padding: 26px 16px; }
         .tz-logo { max-width: 190px; }
 
-        .tz-stats { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+        .tz-stats { gap: 14px; }
+        .tz-stat-chip { padding: 14px 16px; }
+        .tz-stat-value { font-size: 22px; }
+        .tz-stat-label { font-size: 11px; }
+        .tz-stat-sub { font-size: 11px; }
 
         /* Tarjetas panorámicas: 3+ columnas, cada tarjeta más ancha que alta */
         .tz-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
         .tz-card { min-height: 168px; }
-        .tz-card-metrics { align-items: center; }
       }
     `}</style>
   );
