@@ -291,6 +291,7 @@ export default function App() {
 
   const [scanDetected, setScanDetected] = useState({ method: "", opId: "", photoUrl: "" });
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoUploadError, setPhotoUploadError] = useState("");
   const [scanError, setScanError] = useState("");
   const [cameraSupported, setCameraSupported] = useState(true);
 
@@ -918,6 +919,7 @@ export default function App() {
     setScanDetected({ method: "", opId: "", photoUrl: "" });
     setScanError("");
     setPhotoUploading(false);
+    setPhotoUploadError("");
   };
 
   const handleManualAmountChange = (value) => {
@@ -1027,7 +1029,10 @@ export default function App() {
 
   /* ---- sube la foto del comprobante a Supabase Storage (bucket
      'comprobantes-fotos') y devuelve la URL pública. No bloquea el
-     registro del pago si falla: solo se pierde la foto, no los datos. ---- */
+     registro del pago si falla: solo se pierde la foto, no los datos.
+     Devuelve también el error crudo de Supabase para poder mostrarlo
+     (ej. "bucket not found" si falta correr el SQL de la Fase 2, o un
+     error de policy si falta la política de INSERT para 'anon'). ---- */
   const uploadReceiptImage = async (blob, method) => {
     const fileName = `${method}-${Date.now()}-${Math.round(Math.random() * 1e6)}.jpg`;
     const { error: uploadError } = await supabase.storage
@@ -1036,11 +1041,11 @@ export default function App() {
 
     if (uploadError) {
       console.error("Error al subir la foto del comprobante:", uploadError);
-      return null;
+      return { url: null, error: uploadError.message || String(uploadError) };
     }
 
     const { data } = supabase.storage.from("comprobantes-fotos").getPublicUrl(fileName);
-    return data?.publicUrl || null;
+    return { url: data?.publicUrl || null, error: null };
   };
 
   /* ---- procesa la imagen capturada (cámara o archivo): OCR con
@@ -1050,8 +1055,9 @@ export default function App() {
   const processReceiptImage = async (blob) => {
     setModalView("processing");
     setPhotoUploading(true);
+    setPhotoUploadError("");
     try {
-      const [ocrResult, photoUrl] = await Promise.all([
+      const [ocrResult, uploadResult] = await Promise.all([
         (async () => {
           const worker = await createWorker("spa");
           const {
@@ -1060,11 +1066,15 @@ export default function App() {
           await worker.terminate();
           return detectPaymentInfo(text);
         })(),
-        uploadReceiptImage(blob, activeMethodModal || "OTROS").catch(() => null),
+        uploadReceiptImage(blob, activeMethodModal || "OTROS").catch((e) => ({
+          url: null,
+          error: e?.message || String(e),
+        })),
       ]);
 
       const { method, opId, amount } = ocrResult;
-      setScanDetected({ method, opId: opId || "", photoUrl: photoUrl || "" });
+      setScanDetected({ method, opId: opId || "", photoUrl: uploadResult.url || "" });
+      if (uploadResult.error) setPhotoUploadError(uploadResult.error);
       if (amount) {
         setManualAmount(amount);
       }
@@ -1794,8 +1804,16 @@ export default function App() {
                         <div>
                           {item.combo && <span className="tz-combo">{item.combo}</span>}
                           <h3 className="tz-card-name">
-                            {item.name}
-                            {item.detail ? <span className="tz-card-plus"> + </span> : null}
+                            {item.name.split(/(\+)/).map((part, i) =>
+                              part === "+" ? (
+                                <span className="tz-name-plus" key={i}>
+                                  +
+                                </span>
+                              ) : (
+                                <span key={i}>{part}</span>
+                              )
+                            )}
+                            {item.detail ? <span className="tz-name-plus"> + </span> : null}
                           </h3>
                           {item.detail && <p className="tz-card-detail">{item.detail}</p>}
                         </div>
@@ -2158,6 +2176,15 @@ export default function App() {
                             </strong>
                           </div>
                         </div>
+                      )}
+
+                      {photoUploadError && (
+                        <p className="tz-error">
+                          <AlertTriangle size={14} /> La foto no se subió a Supabase Storage:{" "}
+                          {photoUploadError}. Revisa que el bucket "comprobantes-fotos" exista y
+                          tenga la política de INSERT para "anon" (SQL de la Fase 2). El
+                          método/ID/monto de todos modos se guardan bien.
+                        </p>
                       )}
 
                       <label className="tz-field-label">Monto (S/)</label>
@@ -3426,7 +3453,11 @@ function Styles() {
         font-weight: 700;
         line-height: 1.25;
       }
-      .tz-card-plus { color: var(--yellow); }
+      .tz-name-plus {
+        color: var(--green);
+        text-shadow: 0 0 8px rgba(57,255,176,0.6);
+        font-weight: 700;
+      }
       .tz-card-detail {
         margin: 4px 0 0;
         font-size: 13px;
