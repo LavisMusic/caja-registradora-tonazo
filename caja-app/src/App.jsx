@@ -1813,7 +1813,6 @@ export default function App() {
                                 <span key={i}>{part}</span>
                               )
                             )}
-                            {item.detail ? <span className="tz-name-plus"> + </span> : null}
                           </h3>
                           {item.detail && <p className="tz-card-detail">{item.detail}</p>}
                         </div>
