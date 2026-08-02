@@ -3890,10 +3890,13 @@ function Styles() {
         right: 12px;
         bottom: calc(var(--tz-footer-h, 96px) + 12px);
         z-index: 46;
+        width: fit-content;
         max-width: calc(100vw - 24px);
+        flex-shrink: 0;
         box-sizing: border-box;
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 6px;
         background: var(--yellow);
         color: #16190a;
@@ -3906,6 +3909,7 @@ function Styles() {
         letter-spacing: 0.03em;
         text-transform: uppercase;
         cursor: pointer;
+        white-space: nowrap;
         box-shadow: 0 0 24px rgba(215,255,59,0.45);
       }
       .tz-fab:hover { transform: translateY(-1px); }
@@ -3922,6 +3926,7 @@ function Styles() {
       .tz-fab-cierre {
         left: 12px;
         right: auto;
+        width: fit-content;
         background: var(--danger);
         color: #2b0006;
         box-shadow: 0 0 24px rgba(255,84,112,0.45);
@@ -4622,7 +4627,7 @@ function Styles() {
           padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
         }
         .tz-fab { right: 20px; padding: 12px 18px; font-size: 12px; }
-        .tz-fab-cierre { left: 20px; }
+        .tz-fab-cierre { left: 20px; right: auto; }
       }
 
       /* ---------- ESCRITORIO (>= 1024px) ---------- */
