@@ -2206,7 +2206,7 @@ export default function App() {
                       {PAYMENT_METHODS.map((m) => (
                         <button
                           key={m.key}
-                          className={`tz-gasto-tipo-btn ${
+                          className={`tz-gasto-tipo-btn tz-metodo-btn tz-metodo-btn-${m.key.toLowerCase()} ${
                             checkoutMetodo === m.key ? "tz-gasto-tipo-active" : ""
                           }`}
                           onClick={() => chooseMetodo(m.key)}
@@ -2215,7 +2215,7 @@ export default function App() {
                         </button>
                       ))}
                       <button
-                        className={`tz-gasto-tipo-btn tz-metodo-fiado-btn ${
+                        className={`tz-gasto-tipo-btn tz-metodo-btn tz-metodo-btn-fiado ${
                           checkoutMetodo === "FIADO" ? "tz-gasto-tipo-active" : ""
                         }`}
                         onClick={() => chooseMetodo("FIADO")}
@@ -2462,32 +2462,39 @@ export default function App() {
         </section>
       </main>
 
-      {/* ---------------- BOTONES FLOTANTES ---------------- */}
-      <button
-        className="tz-fab tz-fab-cierre"
-        onClick={() => {
-          setCierreModalOpen(true);
-          setConfirmCierreOpen(false);
-          setCierreError("");
-        }}
-      >
-        <Receipt size={18} />
-        Cerrar Caja
-      </button>
-      <button
-        className="tz-fab tz-fab-gastos"
-        onClick={() => {
-          setGastosOpen(true);
-          setGastoFormOpen(false);
-        }}
-      >
-        <TrendingDown size={18} />
-        Gastos
-      </button>
-      <button className="tz-fab" onClick={openEdit}>
-        <Pencil size={18} />
-        Editar Stock
-      </button>
+      {/* ---------------- PIE DE PÁGINA (Cerrar Caja / Gastos / Editar Stock) ---------------- */}
+      {/* Antes eran botones flotantes (position: fixed) que en móvil
+         terminaban tapando el formulario de checkout al crecer (más
+         campos = más alto). Ahora viven en el flujo normal del
+         documento, al final de la página — igual que ya se hizo con
+         el header — así es estructuralmente imposible que tapen nada. */}
+      <footer className="tz-page-footer">
+        <button
+          className="tz-footer-btn tz-footer-btn-cierre"
+          onClick={() => {
+            setCierreModalOpen(true);
+            setConfirmCierreOpen(false);
+            setCierreError("");
+          }}
+        >
+          <Receipt size={18} />
+          Cerrar Caja
+        </button>
+        <button
+          className="tz-footer-btn tz-footer-btn-gastos"
+          onClick={() => {
+            setGastosOpen(true);
+            setGastoFormOpen(false);
+          }}
+        >
+          <TrendingDown size={18} />
+          Gastos
+        </button>
+        <button className="tz-footer-btn tz-footer-btn-stock" onClick={openEdit}>
+          <Pencil size={18} />
+          Editar Stock
+        </button>
+      </footer>
 
       {/* ---------------- MODAL EDICIÓN DE STOCK ---------------- */}
       {editOpen && (
@@ -2663,20 +2670,28 @@ export default function App() {
                   </ul>
                 )}
               </div>
-
-              <canvas ref={canvasRef} style={{ display: "none" }} />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style={{ display: "none" }}
-                onChange={handleFileCapture}
-              />
             </div>
           </div>
         </div>
       )}
+
+      {/* ---------------- UTILIDADES DE ESCANEO (siempre montadas) ---------------- */}
+      {/* El canvas y el input de archivo los usan TRES flujos distintos
+         (checkout, cobro de fiado, y antes también Pagos) — viven acá,
+         fuera de cualquier modal condicional, para que 'canvasRef' y
+         'fileInputRef' nunca sean null sin importar cuál flujo esté
+         activo. Este era el motivo exacto por el que "Capturar y leer"
+         no hacía nada: el <canvas> solo existía dentro del modal de
+         Pagos, que ya no lo necesita (es de solo lectura). */}
+      <canvas ref={canvasRef} style={{ display: "none" }} />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: "none" }}
+        onChange={handleFileCapture}
+      />
 
       {/* ---------------- MODAL: LIBRETA (Fiados) ---------------- */}
       {libretaOpen && (
@@ -3549,6 +3564,9 @@ function Styles() {
         --green-bg: rgba(57,255,176,0.12);
         --orange: #ff9500;
         --orange-glow: rgba(255,149,0,0.5);
+        --yape: #b621ff;
+        --plin: #00e0c6;
+        --gris: #9ca3af;
 
         --tz-footer-h: 84px;
 
@@ -4127,8 +4145,13 @@ function Styles() {
         display: flex;
         flex-direction: column;
         gap: 6px;
-        max-height: 240px;
-        overflow-y: auto;
+        /* Sin max-height/overflow propio a propósito: si una fila
+           (ej. un cliente de la Libreta) se expande con mucho
+           contenido, no queremos un scroll diminuto anidado que la
+           recorte — el modal entero (.tz-modal) ya tiene su propio
+           scroll y se encarga de todo el contenido de una sola vez.
+           Esto también evita que las fotos de comprobantes en Pagos
+           queden cortadas. */
       }
       .tz-history-row {
         border: 1px solid var(--border-soft);
@@ -4378,25 +4401,27 @@ function Styles() {
       .tz-pink-cell { color: var(--pink); font-weight: 700; }
       .tz-dim-cell { color: var(--text-dim); }
 
-      /* ---------- FLOATING BUTTON ---------- */
-      .tz-fab {
-        position: fixed;
-        right: 12px;
-        bottom: calc(var(--tz-footer-h, 96px) + 12px);
-        z-index: 46;
-        width: fit-content;
-        max-width: calc(100vw - 24px);
-        flex-shrink: 0;
+      /* ---------- PIE DE PÁGINA (Cerrar Caja / Gastos / Editar Stock) ---------- */
+      /* Flujo normal del documento (NO fixed): así nunca puede tapar el
+         formulario de checkout, sin importar cuánto crezca. */
+      .tz-page-footer {
+        width: 100%;
         box-sizing: border-box;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 20px 12px calc(20px + env(safe-area-inset-bottom, 0px));
+        border-top: 1px solid var(--border-soft);
+      }
+      .tz-footer-btn {
+        flex: 1 1 150px;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 6px;
-        background: var(--yellow);
-        color: #16190a;
         border: none;
         border-radius: 999px;
-        padding: 11px 14px;
+        padding: 12px 16px;
         font-family: 'Orbitron', sans-serif;
         font-weight: 800;
         font-size: 11px;
@@ -4404,26 +4429,22 @@ function Styles() {
         text-transform: uppercase;
         cursor: pointer;
         white-space: nowrap;
-        box-shadow: 0 0 24px rgba(215,255,59,0.45);
       }
-      .tz-fab:hover { transform: translateY(-1px); }
-
-      .tz-fab-gastos {
-        bottom: calc(var(--tz-footer-h, 96px) + 12px + 52px);
-        background: var(--orange);
-        color: #241200;
-        box-shadow: 0 0 24px rgba(255,149,0,0.45);
-      }
-
-      /* Cierre de Caja va al lado opuesto (bottom-left) para no
-         amontonar 3 botones en la misma esquina. */
-      .tz-fab-cierre {
-        left: 12px;
-        right: auto;
-        width: fit-content;
+      .tz-footer-btn:hover { transform: translateY(-1px); }
+      .tz-footer-btn-cierre {
         background: var(--danger);
         color: #2b0006;
-        box-shadow: 0 0 24px rgba(255,84,112,0.45);
+        box-shadow: 0 0 20px rgba(255,84,112,0.4);
+      }
+      .tz-footer-btn-gastos {
+        background: var(--orange);
+        color: #241200;
+        box-shadow: 0 0 20px rgba(255,149,0,0.4);
+      }
+      .tz-footer-btn-stock {
+        background: var(--yellow);
+        color: #16190a;
+        box-shadow: 0 0 20px rgba(215,255,59,0.4);
       }
 
       /* ---------- MODAL ---------- */
@@ -4660,6 +4681,14 @@ function Styles() {
         text-align: left;
       }
       .tz-text-input:focus { outline: none; border-color: var(--cyan); }
+      /* <select> pinta su propio menú desplegable con los estilos del
+         sistema operativo — sin esto, las <option> salen con fondo
+         blanco y texto blanco (ilegibles) aunque el <select> se vea
+         bien. */
+      select.tz-text-input option {
+        background: var(--panel-solid);
+        color: var(--text);
+      }
 
       /* ---------- LIBRETA (FIADOS) ---------- */
       .tz-libreta-empty {
@@ -4987,10 +5016,34 @@ function Styles() {
         cursor: pointer;
         padding: 0;
       }
-      .tz-metodo-fiado-btn.tz-gasto-tipo-active {
-        border-color: var(--danger);
-        color: var(--danger);
-        background: rgba(255,84,112,0.12);
+      /* Cada método de pago con su color característico. Se ve tenue
+         en reposo y con más fuerza (fondo + glow) cuando está elegido. */
+      .tz-metodo-btn {
+        text-transform: uppercase !important;
+      }
+      .tz-metodo-btn-yape { border-color: rgba(182,33,255,0.45); color: var(--yape); }
+      .tz-metodo-btn-yape.tz-gasto-tipo-active {
+        border-color: var(--yape);
+        background: rgba(182,33,255,0.16);
+        box-shadow: 0 0 14px rgba(182,33,255,0.35);
+      }
+      .tz-metodo-btn-plin { border-color: rgba(0,224,198,0.45); color: var(--plin); }
+      .tz-metodo-btn-plin.tz-gasto-tipo-active {
+        border-color: var(--plin);
+        background: rgba(0,224,198,0.16);
+        box-shadow: 0 0 14px rgba(0,224,198,0.35);
+      }
+      .tz-metodo-btn-otros { border-color: rgba(156,163,175,0.5); color: var(--gris); }
+      .tz-metodo-btn-otros.tz-gasto-tipo-active {
+        border-color: var(--gris);
+        background: rgba(156,163,175,0.16);
+        box-shadow: 0 0 14px rgba(156,163,175,0.3);
+      }
+      .tz-metodo-btn-fiado { border-color: rgba(255,149,0,0.5); color: var(--orange); }
+      .tz-metodo-btn-fiado.tz-gasto-tipo-active {
+        border-color: var(--orange);
+        background: rgba(255,149,0,0.16);
+        box-shadow: 0 0 14px rgba(255,149,0,0.4);
       }
 
       .tz-checkout-scan,
@@ -5030,10 +5083,10 @@ function Styles() {
         text-transform: uppercase;
         border: 1px solid var(--border-soft);
       }
-      .tz-metodo-tag-yape { color: #7c3aed; border-color: rgba(124,58,237,0.5); background: rgba(124,58,237,0.1); }
-      .tz-metodo-tag-plin { color: var(--cyan); border-color: rgba(43,232,255,0.5); background: rgba(43,232,255,0.1); }
-      .tz-metodo-tag-otros { color: var(--text-dim); border-color: var(--border-soft); background: rgba(255,255,255,0.05); }
-      .tz-metodo-tag-fiado { color: var(--danger); border-color: rgba(255,84,112,0.5); background: rgba(255,84,112,0.1); }
+      .tz-metodo-tag-yape { color: var(--yape); border-color: rgba(182,33,255,0.5); background: rgba(182,33,255,0.1); }
+      .tz-metodo-tag-plin { color: var(--plin); border-color: rgba(0,224,198,0.5); background: rgba(0,224,198,0.1); }
+      .tz-metodo-tag-otros { color: var(--gris); border-color: rgba(156,163,175,0.5); background: rgba(156,163,175,0.1); }
+      .tz-metodo-tag-fiado { color: var(--orange); border-color: rgba(255,149,0,0.5); background: rgba(255,149,0,0.1); }
 
       .tz-scan-btn {
         display: flex;
@@ -5192,8 +5245,8 @@ function Styles() {
           border-right: 1px solid rgba(43,232,255,0.25);
           padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
         }
-        .tz-fab { right: 20px; padding: 12px 18px; font-size: 12px; }
-        .tz-fab-cierre { left: 20px; right: auto; }
+        .tz-page-footer { padding: 24px 20px; gap: 12px; }
+        .tz-footer-btn { flex: 0 1 200px; padding: 13px 20px; font-size: 12px; }
       }
 
       /* ---------- ESCRITORIO (>= 1024px) ---------- */
