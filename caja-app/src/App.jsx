@@ -736,6 +736,24 @@ export default function App() {
         setSubmitError("Ingresa el monto recibido antes de enviar la venta.");
         return;
       }
+      // El monto capturado (manual o por OCR) DEBE coincidir exacto con
+      // el total de la venta — si no, no se permite enviar. Esto evita
+      // registrar, por error, un monto distinto al que realmente
+      // corresponde por los productos seleccionados.
+      if (Math.abs(comprobanteMonto - totalPrice) > 0.009) {
+        setSubmitError(
+          `El monto (${formatSoles(comprobanteMonto)}) no coincide con el total de la venta (${formatSoles(
+            totalPrice
+          )}). Corrígelo antes de enviar.`
+        );
+        return;
+      }
+    } else {
+      // FIADO no tiene un campo de monto manual editable: el
+      // fiado_item de cada producto se arma directamente desde
+      // 'newEntries' (price * qty), la MISMA fuente que 'totalPrice'.
+      // No hay forma de que difieran — no existe un número que un
+      // cajero pueda escribir mal acá, a diferencia de Yape/Plin/Otros.
     }
 
     // consumo total agregado por clave de stock
@@ -1026,7 +1044,7 @@ export default function App() {
     if (!checkoutMetodo) return false;
     if (checkoutMetodo === "FIADO") return !!checkoutFiadoClienteId;
     const amt = parseFloat(manualAmount);
-    return !isNaN(amt) && amt > 0;
+    return !isNaN(amt) && amt > 0 && Math.abs(amt - totalPrice) <= 0.009;
   })();
 
   /* ---- edición de stock ---- */
@@ -2303,6 +2321,17 @@ export default function App() {
                               value={manualAmount}
                               onChange={(e) => handleManualAmountChange(e.target.value)}
                             />
+                            {manualAmount &&
+                              (Math.abs(parseFloat(manualAmount) - totalPrice) > 0.009 ? (
+                                <p className="tz-error">
+                                  <AlertTriangle size={14} /> Debe ser exacto:{" "}
+                                  {formatSoles(totalPrice)} (total de la venta).
+                                </p>
+                              ) : (
+                                <p className="tz-camera-note tz-monto-ok">
+                                  <Check size={13} /> Coincide con el total de la venta.
+                                </p>
+                              ))}
                             <button className="tz-scan-btn" onClick={startCamera}>
                               <Camera size={16} />
                               {modalView === "review"
@@ -2628,7 +2657,7 @@ export default function App() {
                             {rowOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                           </button>
                           {rowOpen &&
-                            (c.opId ? (
+                            (c.opId || c.fotoUrl ? (
                               <div className="tz-history-row-detail">
                                 <span>
                                   <strong>Hora:</strong> {formatTime(c.timestamp)}
@@ -2637,7 +2666,7 @@ export default function App() {
                                   <strong>Fecha:</strong> {formatDate(c.timestamp)}
                                 </span>
                                 <span>
-                                  <strong>ID comprobante:</strong> {c.opId}
+                                  <strong>ID comprobante:</strong> {c.opId || "No detectado"}
                                 </span>
                                 {c.fotoUrl && (
                                   <a
@@ -2655,9 +2684,9 @@ export default function App() {
                                 )}
                               </div>
                             ) : (
-                              // Ingreso manual (sin escaneo): sin ID, sin fecha
-                              // detallada por separado y sin foto, para no
-                              // dejar espacios vacíos en la boleta.
+                              // Ingreso puramente manual (nunca se usó la cámara):
+                              // sin ID, sin fecha detallada por separado y sin
+                              // foto, para no dejar espacios vacíos en la boleta.
                               <div className="tz-history-row-detail">
                                 <span className="tz-history-row-manual-note">
                                   Ingreso manual · {formatTime(c.timestamp)}
@@ -4406,15 +4435,20 @@ function Styles() {
          formulario de checkout, sin importar cuánto crezca. */
       .tz-page-footer {
         width: 100%;
+        max-width: 100%;
+        margin: 0 auto;
         box-sizing: border-box;
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
         gap: 10px;
         padding: 20px 12px calc(20px + env(safe-area-inset-bottom, 0px));
         border-top: 1px solid var(--border-soft);
       }
       .tz-footer-btn {
-        flex: 1 1 150px;
+        flex: 1 1 140px;
+        max-width: 220px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -5112,6 +5146,14 @@ function Styles() {
         color: var(--text-dim);
         text-align: center;
       }
+      .tz-monto-ok {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        color: var(--green);
+        font-weight: 700;
+      }
 
       .tz-payment-save {
         margin-top: 2px;
@@ -5245,7 +5287,7 @@ function Styles() {
           border-right: 1px solid rgba(43,232,255,0.25);
           padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
         }
-        .tz-page-footer { padding: 24px 20px; gap: 12px; }
+        .tz-page-footer { max-width: 700px; margin: 0 auto; padding: 24px 20px; gap: 12px; }
         .tz-footer-btn { flex: 0 1 200px; padding: 13px 20px; font-size: 12px; }
       }
 
@@ -5257,7 +5299,8 @@ function Styles() {
       @media (min-width: 1024px) {
         .tz-header-row,
         .tz-main,
-        .tz-submitbar {
+        .tz-submitbar,
+        .tz-page-footer {
           width: 95%;
           max-width: 1400px;
           margin-left: auto;

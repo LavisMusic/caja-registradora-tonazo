@@ -859,15 +859,20 @@
          formulario de checkout, sin importar cuánto crezca. */
       .tz-page-footer {
         width: 100%;
+        max-width: 100%;
+        margin: 0 auto;
         box-sizing: border-box;
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
+        align-items: center;
         gap: 10px;
         padding: 20px 12px calc(20px + env(safe-area-inset-bottom, 0px));
         border-top: 1px solid var(--border-soft);
       }
       .tz-footer-btn {
-        flex: 1 1 150px;
+        flex: 1 1 140px;
+        max-width: 220px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1565,6 +1570,14 @@
         color: var(--text-dim);
         text-align: center;
       }
+      .tz-monto-ok {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        color: var(--green);
+        font-weight: 700;
+      }
 
       .tz-payment-save {
         margin-top: 2px;
@@ -1698,7 +1711,7 @@
           border-right: 1px solid rgba(43,232,255,0.25);
           padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
         }
-        .tz-page-footer { padding: 24px 20px; gap: 12px; }
+        .tz-page-footer { max-width: 700px; margin: 0 auto; padding: 24px 20px; gap: 12px; }
         .tz-footer-btn { flex: 0 1 200px; padding: 13px 20px; font-size: 12px; }
       }
 
@@ -1710,7 +1723,8 @@
       @media (min-width: 1024px) {
         .tz-header-row,
         .tz-main,
-        .tz-submitbar {
+        .tz-submitbar,
+        .tz-page-footer {
           width: 95%;
           max-width: 1400px;
           margin-left: auto;
