@@ -281,13 +281,10 @@ export default function App() {
   const [comprobantes, setComprobantes] = useState([]);
   const [paymentMenuOpen, setPaymentMenuOpen] = useState(false); // menú Yape/Plin/Otros del header
   const [activeMethodModal, setActiveMethodModal] = useState(null); // 'YAPE' | 'PLIN' | 'OTROS' | null
-  const [addEntryOpen, setAddEntryOpen] = useState(false); // sub-panel "agregar ingreso" dentro del modal
   const [expandedEntryId, setExpandedEntryId] = useState(null); // acordeón de boleta expandido
 
   const [modalView, setModalView] = useState("manual"); // 'manual' | 'camera' | 'processing' | 'review'
   const [manualAmount, setManualAmount] = useState("");
-  const [manualSaving, setManualSaving] = useState(false);
-  const [manualError, setManualError] = useState("");
 
   const [scanDetected, setScanDetected] = useState({ method: "", opId: "", photoUrl: "" });
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -307,11 +304,6 @@ export default function App() {
   const [clienteError, setClienteError] = useState("");
 
   const [selectedClienteId, setSelectedClienteId] = useState(null);
-  const [movFormFor, setMovFormFor] = useState(null); // { clienteId, tipo } | null
-  const [movMonto, setMovMonto] = useState("");
-  const [movDescripcion, setMovDescripcion] = useState("");
-  const [movSaving, setMovSaving] = useState(false);
-  const [movError, setMovError] = useState("");
 
   /* ---- módulo de Gastos + Proveedores ---- */
   const [proveedores, setProveedores] = useState([]);
@@ -345,6 +337,25 @@ export default function App() {
   const [checkoutNombre, setCheckoutNombre] = useState("");
   const [checkoutWhatsapp, setCheckoutWhatsapp] = useState("");
   const [lastSale, setLastSale] = useState(null); // resumen de la última venta enviada
+
+  /* ---- checkout: método de pago obligatorio antes de "Enviar Venta" ---- */
+  const [checkoutMetodo, setCheckoutMetodo] = useState(null); // 'YAPE'|'PLIN'|'OTROS'|'FIADO'|null
+  const [checkoutFiadoClienteId, setCheckoutFiadoClienteId] = useState(null);
+  const [checkoutFiadoAddingNew, setCheckoutFiadoAddingNew] = useState(false);
+  const [checkoutFiadoNewName, setCheckoutFiadoNewName] = useState("");
+  const [checkoutFiadoSaving, setCheckoutFiadoSaving] = useState(false);
+
+  /* ---- fiado_items: deuda por producto individual (permite el
+     descuento LIFO en "Restar Crédito") ---- */
+  const [fiadoItems, setFiadoItems] = useState([]);
+  const [cobroFormFor, setCobroFormFor] = useState(null); // { clienteId, tipo: 'RESTAR'|'CANCELAR' } | null
+  const [cobroMonto, setCobroMonto] = useState("");
+  const [cobroSaving, setCobroSaving] = useState(false);
+  const [cobroError, setCobroError] = useState("");
+
+  /* ---- vista de Pagos: historial de cobros de fiado (solo lectura) ---- */
+  const [fiadosViewOpen, setFiadosViewOpen] = useState(false);
+  const [expandedFiadoPagoId, setExpandedFiadoPagoId] = useState(null);
 
   const paymentMenuRef = useRef(null);
 
@@ -497,6 +508,7 @@ export default function App() {
         qty: row.cantidad,
         price: row.precio,
         total: row.total,
+        metodoPago: row.metodo_pago || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -518,10 +530,11 @@ export default function App() {
         amount: Number(row.monto),
         opId: row.comprobante_id || null,
         fotoUrl: row.foto_url || null,
+        purchaseId: row.purchase_id || null,
         timestamp: Number(row.fecha),
       }));
 
-      // 4) LIBRETA: clientes fiado + sus movimientos (deudas/pagos)
+      // 4) LIBRETA: clientes fiado + fiado_items (deuda por producto) + movimientos (cobros)
       const { data: clienteRows, error: clienteLoadError } = await supabase
         .from("clientes_fiado")
         .select("*")
@@ -535,6 +548,28 @@ export default function App() {
         id: row.id,
         nombre: row.nombre,
         whatsapp: row.whatsapp || "",
+        timestamp: Number(row.fecha),
+      }));
+
+      const { data: fiadoItemRows, error: fiadoItemLoadError } = await supabase
+        .from("fiado_items")
+        .select("*")
+        .order("fecha", { ascending: false });
+
+      if (fiadoItemLoadError) {
+        console.error("Error cargando fiado_items desde Supabase:", fiadoItemLoadError);
+      }
+
+      const loadedFiadoItems = (fiadoItemRows || []).map((row) => ({
+        id: row.id,
+        clienteId: row.cliente_id,
+        purchaseId: row.purchase_id || null,
+        productoNombre: row.producto_nombre,
+        detalle: row.detalle || "",
+        cantidad: Number(row.cantidad),
+        precioUnitario: Number(row.precio_unitario),
+        monto: Number(row.monto),
+        saldoRestante: Number(row.saldo_restante),
         timestamp: Number(row.fecha),
       }));
 
@@ -553,6 +588,7 @@ export default function App() {
         tipo: row.tipo,
         monto: Number(row.monto),
         descripcion: row.descripcion || "",
+        fotoUrl: row.foto_url || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -630,6 +666,7 @@ export default function App() {
         setSales(loadedSales);
         setComprobantes(loadedComprobantes);
         setClientes(loadedClientes);
+        setFiadoItems(loadedFiadoItems);
         setMovimientos(loadedMovimientos);
         setProveedores(loadedProveedores);
         setGastos(loadedGastos);
@@ -684,6 +721,22 @@ export default function App() {
       setSubmitError("Selecciona al menos un producto para continuar.");
       return;
     }
+    if (!checkoutMetodo) {
+      setSubmitError("Elige un método de pago para continuar.");
+      return;
+    }
+    if (checkoutMetodo === "FIADO" && !checkoutFiadoClienteId) {
+      setSubmitError("Elige (o crea) un cliente para fiar esta venta.");
+      return;
+    }
+    let comprobanteMonto = null;
+    if (checkoutMetodo !== "FIADO") {
+      comprobanteMonto = parseFloat(manualAmount);
+      if (!manualAmount || isNaN(comprobanteMonto) || comprobanteMonto <= 0) {
+        setSubmitError("Ingresa el monto recibido antes de enviar la venta.");
+        return;
+      }
+    }
 
     // consumo total agregado por clave de stock
     const needed = {};
@@ -730,7 +783,9 @@ export default function App() {
       };
     });
 
-    // 1) INSERT múltiple a 'historial'
+    // 1) INSERT múltiple a 'historial' (incluye metodo_pago: se descuenta
+    //    stock igual sin importar el método — el fiado también sale del
+    //    inventario en el momento de la venta).
     const { data: insertedRows, error: insertError } = await supabase
       .from("historial")
       .insert(
@@ -741,6 +796,7 @@ export default function App() {
           cantidad: e.qty,
           precio: e.price,
           total: e.total,
+          metodo_pago: checkoutMetodo,
           fecha: timestamp,
         }))
       )
@@ -771,6 +827,84 @@ export default function App() {
       // seguimos: el historial ya quedó guardado, no revertimos la venta
     }
 
+    // 2.5) Efecto según método de pago: FIADO crea fiado_items (deuda
+    //    por producto, saldo_restante = monto); los métodos en efectivo
+    //    crean UN comprobante enlazado a esta venta (purchase_id).
+    if (checkoutMetodo === "FIADO") {
+      const fiadoItemsPayload = newEntries.map((e) => ({
+        cliente_id: checkoutFiadoClienteId,
+        purchase_id: purchaseId,
+        producto_nombre: e.name,
+        detalle: e.detail,
+        cantidad: e.qty,
+        precio_unitario: e.price,
+        monto: e.total,
+        saldo_restante: e.total,
+        fecha: timestamp,
+      }));
+
+      const { data: insertedFiadoItems, error: fiadoItemsError } = await supabase
+        .from("fiado_items")
+        .insert(fiadoItemsPayload)
+        .select();
+
+      if (fiadoItemsError) {
+        console.error("Error al registrar fiado_items:", fiadoItemsError);
+        setSubmitError(
+          "La venta se registró, pero no se pudo asignar la deuda en la Libreta."
+        );
+      } else {
+        const newFiadoItems = (insertedFiadoItems || fiadoItemsPayload).map((row, idx) => ({
+          id: row.id ?? `${purchaseId}-fi-${idx}`,
+          clienteId: checkoutFiadoClienteId,
+          purchaseId,
+          productoNombre: fiadoItemsPayload[idx].producto_nombre,
+          detalle: fiadoItemsPayload[idx].detalle,
+          cantidad: fiadoItemsPayload[idx].cantidad,
+          precioUnitario: fiadoItemsPayload[idx].precio_unitario,
+          monto: fiadoItemsPayload[idx].monto,
+          saldoRestante: fiadoItemsPayload[idx].saldo_restante,
+          timestamp: Number(row.fecha ?? timestamp),
+        }));
+        setFiadoItems((prev) => [...newFiadoItems, ...prev]);
+      }
+    } else {
+      const { data: insertedComprobante, error: comprobanteError } = await supabase
+        .from("comprobantes")
+        .insert([
+          {
+            product_id: null,
+            product_name: null,
+            metodo: checkoutMetodo,
+            monto: comprobanteMonto,
+            comprobante_id: scanDetected.opId || null,
+            foto_url: scanDetected.photoUrl || null,
+            purchase_id: purchaseId,
+            fecha: timestamp,
+          },
+        ])
+        .select();
+
+      if (comprobanteError) {
+        console.error("Error al registrar el comprobante:", comprobanteError);
+        setSubmitError("La venta se registró, pero no se pudo guardar el comprobante.");
+      } else {
+        const row = insertedComprobante && insertedComprobante[0];
+        const newComprobante = {
+          id: row?.id ?? `${purchaseId}-comp`,
+          productId: null,
+          productName: null,
+          method: checkoutMetodo,
+          amount: comprobanteMonto,
+          opId: scanDetected.opId || null,
+          fotoUrl: scanDetected.photoUrl || null,
+          purchaseId,
+          timestamp: Number(row?.fecha ?? timestamp),
+        };
+        setComprobantes((prev) => [newComprobante, ...prev]);
+      }
+    }
+
     // 3) Reflejar los cambios en el estado local
     const localEntries = (insertedRows && insertedRows.length
       ? insertedRows
@@ -783,6 +917,7 @@ export default function App() {
       qty: row.cantidad ?? newEntries[idx].qty,
       price: row.precio ?? newEntries[idx].price,
       total: row.total ?? newEntries[idx].total,
+      metodoPago: row.metodo_pago ?? checkoutMetodo,
       timestamp: Number(row.fecha ?? timestamp),
     }));
 
@@ -804,6 +939,11 @@ export default function App() {
     }
     setCheckoutNombre("");
     setCheckoutWhatsapp("");
+    setCheckoutMetodo(null);
+    setCheckoutFiadoClienteId(null);
+    setCheckoutFiadoAddingNew(false);
+    setCheckoutFiadoNewName("");
+    resetEntryForm();
 
     if (successTimer.current) clearTimeout(successTimer.current);
     // Si hay un resumen para WhatsApp, dejamos más tiempo visible el
@@ -816,6 +956,78 @@ export default function App() {
       whatsapp ? 20000 : 4000
     );
   };
+
+  /* ---- checkout: elegir método de pago ---- */
+  const chooseMetodo = (m) => {
+    setCheckoutMetodo(m);
+    setCheckoutFiadoClienteId(null);
+    setCheckoutFiadoAddingNew(false);
+    setCheckoutFiadoNewName("");
+    resetEntryForm();
+    setSubmitError("");
+    if (m === "FIADO") return;
+    // Yape/Plin/Otros: saltamos directo al paso de cámara. OJO: NO
+    // precargamos el monto acá — así "Enviar Venta" se mantiene oculto
+    // (isPaymentStepComplete depende de manualAmount) hasta que el
+    // escaneo realmente termine o el usuario cancele a modo manual.
+    startCamera();
+  };
+
+  /* ---- checkout: volver a elegir método (sin disparar la cámara) ---- */
+  const resetMetodo = () => {
+    stopCamera();
+    setCheckoutMetodo(null);
+    setCheckoutFiadoClienteId(null);
+    setCheckoutFiadoAddingNew(false);
+    setCheckoutFiadoNewName("");
+    resetEntryForm();
+  };
+
+  /* ---- checkout: crear un cliente nuevo al vuelo (sin salir del cobro) ---- */
+  const saveCheckoutFiadoCliente = async () => {
+    const nombre = checkoutFiadoNewName.trim();
+    if (!nombre) {
+      setSubmitError("Ingresa el nombre del cliente.");
+      return;
+    }
+    setCheckoutFiadoSaving(true);
+    setSubmitError("");
+    const timestamp = Date.now();
+
+    const { data: inserted, error } = await supabase
+      .from("clientes_fiado")
+      .insert([{ nombre, whatsapp: null, fecha: timestamp }])
+      .select();
+
+    setCheckoutFiadoSaving(false);
+
+    if (error) {
+      console.error("Error al crear cliente desde el checkout:", error);
+      setSubmitError("No se pudo crear el cliente. Intenta de nuevo.");
+      return;
+    }
+
+    const row = inserted && inserted[0];
+    const newCliente = {
+      id: row?.id ?? `cliente-${timestamp}`,
+      nombre,
+      whatsapp: "",
+      timestamp: Number(row?.fecha ?? timestamp),
+    };
+
+    setClientes((prev) => [newCliente, ...prev]);
+    setCheckoutFiadoClienteId(newCliente.id);
+    setCheckoutFiadoAddingNew(false);
+    setCheckoutFiadoNewName("");
+  };
+
+  /* ---- checkout: ¿ya se puede mostrar "Enviar Venta"? ---- */
+  const isPaymentStepComplete = (() => {
+    if (!checkoutMetodo) return false;
+    if (checkoutMetodo === "FIADO") return !!checkoutFiadoClienteId;
+    const amt = parseFloat(manualAmount);
+    return !isNaN(amt) && amt > 0;
+  })();
 
   /* ---- edición de stock ---- */
   const openEdit = () => {
@@ -890,32 +1102,27 @@ export default function App() {
     setStockSavedMsg("Stock actualizado correctamente.");
   };
 
-  /* ---- menú global "Métodos de Pago" (header) ---- */
+  /* ---- menú global "Métodos de Pago" (header): ahora es solo lectura,
+     los comprobantes nacen del checkout ---- */
   const openMethodModal = (method) => {
     setActiveMethodModal(method);
     setPaymentMenuOpen(false);
-    setAddEntryOpen(false);
     setExpandedEntryId(null);
-    resetEntryForm();
   };
 
   const closeMethodModal = () => {
-    stopCamera();
     setActiveMethodModal(null);
-    setAddEntryOpen(false);
     setExpandedEntryId(null);
-    resetEntryForm();
   };
 
   const toggleEntryRow = (comprobanteId) => {
     setExpandedEntryId((prev) => (prev === comprobanteId ? null : comprobanteId));
   };
 
-  /* ---- formulario de ingreso manual / escaneo de comprobante ---- */
+  /* ---- formulario de escaneo (checkout / cobro de fiado) ---- */
   const resetEntryForm = () => {
     setModalView("manual");
     setManualAmount("");
-    setManualError("");
     setScanDetected({ method: "", opId: "", photoUrl: "" });
     setScanError("");
     setPhotoUploading(false);
@@ -926,61 +1133,6 @@ export default function App() {
     if (value === "" || /^\d*\.?\d{0,2}$/.test(value)) {
       setManualAmount(value);
     }
-  };
-
-  /* ---- guardar comprobante (manual o detectado por OCR): INSERT a 'comprobantes' ---- */
-  const saveComprobante = async () => {
-    if (!activeMethodModal) return;
-    const amountNum = parseFloat(manualAmount);
-    if (!manualAmount || isNaN(amountNum) || amountNum <= 0) {
-      setManualError("Ingresa un monto válido en Soles.");
-      return;
-    }
-
-    setManualSaving(true);
-    setManualError("");
-
-    const effectiveMethod = scanDetected.opId ? scanDetected.method : activeMethodModal;
-    const timestamp = Date.now();
-
-    const { data: inserted, error } = await supabase
-      .from("comprobantes")
-      .insert([
-        {
-          product_id: null,
-          product_name: null,
-          metodo: effectiveMethod,
-          monto: amountNum,
-          comprobante_id: scanDetected.opId || null,
-          foto_url: scanDetected.photoUrl || null,
-          fecha: timestamp,
-        },
-      ])
-      .select();
-
-    setManualSaving(false);
-
-    if (error) {
-      console.error("Error al guardar comprobante en Supabase:", error);
-      setManualError("No se pudo guardar en Supabase. Intenta de nuevo.");
-      return;
-    }
-
-    const row = inserted && inserted[0];
-    const newEntry = {
-      id: row?.id ?? `${effectiveMethod}-${timestamp}`,
-      productId: null,
-      productName: null,
-      method: effectiveMethod,
-      amount: amountNum,
-      opId: scanDetected.opId || null,
-      fotoUrl: scanDetected.photoUrl || null,
-      timestamp: Number(row?.fecha ?? timestamp),
-    };
-
-    setComprobantes((prev) => [newEntry, ...prev]);
-    setAddEntryOpen(false);
-    resetEntryForm();
   };
 
   /* ---- escaneo de comprobante con cámara + Tesseract.js OCR ---- */
@@ -1066,7 +1218,7 @@ export default function App() {
           await worker.terminate();
           return detectPaymentInfo(text);
         })(),
-        uploadReceiptImage(blob, activeMethodModal || "OTROS").catch((e) => ({
+        uploadReceiptImage(blob, activeMethodModal || checkoutMetodo || "OTROS").catch((e) => ({
           url: null,
           error: e?.message || String(e),
         })),
@@ -1123,28 +1275,31 @@ export default function App() {
     setClienteError("");
   };
 
-  const resetMovForm = () => {
-    setMovFormFor(null);
-    setMovMonto("");
-    setMovDescripcion("");
-    setMovError("");
+  const resetCobroForm = () => {
+    stopCamera();
+    setCobroFormFor(null);
+    setCobroMonto("");
+    setCobroError("");
+    setScanDetected({ method: "", opId: "", photoUrl: "" });
+    setScanError("");
+    setModalView("manual");
   };
 
   const closeLibreta = () => {
     setLibretaOpen(false);
     setSelectedClienteId(null);
     resetClienteForm();
-    resetMovForm();
+    resetCobroForm();
   };
 
   const toggleCliente = (clienteId) => {
     setSelectedClienteId((prev) => (prev === clienteId ? null : clienteId));
-    resetMovForm();
+    resetCobroForm();
   };
 
-  const handleMovMontoChange = (value) => {
+  const handleCobroMontoChange = (value) => {
     if (value === "" || /^\d*\.?\d{0,2}$/.test(value)) {
-      setMovMonto(value);
+      setCobroMonto(value);
     }
   };
 
@@ -1187,54 +1342,101 @@ export default function App() {
     resetClienteForm();
   };
 
-  /* ---- guardar movimiento (deuda o pago): INSERT a 'movimientos_fiado' ---- */
-  const saveMov = async () => {
-    if (!movFormFor) return;
-    const amountNum = parseFloat(movMonto);
-    if (!movMonto || isNaN(amountNum) || amountNum <= 0) {
-      setMovError("Ingresa un monto válido en Soles.");
+  /* ---- cobrar fiado (Restar Crédito / Cancelar Cuenta): descuenta el
+     monto de los fiado_items del cliente de forma LIFO (el registro
+     más reciente se cancela primero), y guarda el cobro en
+     'movimientos_fiado'. "Cancelar Cuenta" exige que el monto sea
+     EXACTAMENTE igual al saldo total del cliente. ---- */
+  const cobrarFiado = async () => {
+    if (!cobroFormFor) return;
+    const { clienteId, tipo } = cobroFormFor;
+    const amountNum = parseFloat(cobroMonto);
+    if (!cobroMonto || isNaN(amountNum) || amountNum <= 0) {
+      setCobroError("Ingresa un monto válido en Soles.");
       return;
     }
 
-    setMovSaving(true);
-    setMovError("");
+    const saldoCliente = clienteSaldos[clienteId]?.saldo ?? 0;
 
-    const timestamp = Date.now();
-    const descripcion = movDescripcion.trim();
-
-    const { data: inserted, error } = await supabase
-      .from("movimientos_fiado")
-      .insert([
-        {
-          cliente_id: movFormFor.clienteId,
-          tipo: movFormFor.tipo,
-          monto: amountNum,
-          descripcion: descripcion || null,
-          fecha: timestamp,
-        },
-      ])
-      .select();
-
-    setMovSaving(false);
-
-    if (error) {
-      console.error("Error al guardar movimiento en Supabase:", error);
-      setMovError("No se pudo guardar en Supabase. Intenta de nuevo.");
+    if (tipo === "CANCELAR" && Math.abs(amountNum - saldoCliente) > 0.009) {
+      setCobroError(
+        `Para cancelar la cuenta, el monto debe ser exactamente ${formatSoles(saldoCliente)}.`
+      );
+      return;
+    }
+    if (amountNum - saldoCliente > 0.009) {
+      setCobroError(`El monto excede la deuda total (${formatSoles(saldoCliente)}).`);
       return;
     }
 
-    const row = inserted && inserted[0];
-    const newMov = {
-      id: row?.id ?? `mov-${timestamp}`,
-      clienteId: movFormFor.clienteId,
-      tipo: movFormFor.tipo,
-      monto: amountNum,
-      descripcion,
-      timestamp: Number(row?.fecha ?? timestamp),
-    };
+    setCobroSaving(true);
+    setCobroError("");
 
-    setMovimientos((prev) => [newMov, ...prev]);
-    resetMovForm();
+    // Descuento LIFO: los fiado_items más recientes se cancelan primero.
+    const itemsDelCliente = (clienteSaldos[clienteId]?.items || [])
+      .filter((fi) => fi.saldoRestante > 0)
+      .sort((a, b) => b.timestamp - a.timestamp);
+
+    let restante = amountNum;
+    const updates = [];
+    for (const item of itemsDelCliente) {
+      if (restante <= 0.009) break;
+      const descuento = Math.min(item.saldoRestante, restante);
+      updates.push({ id: item.id, nuevoSaldo: Math.max(0, item.saldoRestante - descuento) });
+      restante -= descuento;
+    }
+
+    try {
+      for (const u of updates) {
+        const { error: updError } = await supabase
+          .from("fiado_items")
+          .update({ saldo_restante: u.nuevoSaldo })
+          .eq("id", u.id);
+        if (updError) throw updError;
+      }
+
+      const timestamp = Date.now();
+      const { data: inserted, error: movError2 } = await supabase
+        .from("movimientos_fiado")
+        .insert([
+          {
+            cliente_id: clienteId,
+            tipo: "PAGO",
+            monto: amountNum,
+            descripcion: tipo === "CANCELAR" ? "Cancelar cuenta" : "Restar crédito",
+            foto_url: scanDetected.photoUrl || null,
+            fecha: timestamp,
+          },
+        ])
+        .select();
+
+      if (movError2) throw movError2;
+
+      const row = inserted && inserted[0];
+      const newMov = {
+        id: row?.id ?? `mov-${timestamp}`,
+        clienteId,
+        tipo: "PAGO",
+        monto: amountNum,
+        descripcion: tipo === "CANCELAR" ? "Cancelar cuenta" : "Restar crédito",
+        fotoUrl: scanDetected.photoUrl || null,
+        timestamp: Number(row?.fecha ?? timestamp),
+      };
+
+      setFiadoItems((prev) =>
+        prev.map((fi) => {
+          const u = updates.find((x) => x.id === fi.id);
+          return u ? { ...fi, saldoRestante: u.nuevoSaldo } : fi;
+        })
+      );
+      setMovimientos((prev) => [newMov, ...prev]);
+      setCobroSaving(false);
+      resetCobroForm();
+    } catch (err) {
+      console.error("Error al registrar el cobro de fiado:", err);
+      setCobroSaving(false);
+      setCobroError("No se pudo guardar en Supabase. Intenta de nuevo.");
+    }
   };
 
   /* ---- genera un link de WhatsApp con el recordatorio de saldo ---- */
@@ -1423,9 +1625,18 @@ export default function App() {
   /* ---- estadísticas del turno actual (antes: "del día") ---- */
   const todayStats = useMemo(() => {
     const todaySales = sales.filter((s) => s.timestamp > turnoCutoff);
+    // 'total' = TODAS las ventas del turno (fiadas o no) — se usa para
+    // Ganancia Neta, porque fiar sí genera margen en el momento de la
+    // venta aunque el dinero no haya entrado todavía a la caja.
     const total = todaySales.reduce((sum, s) => sum + s.total, 0);
     const items = todaySales.reduce((sum, s) => sum + s.qty, 0);
     const purchaseCount = new Set(todaySales.map((s) => s.purchaseId)).size;
+
+    // 'cashRevenue' = solo lo que NO fue fiado — esto es lo que
+    // efectivamente entró a la caja como dinero, para Recaudado Hoy.
+    const cashRevenue = todaySales
+      .filter((s) => s.metodoPago !== "FIADO")
+      .reduce((sum, s) => sum + s.total, 0);
 
     const cost = todaySales.reduce((sum, s) => {
       const match = Object.values(productsById).find(
@@ -1437,6 +1648,14 @@ export default function App() {
     const manualToday = comprobantes
       .filter((c) => c.timestamp > turnoCutoff)
       .reduce((sum, c) => sum + c.amount, 0);
+
+    // Cobros de fiado (Restar Crédito / Cancelar Cuenta) recibidos en
+    // este turno: SÍ suman a Recaudado Hoy (es dinero real entrando
+    // ahora), pero NO afectan Ganancia Neta otra vez — ese margen ya
+    // se contó el día en que se hizo la venta fiada.
+    const fiadoPagosHoy = movimientos
+      .filter((m) => m.timestamp > turnoCutoff && m.tipo === "PAGO")
+      .reduce((sum, m) => sum + m.monto, 0);
 
     // Gastos reales registrados en este turno con origen "Caja" (o sea,
     // que sí salieron de esta caja). Los de origen "Externo" no se
@@ -1451,23 +1670,25 @@ export default function App() {
     // ver DEFAULT_COST_RATIO); los gastos operativos reales sí se
     // restan tal cual, porque ya son datos concretos.
     const netProfit = total - cost - gastosHoyCaja + manualToday;
-    const recaudadoTotal = total + manualToday;
+    const recaudadoTotal = cashRevenue + manualToday + fiadoPagosHoy;
 
     // Ticket General: monto promedio por venta registrada hoy.
     const avgTicket = purchaseCount > 0 ? total / purchaseCount : 0;
 
     return {
       total,
+      cashRevenue,
       items,
       purchaseCount,
       cost,
       manualToday,
+      fiadoPagosHoy,
       gastosHoyCaja,
       netProfit,
       recaudadoTotal,
       avgTicket,
     };
-  }, [sales, comprobantes, gastos, turnoCutoff]);
+  }, [sales, comprobantes, gastos, movimientos, turnoCutoff]);
 
   /* ---- Cierre de Caja: guarda una instantánea de los contadores del
      turno actual en 'cierres_caja'. Al insertarla, 'turnoCutoff' se
@@ -1549,23 +1770,33 @@ export default function App() {
   const clienteSaldos = useMemo(() => {
     const map = {};
     clientes.forEach((c) => {
-      map[c.id] = { deuda: 0, pago: 0, saldo: 0, movimientos: [] };
+      map[c.id] = { saldo: 0, items: [], pagos: [] };
+    });
+
+    fiadoItems.forEach((fi) => {
+      if (!map[fi.clienteId]) return;
+      map[fi.clienteId].items.push(fi);
+      map[fi.clienteId].saldo += fi.saldoRestante;
     });
 
     movimientos.forEach((m) => {
       if (!map[m.clienteId]) return;
-      if (m.tipo === "DEUDA") map[m.clienteId].deuda += m.monto;
-      else map[m.clienteId].pago += m.monto;
-      map[m.clienteId].movimientos.push(m);
+      if (m.tipo === "DEUDA") {
+        // Compatibilidad con cuentas creadas antes de este rediseño
+        // (deuda cargada a mano, sin fiado_items detrás).
+        map[m.clienteId].saldo += m.monto;
+      } else {
+        map[m.clienteId].pagos.push(m);
+      }
     });
 
     Object.values(map).forEach((v) => {
-      v.saldo = v.deuda - v.pago;
-      v.movimientos.sort((a, b) => b.timestamp - a.timestamp);
+      v.items.sort((a, b) => b.timestamp - a.timestamp);
+      v.pagos.sort((a, b) => b.timestamp - a.timestamp);
     });
 
     return map;
-  }, [clientes, movimientos]);
+  }, [clientes, fiadoItems, movimientos]);
 
   const totalPorCobrar = useMemo(
     () =>
@@ -1683,6 +1914,21 @@ export default function App() {
                     )}
                   </button>
                 ))}
+                <button
+                  className="tz-payment-menu-item"
+                  onClick={() => {
+                    setPaymentMenuOpen(false);
+                    setFiadosViewOpen(true);
+                  }}
+                >
+                  <BookOpen size={14} />
+                  Fiados
+                  {todayStats.fiadoPagosHoy > 0 && (
+                    <span className="tz-payment-menu-amount">
+                      {formatSoles(todayStats.fiadoPagosHoy)}
+                    </span>
+                  )}
+                </button>
               </div>
             )}
           </div>
@@ -1878,11 +2124,12 @@ export default function App() {
         {(selectedCount > 0 || submitError || successMsg) && (
           <div className="tz-submitbar" ref={submitBarRef}>
             <div className="tz-submitbar-content">
-              {submitError ? (
+              {submitError && !successMsg && (
                 <p className="tz-error tz-submitbar-message">
                   <AlertTriangle size={16} /> {submitError}
                 </p>
-              ) : successMsg ? (
+              )}
+              {successMsg ? (
                 <>
                   <p className="tz-success tz-submitbar-message">
                     <Check size={16} /> {successMsg}
@@ -1944,12 +2191,215 @@ export default function App() {
                       onChange={(e) => setCheckoutWhatsapp(e.target.value)}
                     />
                   </div>
+
+                  {/* ---- método de pago: obligatorio antes de poder enviar ---- */}
+                  <div className="tz-metodo-pago">
+                    <div className="tz-metodo-pago-head">
+                      <label className="tz-field-label">Método de pago</label>
+                      {checkoutMetodo && (
+                        <button className="tz-metodo-pago-change" onClick={resetMetodo}>
+                          Cambiar
+                        </button>
+                      )}
+                    </div>
+                    <div className="tz-gasto-tipo-buttons">
+                      {PAYMENT_METHODS.map((m) => (
+                        <button
+                          key={m.key}
+                          className={`tz-gasto-tipo-btn ${
+                            checkoutMetodo === m.key ? "tz-gasto-tipo-active" : ""
+                          }`}
+                          onClick={() => chooseMetodo(m.key)}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                      <button
+                        className={`tz-gasto-tipo-btn tz-metodo-fiado-btn ${
+                          checkoutMetodo === "FIADO" ? "tz-gasto-tipo-active" : ""
+                        }`}
+                        onClick={() => chooseMetodo("FIADO")}
+                      >
+                        Fiado
+                      </button>
+                    </div>
+
+                    {/* ---- sub-flujo: Yape / Plin / Otros (escaneo obligatorio) ---- */}
+                    {checkoutMetodo && checkoutMetodo !== "FIADO" && (
+                      <div className="tz-checkout-scan">
+                        {modalView === "camera" && (
+                          <div className="tz-camera-view">
+                            <video
+                              ref={videoRef}
+                              className="tz-camera-video"
+                              muted
+                              playsInline
+                              autoPlay
+                            />
+                            <div className="tz-camera-actions">
+                              <button className="tz-scan-btn" onClick={captureFromCamera}>
+                                <Camera size={16} /> Capturar y leer
+                              </button>
+                              <button
+                                className="tz-camera-cancel"
+                                onClick={() => {
+                                  stopCamera();
+                                  setManualAmount(totalPrice.toFixed(2));
+                                  setModalView("manual");
+                                }}
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {modalView === "processing" && (
+                          <div className="tz-scan-processing">
+                            <Loader2 size={26} className="tz-spin" />
+                            <p>Leyendo comprobante con OCR…</p>
+                          </div>
+                        )}
+
+                        {(modalView === "manual" || modalView === "review") && (
+                          <>
+                            {modalView === "review" && (
+                              <div className="tz-scan-result">
+                                <p className="tz-scan-result-title">
+                                  <Check size={14} /> Comprobante detectado
+                                </p>
+                                <div className="tz-scan-result-row">
+                                  <span>Método:</span>
+                                  <strong>{scanDetected.method || "OTROS"}</strong>
+                                </div>
+                                <div className="tz-scan-result-row">
+                                  <span>ID operación:</span>
+                                  <strong>{scanDetected.opId || "No detectado"}</strong>
+                                </div>
+                                <div className="tz-scan-result-row">
+                                  <span>Foto:</span>
+                                  <strong>
+                                    {photoUploading
+                                      ? "Subiendo…"
+                                      : scanDetected.photoUrl
+                                      ? "Guardada ✓"
+                                      : "No se pudo subir"}
+                                  </strong>
+                                </div>
+                              </div>
+                            )}
+                            {photoUploadError && (
+                              <p className="tz-error">
+                                <AlertTriangle size={14} /> La foto no se subió:{" "}
+                                {photoUploadError}
+                              </p>
+                            )}
+                            <label className="tz-field-label">Monto recibido (S/)</label>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              className="tz-amount-input"
+                              placeholder="0.00"
+                              value={manualAmount}
+                              onChange={(e) => handleManualAmountChange(e.target.value)}
+                            />
+                            <button className="tz-scan-btn" onClick={startCamera}>
+                              <Camera size={16} />
+                              {modalView === "review"
+                                ? "Escanear otro comprobante"
+                                : "Escanear comprobante"}
+                            </button>
+                            {!cameraSupported && (
+                              <p className="tz-camera-note">
+                                No se pudo acceder a la cámara; se abrirá el selector de fotos.
+                              </p>
+                            )}
+                            {scanError && <p className="tz-error">{scanError}</p>}
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ---- sub-flujo: Fiado (elegir o crear cliente) ---- */}
+                    {checkoutMetodo === "FIADO" && (
+                      <div className="tz-checkout-fiado">
+                        {clientes.length > 0 && !checkoutFiadoAddingNew && (
+                          <select
+                            className="tz-text-input"
+                            value={checkoutFiadoClienteId || ""}
+                            onChange={(e) => setCheckoutFiadoClienteId(e.target.value || null)}
+                          >
+                            <option value="">Elige un cliente…</option>
+                            {clientes.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.nombre}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+
+                        {!checkoutFiadoAddingNew ? (
+                          <button
+                            className="tz-gasto-add-item"
+                            onClick={() => setCheckoutFiadoAddingNew(true)}
+                          >
+                            <Plus size={13} /> Nuevo cliente
+                          </button>
+                        ) : (
+                          <div className="tz-checkout-fiado-new">
+                            <input
+                              type="text"
+                              className="tz-text-input"
+                              placeholder="Nombre del nuevo cliente"
+                              value={checkoutFiadoNewName}
+                              onChange={(e) => setCheckoutFiadoNewName(e.target.value)}
+                              autoFocus
+                            />
+                            <div className="tz-add-entry-actions">
+                              <button
+                                className="tz-camera-cancel"
+                                onClick={() => {
+                                  setCheckoutFiadoAddingNew(false);
+                                  setCheckoutFiadoNewName("");
+                                }}
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                className="tz-pw-submit tz-payment-save"
+                                onClick={saveCheckoutFiadoCliente}
+                                disabled={checkoutFiadoSaving}
+                              >
+                                {checkoutFiadoSaving ? (
+                                  <Loader2 size={16} className="tz-spin" />
+                                ) : (
+                                  <Save size={16} />
+                                )}
+                                Crear
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {checkoutFiadoClienteId && (
+                          <p className="tz-checkout-fiado-selected">
+                            <Check size={13} /> Se fiará a{" "}
+                            <strong>
+                              {clientes.find((c) => c.id === checkoutFiadoClienteId)?.nombre}
+                            </strong>
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </>
               )}
             </div>
-            <button className="tz-submit-btn" onClick={handleSubmit}>
-              Enviar Venta
-            </button>
+            {isPaymentStepComplete && !successMsg && (
+              <button className="tz-submit-btn" onClick={handleSubmit}>
+                Enviar Venta
+              </button>
+            )}
           </div>
         )}
 
@@ -1977,6 +2427,7 @@ export default function App() {
                     <th>Detalle</th>
                     <th>Cant.</th>
                     <th>Precio</th>
+                    <th>Método de Pago</th>
                     <th>Hora</th>
                     <th>Fecha</th>
                   </tr>
@@ -1989,6 +2440,17 @@ export default function App() {
                       <td className="tz-dim-cell">{s.detail || "—"}</td>
                       <td>{s.qty}</td>
                       <td className="tz-pink-cell">{formatSoles(s.total)}</td>
+                      <td>
+                        {s.metodoPago ? (
+                          <span
+                            className={`tz-metodo-tag tz-metodo-tag-${s.metodoPago.toLowerCase()}`}
+                          >
+                            {s.metodoPago}
+                          </span>
+                        ) : (
+                          <span className="tz-dim-cell">—</span>
+                        )}
+                      </td>
                       <td className="tz-dim-cell">{formatTime(s.timestamp)}</td>
                       <td className="tz-dim-cell">{formatDate(s.timestamp)}</td>
                     </tr>
@@ -2132,153 +2594,6 @@ export default function App() {
                   <strong>{formatSoles(methodStats[activeMethodModal].allTimeTotal)}</strong>
                 </div>
               </div>
-
-              {/* ---- agregar ingreso (manual o por escaneo OCR) ---- */}
-              {!addEntryOpen ? (
-                <button
-                  className="tz-scan-btn tz-add-entry-toggle"
-                  onClick={() => setAddEntryOpen(true)}
-                >
-                  <Plus size={16} /> Agregar ingreso
-                </button>
-              ) : (
-                <div className="tz-add-entry">
-                  {(modalView === "manual" || modalView === "review") && (
-                    <>
-                      {modalView === "review" && (
-                        <div className="tz-scan-result">
-                          <p className="tz-scan-result-title">
-                            <Check size={14} /> Comprobante detectado
-                          </p>
-                          <div className="tz-scan-result-row">
-                            <span>Método:</span>
-                            <strong>{scanDetected.method || "OTROS"}</strong>
-                          </div>
-                          <div className="tz-scan-result-row">
-                            <span>ID operación:</span>
-                            <strong>{scanDetected.opId || "No detectado"}</strong>
-                          </div>
-                          <div className="tz-scan-result-row">
-                            <span>Fecha / Hora:</span>
-                            <strong>
-                              {formatDate(Date.now())} · {formatTime(Date.now())}
-                            </strong>
-                          </div>
-                          <div className="tz-scan-result-row">
-                            <span>Foto:</span>
-                            <strong>
-                              {photoUploading
-                                ? "Subiendo…"
-                                : scanDetected.photoUrl
-                                ? "Guardada ✓"
-                                : "No se pudo subir"}
-                            </strong>
-                          </div>
-                        </div>
-                      )}
-
-                      {photoUploadError && (
-                        <p className="tz-error">
-                          <AlertTriangle size={14} /> La foto no se subió a Supabase Storage:{" "}
-                          {photoUploadError}. Revisa que el bucket "comprobantes-fotos" exista y
-                          tenga la política de INSERT para "anon" (SQL de la Fase 2). El
-                          método/ID/monto de todos modos se guardan bien.
-                        </p>
-                      )}
-
-                      <label className="tz-field-label">Monto (S/)</label>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        autoFocus
-                        className="tz-amount-input"
-                        placeholder="0.00"
-                        value={manualAmount}
-                        onChange={(e) => handleManualAmountChange(e.target.value)}
-                      />
-                      {modalView === "review" && (
-                        <p className="tz-camera-note">
-                          Monto detectado automáticamente — revísalo antes de guardar.
-                        </p>
-                      )}
-
-                      {manualError && <p className="tz-error">{manualError}</p>}
-
-                      <button className="tz-scan-btn" onClick={startCamera}>
-                        <Camera size={16} />
-                        {modalView === "review"
-                          ? "Escanear otro comprobante"
-                          : "Escanear comprobante"}
-                      </button>
-                      {!cameraSupported && (
-                        <p className="tz-camera-note">
-                          No se pudo acceder a la cámara del navegador; se abrirá el selector de
-                          fotos de tu equipo.
-                        </p>
-                      )}
-
-                      <div className="tz-add-entry-actions">
-                        <button
-                          className="tz-camera-cancel"
-                          onClick={() => {
-                            setAddEntryOpen(false);
-                            resetEntryForm();
-                          }}
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          className="tz-pw-submit tz-payment-save"
-                          onClick={saveComprobante}
-                          disabled={manualSaving}
-                        >
-                          {manualSaving ? (
-                            <Loader2 size={16} className="tz-spin" />
-                          ) : (
-                            <Save size={16} />
-                          )}
-                          Guardar
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  {modalView === "camera" && (
-                    <div className="tz-camera-view">
-                      <video
-                        ref={videoRef}
-                        className="tz-camera-video"
-                        muted
-                        playsInline
-                        autoPlay
-                      />
-                      <div className="tz-camera-actions">
-                        <button className="tz-scan-btn" onClick={captureFromCamera}>
-                          <Camera size={16} /> Capturar y leer
-                        </button>
-                        <button
-                          className="tz-camera-cancel"
-                          onClick={() => {
-                            stopCamera();
-                            setModalView("manual");
-                          }}
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {modalView === "processing" && (
-                    <div className="tz-scan-processing">
-                      <Loader2 size={30} className="tz-spin" />
-                      <p>Leyendo comprobante con OCR…</p>
-                    </div>
-                  )}
-
-                  {scanError && <p className="tz-error">{scanError}</p>}
-                </div>
-              )}
 
               {/* ---- historial exclusivo de este método, en acordeón ---- */}
               <div className="tz-method-history">
@@ -2463,7 +2778,7 @@ export default function App() {
                           movimientos: [],
                         };
                         const open = selectedClienteId === c.id;
-                        const formOpen = movFormFor && movFormFor.clienteId === c.id;
+                        const formOpen = cobroFormFor && cobroFormFor.clienteId === c.id;
                         const whatsappLink =
                           c.whatsapp && info.saldo > 0
                             ? buildWhatsappLink(
@@ -2503,47 +2818,95 @@ export default function App() {
 
                             {open && (
                               <div className="tz-history-row-detail tz-cliente-detail">
-                                {info.movimientos.length === 0 ? (
+                                {/* ---- productos adeudados (itemizado, desde fiado_items) ---- */}
+                                <span className="tz-product-history-label">
+                                  Productos adeudados
+                                </span>
+                                {info.items.filter((fi) => fi.saldoRestante > 0.009).length ===
+                                0 ? (
                                   <p className="tz-method-history-empty">
-                                    Sin movimientos registrados.
+                                    Sin productos pendientes de cobro.
                                   </p>
                                 ) : (
                                   <ul className="tz-mov-list">
-                                    {info.movimientos.map((m) => (
-                                      <li
-                                        key={m.id}
-                                        className={`tz-mov-row tz-mov-${m.tipo.toLowerCase()}`}
-                                      >
-                                        <span className="tz-mov-row-desc">
-                                          {m.tipo === "DEUDA" ? "Deuda" : "Pago"}
-                                          {m.descripcion ? ` · ${m.descripcion}` : ""}
-                                          <span className="tz-mov-row-date">
-                                            {formatDate(m.timestamp)}
+                                    {info.items
+                                      .filter((fi) => fi.saldoRestante > 0.009)
+                                      .map((fi) => (
+                                        <li key={fi.id} className="tz-mov-row tz-mov-deuda">
+                                          <span className="tz-mov-row-desc">
+                                            {fi.productoNombre}
+                                            {fi.detalle ? ` · ${fi.detalle}` : ""} × {fi.cantidad}
+                                            <span className="tz-mov-row-date">
+                                              {formatDate(fi.timestamp)}
+                                              {fi.saldoRestante < fi.monto - 0.009
+                                                ? ` · abonado ${formatSoles(
+                                                    fi.monto - fi.saldoRestante
+                                                  )}`
+                                                : ""}
+                                            </span>
                                           </span>
-                                        </span>
-                                        <strong>{formatSoles(m.monto)}</strong>
-                                      </li>
-                                    ))}
+                                          <strong>{formatSoles(fi.saldoRestante)}</strong>
+                                        </li>
+                                      ))}
                                   </ul>
                                 )}
 
+                                {/* ---- historial de cobros ya realizados ---- */}
+                                {info.pagos.length > 0 && (
+                                  <>
+                                    <span className="tz-product-history-label">
+                                      Cobros registrados
+                                    </span>
+                                    <ul className="tz-mov-list">
+                                      {info.pagos.map((m) => (
+                                        <li key={m.id} className="tz-mov-row tz-mov-pago">
+                                          <span className="tz-mov-row-desc">
+                                            {m.descripcion || "Pago"}
+                                            <span className="tz-mov-row-date">
+                                              {formatDate(m.timestamp)}
+                                              {m.fotoUrl ? " · con comprobante" : ""}
+                                            </span>
+                                          </span>
+                                          <strong>{formatSoles(m.monto)}</strong>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  </>
+                                )}
+
                                 <div className="tz-cliente-actions">
-                                  <button
-                                    className="tz-cliente-action-btn tz-cliente-action-deuda"
-                                    onClick={() =>
-                                      setMovFormFor({ clienteId: c.id, tipo: "DEUDA" })
-                                    }
-                                  >
-                                    <Plus size={13} /> Deuda
-                                  </button>
-                                  <button
-                                    className="tz-cliente-action-btn tz-cliente-action-pago"
-                                    onClick={() =>
-                                      setMovFormFor({ clienteId: c.id, tipo: "PAGO" })
-                                    }
-                                  >
-                                    <Plus size={13} /> Pago
-                                  </button>
+                                  {info.saldo > 0.009 && (
+                                    <>
+                                      <button
+                                        className="tz-cliente-action-btn tz-cliente-action-pago"
+                                        onClick={() => {
+                                          stopCamera();
+                                          setCobroFormFor({ clienteId: c.id, tipo: "RESTAR" });
+                                          setCobroMonto("");
+                                          setCobroError("");
+                                          setModalView("manual");
+                                          setScanDetected({ method: "", opId: "", photoUrl: "" });
+                                          setScanError("");
+                                        }}
+                                      >
+                                        <Minus size={13} /> Restar Crédito
+                                      </button>
+                                      <button
+                                        className="tz-cliente-action-btn tz-cliente-action-deuda"
+                                        onClick={() => {
+                                          stopCamera();
+                                          setCobroFormFor({ clienteId: c.id, tipo: "CANCELAR" });
+                                          setCobroMonto(info.saldo.toFixed(2));
+                                          setCobroError("");
+                                          setModalView("manual");
+                                          setScanDetected({ method: "", opId: "", photoUrl: "" });
+                                          setScanError("");
+                                        }}
+                                      >
+                                        <Check size={13} /> Cancelar Cuenta
+                                      </button>
+                                    </>
+                                  )}
                                   {whatsappLink && (
                                     <a
                                       href={whatsappLink}
@@ -2559,9 +2922,9 @@ export default function App() {
                                 {formOpen && (
                                   <div className="tz-add-entry">
                                     <label className="tz-field-label">
-                                      {movFormFor.tipo === "DEUDA"
-                                        ? "Nueva deuda (S/)"
-                                        : "Nuevo pago (S/)"}
+                                      {cobroFormFor.tipo === "CANCELAR"
+                                        ? `Cancelar cuenta (S/) — debe ser exacto`
+                                        : "Monto a restar (S/)"}
                                     </label>
                                     <input
                                       type="text"
@@ -2569,38 +2932,78 @@ export default function App() {
                                       autoFocus
                                       className="tz-amount-input"
                                       placeholder="0.00"
-                                      value={movMonto}
-                                      onChange={(e) => handleMovMontoChange(e.target.value)}
+                                      value={cobroMonto}
+                                      onChange={(e) => handleCobroMontoChange(e.target.value)}
+                                      readOnly={cobroFormFor.tipo === "CANCELAR"}
                                     />
-                                    <label className="tz-field-label">
-                                      Descripción (opcional)
-                                    </label>
-                                    <input
-                                      type="text"
-                                      className="tz-text-input"
-                                      placeholder="Ej. Pack de cervezas"
-                                      value={movDescripcion}
-                                      onChange={(e) => setMovDescripcion(e.target.value)}
-                                    />
-                                    {movError && <p className="tz-error">{movError}</p>}
+
+                                    {/* ---- escáner opcional del comprobante de pago ---- */}
+                                    {modalView === "camera" ? (
+                                      <div className="tz-camera-view">
+                                        <video
+                                          ref={videoRef}
+                                          className="tz-camera-video"
+                                          muted
+                                          playsInline
+                                          autoPlay
+                                        />
+                                        <div className="tz-camera-actions">
+                                          <button
+                                            className="tz-scan-btn"
+                                            onClick={captureFromCamera}
+                                          >
+                                            <Camera size={16} /> Capturar
+                                          </button>
+                                          <button
+                                            className="tz-camera-cancel"
+                                            onClick={() => {
+                                              stopCamera();
+                                              setModalView("manual");
+                                            }}
+                                          >
+                                            Cancelar
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ) : modalView === "processing" ? (
+                                      <div className="tz-scan-processing">
+                                        <Loader2 size={22} className="tz-spin" />
+                                        <p>Leyendo comprobante…</p>
+                                      </div>
+                                    ) : (
+                                      <button className="tz-scan-btn" onClick={startCamera}>
+                                        <Camera size={16} />
+                                        {scanDetected.photoUrl
+                                          ? "Comprobante adjuntado ✓"
+                                          : "Adjuntar comprobante (opcional)"}
+                                      </button>
+                                    )}
+                                    {!cameraSupported && (
+                                      <p className="tz-camera-note">
+                                        No se pudo acceder a la cámara; se abrirá el selector de
+                                        fotos.
+                                      </p>
+                                    )}
+
+                                    {cobroError && <p className="tz-error">{cobroError}</p>}
                                     <div className="tz-add-entry-actions">
                                       <button
                                         className="tz-camera-cancel"
-                                        onClick={resetMovForm}
+                                        onClick={resetCobroForm}
                                       >
                                         Cancelar
                                       </button>
                                       <button
                                         className="tz-pw-submit tz-payment-save"
-                                        onClick={saveMov}
-                                        disabled={movSaving}
+                                        onClick={cobrarFiado}
+                                        disabled={cobroSaving}
                                       >
-                                        {movSaving ? (
+                                        {cobroSaving ? (
                                           <Loader2 size={16} className="tz-spin" />
                                         ) : (
                                           <Save size={16} />
                                         )}
-                                        Guardar
+                                        Confirmar
                                       </button>
                                     </div>
                                   </div>
@@ -2615,6 +3018,97 @@ export default function App() {
                   )}
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- MODAL: FIADOS (historial de cobros, solo lectura) ---------------- */}
+      {fiadosViewOpen && (
+        <div className="tz-modal-backdrop" onClick={() => setFiadosViewOpen(false)}>
+          <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="tz-modal-close"
+              onClick={() => setFiadosViewOpen(false)}
+              aria-label="Cerrar"
+            >
+              <X size={18} />
+            </button>
+            <div className="tz-payment-modal">
+              <h2>
+                <BookOpen size={17} /> Fiados · Cobros
+              </h2>
+
+              <div className="tz-method-totals">
+                <div className="tz-method-total">
+                  <span>Hoy</span>
+                  <strong className="tz-green">{formatSoles(todayStats.fiadoPagosHoy)}</strong>
+                </div>
+                <div className="tz-method-total">
+                  <span>Histórico</span>
+                  <strong>
+                    {formatSoles(movimientos.reduce((sum, m) => sum + m.monto, 0))}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="tz-method-history">
+                <span className="tz-method-history-label">Historial de cobros</span>
+                {movimientos.length === 0 ? (
+                  <p className="tz-method-history-empty">
+                    Aún no se registró ningún cobro de fiado.
+                  </p>
+                ) : (
+                  <ul className="tz-history-rows">
+                    {movimientos.map((m) => {
+                      const clienteNombre =
+                        clientes.find((c) => c.id === m.clienteId)?.nombre || "Cliente";
+                      const rowOpen = expandedFiadoPagoId === m.id;
+                      return (
+                        <li key={m.id} className="tz-history-row">
+                          <button
+                            className="tz-history-row-head"
+                            onClick={() =>
+                              setExpandedFiadoPagoId((prev) => (prev === m.id ? null : m.id))
+                            }
+                          >
+                            <span className="tz-history-row-method">{clienteNombre}</span>
+                            <span className="tz-history-row-amount">{formatSoles(m.monto)}</span>
+                            {rowOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                          </button>
+                          {rowOpen && (
+                            <div className="tz-history-row-detail">
+                              <span>
+                                <strong>Tipo:</strong> {m.descripcion || "Pago"}
+                              </span>
+                              <span>
+                                <strong>Hora:</strong> {formatTime(m.timestamp)}
+                              </span>
+                              <span>
+                                <strong>Fecha:</strong> {formatDate(m.timestamp)}
+                              </span>
+                              {m.fotoUrl && (
+                                <a
+                                  href={m.fotoUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="tz-history-row-photo-link"
+                                >
+                                  <img
+                                    src={m.fotoUrl}
+                                    alt="Comprobante del cobro"
+                                    className="tz-history-row-photo"
+                                  />
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -4468,6 +4962,78 @@ function Styles() {
         font-size: 13px;
       }
       .tz-whatsapp-send-btn:hover { background: rgba(37,211,102,0.22); }
+
+      /* ---------- MÉTODO DE PAGO (checkout) ---------- */
+      .tz-metodo-pago {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding-top: 10px;
+        border-top: 1px dashed rgba(255,255,255,0.14);
+      }
+      .tz-metodo-pago-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .tz-metodo-pago-change {
+        background: transparent;
+        border: none;
+        color: var(--cyan);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 12px;
+        text-decoration: underline;
+        cursor: pointer;
+        padding: 0;
+      }
+      .tz-metodo-fiado-btn.tz-gasto-tipo-active {
+        border-color: var(--danger);
+        color: var(--danger);
+        background: rgba(255,84,112,0.12);
+      }
+
+      .tz-checkout-scan,
+      .tz-checkout-fiado {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border: 1px dashed var(--border-soft);
+        border-radius: 12px;
+        animation: tz-drop-in 0.15s ease;
+      }
+      .tz-checkout-fiado-new {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .tz-checkout-fiado-selected {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        font-size: 12.5px;
+        color: var(--green);
+        font-weight: 600;
+      }
+      .tz-checkout-fiado-selected strong { color: var(--text); }
+
+      /* ---------- ETIQUETA DE MÉTODO EN EL HISTORIAL ---------- */
+      .tz-metodo-tag {
+        display: inline-block;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 10.5px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border: 1px solid var(--border-soft);
+      }
+      .tz-metodo-tag-yape { color: #7c3aed; border-color: rgba(124,58,237,0.5); background: rgba(124,58,237,0.1); }
+      .tz-metodo-tag-plin { color: var(--cyan); border-color: rgba(43,232,255,0.5); background: rgba(43,232,255,0.1); }
+      .tz-metodo-tag-otros { color: var(--text-dim); border-color: var(--border-soft); background: rgba(255,255,255,0.05); }
+      .tz-metodo-tag-fiado { color: var(--danger); border-color: rgba(255,84,112,0.5); background: rgba(255,84,112,0.1); }
 
       .tz-scan-btn {
         display: flex;
