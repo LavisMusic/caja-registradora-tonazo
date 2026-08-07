@@ -77,7 +77,7 @@ function generateStockKey(nombre, stockKeysExistentes) {
    entero chico y monótono (segundos desde una fecha fija reciente) que
    sigue sirviendo para ordenar "lo más nuevo al final" sin arriesgar
    overflow durante décadas. */
-function safeOrdenValue() {
+export function safeOrdenValue() {
   const EPOCH_BASE = new Date("2024-01-01T00:00:00Z").getTime();
   return Math.floor((Date.now() - EPOCH_BASE) / 1000);
 }
@@ -121,14 +121,19 @@ export async function crearProducto({
 
   // Precio SIEMPRE numérico real (parseFloat), nunca el string crudo
   // del input — y el código de barras SOLO va a 'codigo_barras' (texto),
-  // nunca mezclado con ningún campo numérico.
+  // nunca mezclado con ningún campo numérico. Alta manual (desde el
+  // buscador, sin escanear nada) no trae código: se manda NULL, no ""
+  // — si 'codigo_barras' tiene un UNIQUE constraint, NULL nunca choca
+  // (Postgres permite múltiples NULL en una columna UNIQUE), mientras
+  // que dos productos con "" sí violarían esa restricción.
+  const codigoBarrasTrim = String(codigoBarras || "").trim();
   const productoPayload = {
     nombre: nombre.trim(),
     descripcion: (detalle || "").trim() || null,
     precio: parseFloat(precio),
     categoria: categoriaNombre,
     subgrupo: (subgrupo || "").trim() || null,
-    codigo_barras: String(codigoBarras || "").trim(),
+    codigo_barras: codigoBarrasTrim || null,
     consumos: JSON.stringify([{ key: stockKey, qty: 1 }]),
     activo: true,
     visible_publico: true,

@@ -35,7 +35,12 @@ import { useCatalog } from "./hooks/useCatalog";
 import Styles from "./components/Styles";
 import FiadoDetalle from "./components/FiadoDetalle";
 import { useAuth } from "./contexts/AuthContext";
-import { buscarProductoPorCodigo, resolveStockKey, crearProducto } from "./lib/productLookup";
+import {
+  buscarProductoPorCodigo,
+  resolveStockKey,
+  crearProducto,
+  safeOrdenValue,
+} from "./lib/productLookup";
 import BarcodeScannerModal from "./components/BarcodeScannerModal";
 import CatalogVisibilityAccordion from "./components/CatalogVisibilityAccordion";
 
@@ -224,6 +229,17 @@ export default function App() {
   const [ventaSubmitting, setVentaSubmitting] = useState(false);
   const successTimer = useRef(null);
 
+  /* ---- buscador global + escáner rápido de la pantalla principal:
+     agilizan encontrar/vender un producto sin navegar entre pestañas
+     de categoría a mano. Viven separados de 'stockSearchTerm' (que es
+     el buscador del modal "Agregar Unidades al Stock") — son
+     buscadores distintos con propósitos distintos. ---- */
+  const [globalSearchTerm, setGlobalSearchTerm] = useState("");
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [globalScannerOpen, setGlobalScannerOpen] = useState(false);
+  const [globalScanBusy, setGlobalScanBusy] = useState(false);
+  const [globalScanError, setGlobalScanError] = useState("");
+
   const [editOpen, setEditOpen] = useState(false);
   const [stockEdits, setStockEdits] = useState({});
   const [savingStock, setSavingStock] = useState(false);
@@ -376,6 +392,7 @@ export default function App() {
   const [expandedFiadoPagoId, setExpandedFiadoPagoId] = useState(null);
 
   const paymentMenuRef = useRef(null);
+  const globalSearchRef = useRef(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -423,6 +440,22 @@ export default function App() {
       document.removeEventListener("touchstart", handleClickOutside);
     };
   }, [paymentMenuOpen]);
+
+  /* ---- cierra el dropdown de sugerencias del buscador global al hacer clic afuera ---- */
+  useEffect(() => {
+    if (!globalSearchOpen) return undefined;
+    const handleClickOutside = (e) => {
+      if (globalSearchRef.current && !globalSearchRef.current.contains(e.target)) {
+        setGlobalSearchOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, [globalSearchOpen]);
 
   /* ---- proveedor inteligente: si el RUC (11 dígitos, formato Perú)
      ya existe en la tabla 'proveedores', autocompleta la Razón Social;
@@ -711,6 +744,26 @@ export default function App() {
       }
       return next;
     });
+  };
+
+  /* ---- selección "garantizada" (no toggle) para el buscador global y
+     el escáner rápido de la pantalla principal: a diferencia de
+     toggleProduct (que DESELECCIONA si el producto ya estaba en el
+     carrito), acá siempre queremos terminar con el producto adentro
+     del carrito — elegir la misma sugerencia o escanear el mismo
+     código dos veces no debería sacarlo por accidente. Devuelve
+     false si no hay stock, para que el llamador pueda avisar. ---- */
+  const selectProductForSale = (product) => {
+    const avail = availabilityFor(product, stock);
+    if (avail <= 0) return false;
+    setSubmitError("");
+    if (successMsg) {
+      if (successTimer.current) clearTimeout(successTimer.current);
+      setSuccessMsg("");
+      setLastSale(null);
+    }
+    setSelection((prev) => ({ ...prev, [product.id]: prev[product.id] ?? 1 }));
+    return true;
   };
 
   const changeQty = (product, delta) => {
@@ -1486,6 +1539,29 @@ export default function App() {
       return { error: null, zeroRows: false };
     } catch (err) {
       console.error("Error eliminando subgrupo:", err);
+      return { error: err };
+    }
+  };
+
+  /* ---- alta directa de una categoría vacía desde "Visibilidad en
+     catálogo público" — a diferencia de crearProducto() (que crea la
+     categoría solo como efecto secundario de dar de alta un producto),
+     acá el usuario solo quiere la fila nueva en 'categorias' para que
+     aparezca de inmediato como sección propia, sin ningún producto
+     todavía. Los subgrupos siguen sin tabla maestra propia y se siguen
+     creando solo al escribir uno nuevo en el formulario de producto. ---- */
+  const crearCategoria = async (nombreRaw) => {
+    const nombre = (nombreRaw || "").trim();
+    if (!nombre) return { error: new Error("Ingresa un nombre para la categoría.") };
+    try {
+      const { error } = await supabase
+        .from("categorias")
+        .insert([{ nombre, activo: true, orden: safeOrdenValue() }]);
+      if (error) return { error };
+      await refetchCatalog();
+      return { error: null };
+    } catch (err) {
+      console.error("Error creando categoría:", err);
       return { error: err };
     }
   };
@@ -2943,6 +3019,67 @@ export default function App() {
 
   const activeSection = sections.find((s) => s.key === activeTab);
 
+  /* ---- buscador global: sugerencias por nombre sobre TODO el
+     catálogo (no solo la pestaña activa), tope de 8 para que el
+     dropdown no tape media pantalla. ---- */
+  const globalSearchResults = useMemo(() => {
+    const q = globalSearchTerm.trim().toLowerCase();
+    if (!q) return [];
+    return Object.values(productsById)
+      .filter((p) => p.name.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [globalSearchTerm, productsById]);
+
+  // Cambia a la pestaña de categoría del producto (si existe) antes de
+  // seleccionarlo — así el usuario ve de inmediato en qué sección
+  // "aterrizó" el producto que buscó/escaneó, en vez de quedar
+  // seleccionado en una pestaña que no está viendo.
+  const jumpToProductSection = (product) => {
+    const section = sections.find((s) => s.label === product.sectionLabel);
+    if (section) setActiveTab(section.key);
+  };
+
+  const handleGlobalSearchSelect = (product) => {
+    jumpToProductSection(product);
+    selectProductForSale(product);
+    setGlobalSearchTerm("");
+    setGlobalSearchOpen(false);
+  };
+
+  /* ---- escáner rápido de la pantalla principal: busca el código en
+     Supabase (mismo helper que usa Gastos/Editar Stock), resuelve el
+     producto completo desde 'productsById' (ya trae sectionLabel +
+     consumes, lo que necesita availabilityFor/selectProductForSale) y
+     dispara la misma acción que un clic en la grilla — cambiando antes
+     a la pestaña de su categoría. ---- */
+  const handleGlobalScan = async (codigoEscaneado) => {
+    setGlobalScannerOpen(false);
+    setGlobalScanError("");
+    setGlobalScanBusy(true);
+    try {
+      const encontrado = await buscarProductoPorCodigo(codigoEscaneado);
+      if (!encontrado) {
+        setGlobalScanError(`No se encontró ningún producto con el código "${codigoEscaneado}".`);
+        return;
+      }
+      const product = productsById[encontrado.id];
+      if (!product) {
+        setGlobalScanError(`"${encontrado.nombre}" no está disponible para vender ahora mismo.`);
+        return;
+      }
+      jumpToProductSection(product);
+      const ok = selectProductForSale(product);
+      if (!ok) {
+        setGlobalScanError(`"${product.name}" está agotado (sin stock disponible).`);
+      }
+    } catch (err) {
+      console.error("Error buscando producto escaneado (búsqueda global):", err);
+      setGlobalScanError("Error al buscar el producto. Intenta de nuevo.");
+    } finally {
+      setGlobalScanBusy(false);
+    }
+  };
+
   /* ---- Arqueo de Caja: diferencia entre lo que el admin cuenta a mano
      y lo que el sistema espera tener FÍSICAMENTE en el cajón. Usa
      ÚNICAMENTE ingresoEfectivo (nunca el digital — ese dinero va al
@@ -3131,6 +3268,58 @@ export default function App() {
               <span className="tz-stat-value tz-cyan">{formatSoles(todayStats.avgTicket)}</span>
               <span className="tz-stat-sub">promedio por venta, hoy</span>
             </div>
+          </section>
+        )}
+
+        {/* ---------------- BUSCADOR GLOBAL + ESCÁNER RÁPIDO ---------------- */}
+        {sections.length > 0 && (
+          <section className="tz-global-search">
+            <div className="tz-vis-search-row" ref={globalSearchRef}>
+              <div className="tz-global-search-wrap">
+                <input
+                  type="text"
+                  className="tz-text-input"
+                  placeholder="Buscar producto por nombre para vender…"
+                  value={globalSearchTerm}
+                  onChange={(e) => {
+                    setGlobalSearchTerm(e.target.value);
+                    setGlobalSearchOpen(true);
+                  }}
+                  onFocus={() => setGlobalSearchOpen(true)}
+                />
+                {globalSearchOpen && globalSearchResults.length > 0 && (
+                  <div className="tz-global-search-dropdown">
+                    {globalSearchResults.map((p) => (
+                      <button
+                        type="button"
+                        key={p.id}
+                        className="tz-global-search-item"
+                        onClick={() => handleGlobalSearchSelect(p)}
+                      >
+                        <span className="tz-global-search-item-name">{p.name}</span>
+                        <span className="tz-global-search-item-meta">
+                          {formatSoles(p.price)} · {p.sectionLabel}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                type="button"
+                className="tz-scan-btn tz-vis-scan-btn"
+                onClick={() => {
+                  setGlobalScanError("");
+                  setGlobalScannerOpen(true);
+                }}
+                disabled={globalScanBusy}
+                aria-label="Escanear producto"
+                title="Escanear producto"
+              >
+                {globalScanBusy ? <Loader2 size={16} className="tz-spin" /> : <ScanLine size={16} />}
+              </button>
+            </div>
+            {globalScanError && <p className="tz-error">{globalScanError}</p>}
           </section>
         )}
 
@@ -3697,12 +3886,22 @@ export default function App() {
               {newProductoOpen ? (
                 <div className="tz-add-entry">
                   <p className="tz-stock-editor-sub">
-                    Ese código no existe todavía — completa estos datos para crear el producto.
-                    Va a quedar listo para sumarle stock apenas lo guardes.
+                    {newProductoCodigo
+                      ? "Ese código no existe todavía — completa estos datos para crear el producto. Va a quedar listo para sumarle stock apenas lo guardes."
+                      : "Creando un producto nuevo sin código de barras — completa estos datos. Va a quedar listo para sumarle stock apenas lo guardes."}
                   </p>
 
-                  <label className="tz-field-label">Código escaneado</label>
-                  <input type="text" className="tz-text-input" value={newProductoCodigo} readOnly />
+                  {newProductoCodigo && (
+                    <>
+                      <label className="tz-field-label">Código escaneado</label>
+                      <input
+                        type="text"
+                        className="tz-text-input"
+                        value={newProductoCodigo}
+                        readOnly
+                      />
+                    </>
+                  )}
 
                   <label className="tz-field-label">Nombre y detalle</label>
                   <div className="tz-nombre-detalle-row">
@@ -3887,9 +4086,25 @@ export default function App() {
 
                     if (filteredStockKeys.length === 0) {
                       return (
-                        <p className="tz-method-history-empty">
-                          Ningún producto coincide con la búsqueda.
-                        </p>
+                        <div>
+                          <p className="tz-method-history-empty">
+                            Ningún producto coincide con la búsqueda.
+                          </p>
+                          {stockSearchTerm.trim() && !scannedStockKey && (
+                            <button
+                              type="button"
+                              className="tz-camera-cancel tz-scanner-upload-btn"
+                              onClick={() => {
+                                const nombreBuscado = stockSearchTerm.trim();
+                                resetNewProductoForm();
+                                setNewProductoNombre(nombreBuscado);
+                                setNewProductoOpen(true);
+                              }}
+                            >
+                              <Plus size={15} /> Crear nuevo producto: "{stockSearchTerm.trim()}"
+                            </button>
+                          )}
+                        </div>
                       );
                     }
 
@@ -3957,6 +4172,7 @@ export default function App() {
                 onRenameSubgrupo={renombrarSubgrupo}
                 onDeleteCategoria={eliminarCategoria}
                 onDeleteSubgrupo={eliminarSubgrupo}
+                onCreateCategoria={crearCategoria}
               />
             </div>
           </div>
@@ -3968,6 +4184,10 @@ export default function App() {
           onScan={handleStockProductScan}
           onClose={() => setStockScannerOpen(false)}
         />
+      )}
+
+      {globalScannerOpen && (
+        <BarcodeScannerModal onScan={handleGlobalScan} onClose={() => setGlobalScannerOpen(false)} />
       )}
 
       {/* ---------------- MODAL: MIS VENTAS (HOY) ---------------- */}

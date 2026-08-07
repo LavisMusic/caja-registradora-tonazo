@@ -322,6 +322,61 @@ export default function Styles() {
         line-height: 1.25;
       }
 
+      /* ---------- BUSCADOR GLOBAL + ESCÁNER RÁPIDO (pantalla principal) ---------- */
+      .tz-global-search {
+        margin-bottom: 16px;
+      }
+      .tz-global-search-wrap {
+        position: relative;
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .tz-global-search-wrap .tz-text-input {
+        width: 100%;
+        margin: 0;
+      }
+      .tz-global-search-dropdown {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        z-index: 20;
+        background: var(--panel);
+        border: 1px solid var(--border-soft);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+        max-height: 320px;
+        overflow-y: auto;
+      }
+      .tz-global-search-item {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        text-align: left;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid var(--border-soft);
+        color: var(--text);
+        padding: 10px 14px;
+        cursor: pointer;
+        font-family: 'Rajdhani', sans-serif;
+      }
+      .tz-global-search-item:last-child { border-bottom: none; }
+      .tz-global-search-item:hover,
+      .tz-global-search-item:focus-visible {
+        background: rgba(43,232,255,0.08);
+      }
+      .tz-global-search-item-name {
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .tz-global-search-item-meta {
+        font-size: 11.5px;
+        color: var(--text-dim);
+      }
+
       /* ---------- TABS ---------- */
       .tz-tabs {
         display: flex;
@@ -1193,6 +1248,9 @@ export default function Styles() {
         flex-direction: column;
         gap: 8px;
       }
+      .tz-vis-create-categoria { margin-bottom: 2px; }
+      .tz-vis-create-categoria .tz-scanner-upload-btn { margin-top: 0; }
+      .tz-vis-create-categoria .tz-vis-inline-edit-row { margin: 0; padding: 2px; }
       .tz-vis-category {
         border: 1px solid var(--border-soft);
         border-radius: 12px;

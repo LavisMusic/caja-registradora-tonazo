@@ -8,6 +8,7 @@ import {
   Check,
   X,
   Pencil,
+  Plus,
 } from "lucide-react";
 import { buscarProductoPorCodigo } from "../lib/productLookup";
 import BarcodeScannerModal from "./BarcodeScannerModal";
@@ -658,6 +659,7 @@ export default function CatalogVisibilityAccordion({
   onRenameSubgrupo,
   onDeleteCategoria,
   onDeleteSubgrupo,
+  onCreateCategoria,
 }) {
   // Blindaje del lado del cliente: si Supabase deja pasar un delete o
   // update sin afectar ninguna fila (RLS bloqueando en silencio, o la
@@ -672,6 +674,31 @@ export default function CatalogVisibilityAccordion({
   // de nuevo.
   const [hiddenCategorias, setHiddenCategorias] = useState(() => new Set());
   const [hiddenSubgrupos, setHiddenSubgrupos] = useState(() => new Set());
+
+  const [creatingCategoria, setCreatingCategoria] = useState(false);
+  const [newCategoriaValue, setNewCategoriaValue] = useState("");
+  const [creatingSaving, setCreatingSaving] = useState(false);
+  const [creatingError, setCreatingError] = useState("");
+
+  const handleCreateCategoria = async () => {
+    const nombre = newCategoriaValue.trim();
+    if (!nombre) {
+      setCreatingError("Escribe un nombre para la categoría.");
+      return;
+    }
+    setCreatingSaving(true);
+    setCreatingError("");
+    const { error } = await onCreateCategoria(nombre);
+    setCreatingSaving(false);
+    if (error) {
+      setCreatingError(
+        error.message ? `No se pudo crear: ${error.message}` : "No se pudo crear la categoría."
+      );
+      return;
+    }
+    setNewCategoriaValue("");
+    setCreatingCategoria(false);
+  };
 
   const forceHideCategoria = (label) => {
     setHiddenCategorias((prev) => new Set(prev).add(label));
@@ -689,6 +716,58 @@ export default function CatalogVisibilityAccordion({
 
   return (
     <div className="tz-vis-accordion">
+      <div className="tz-vis-create-categoria">
+        {creatingCategoria ? (
+          <div className="tz-vis-inline-edit-row">
+            <input
+              type="text"
+              className="tz-text-input"
+              placeholder="Nombre de la nueva categoría"
+              value={newCategoriaValue}
+              onChange={(e) => setNewCategoriaValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateCategoria();
+              }}
+              autoFocus
+            />
+            <button
+              type="button"
+              className="tz-vis-edit-btn"
+              onClick={handleCreateCategoria}
+              disabled={creatingSaving}
+              aria-label="Guardar categoría"
+            >
+              {creatingSaving ? <Loader2 size={13} className="tz-spin" /> : <Check size={13} />}
+            </button>
+            <button
+              type="button"
+              className="tz-vis-edit-btn"
+              onClick={() => {
+                setCreatingCategoria(false);
+                setNewCategoriaValue("");
+                setCreatingError("");
+              }}
+              disabled={creatingSaving}
+              aria-label="Cancelar"
+            >
+              <X size={13} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="tz-camera-cancel tz-scanner-upload-btn"
+            onClick={() => {
+              setCreatingCategoria(true);
+              setCreatingError("");
+            }}
+          >
+            <Plus size={15} /> Nueva Categoría
+          </button>
+        )}
+        {creatingError && <p className="tz-error">{creatingError}</p>}
+      </div>
+
       {visibleSections.map((section) => (
         <CategoriaAccordion
           key={section.key}
