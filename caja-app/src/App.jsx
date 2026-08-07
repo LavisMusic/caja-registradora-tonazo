@@ -244,6 +244,7 @@ export default function App() {
   const [newProductoOpen, setNewProductoOpen] = useState(false);
   const [newProductoCodigo, setNewProductoCodigo] = useState("");
   const [newProductoNombre, setNewProductoNombre] = useState("");
+  const [newProductoDetalle, setNewProductoDetalle] = useState("");
   const [newProductoPrecio, setNewProductoPrecio] = useState("");
   const [newProductoCategoria, setNewProductoCategoria] = useState("");
   const [newProductoSubgrupo, setNewProductoSubgrupo] = useState("");
@@ -1110,6 +1111,7 @@ export default function App() {
     setNewProductoOpen(false);
     setNewProductoCodigo("");
     setNewProductoNombre("");
+    setNewProductoDetalle("");
     setNewProductoPrecio("");
     setNewProductoCategoria("");
     setNewProductoSubgrupo("");
@@ -1144,21 +1146,23 @@ export default function App() {
 
   /* ---- "Escanear Producto" en Editar Stock: reutiliza el mismo
      buscarProductoPorCodigo/resolveStockKey que ya usa el "Ingreso de
-     Mercadería" de Gastos, pero en modo CONTINUO ("Modo Hormiga"): la
-     cámara no se cierra tras un match, así que escanear el mismo
-     código varias veces seguidas sin cerrar la ventana suma +1 cada
-     vez (el debounce de BarcodeScannerModal ya filtra los reintentos
-     del mismo frame). Si el código no existe todavía en 'productos',
-     en vez de un simple error se abre el alta rápida (newProductoOpen)
-     con el código ya cargado — ahí sí se cierra el escáner, porque hay
-     que completar un formulario. ---- */
+     Mercadería" de Gastos. El escáner (BarcodeScannerModal) ya se
+     cierra solo apenas detecta un código — acá solo queda procesar el
+     resultado. "Modo Hormiga" (sumar +1) sigue funcionando igual que
+     antes, pero ahora entre aperturas/cierres del escáner en vez de
+     cámara continua: cada escaneo exitoso del MISMO producto suma +1
+     sobre lo que ya había en stockEdits, así que escanear la misma
+     unidad varias veces (abriendo la cámara de nuevo cada vez) sigue
+     acumulando el conteo. Si el código no existe todavía en
+     'productos', se abre el alta rápida (newProductoOpen) con el
+     código ya cargado. ---- */
   const handleStockProductScan = async (codigoEscaneado) => {
+    setStockScannerOpen(false);
     setStockScanBusy(true);
     setStockScanError("");
     try {
       const producto = await buscarProductoPorCodigo(codigoEscaneado);
       if (!producto) {
-        setStockScannerOpen(false);
         resetNewProductoForm();
         setNewProductoCodigo(codigoEscaneado);
         setNewProductoOpen(true);
@@ -1215,6 +1219,7 @@ export default function App() {
       const { stockKey } = await crearProducto({
         codigoBarras: newProductoCodigo,
         nombre,
+        detalle: newProductoDetalle,
         precio: precioNum,
         categoria: newProductoCategoria,
         subgrupo: newProductoSubgrupo,
@@ -1271,6 +1276,216 @@ export default function App() {
       return { error: null };
     } catch (err) {
       console.error("Error desactivando producto:", err);
+      return { error: err };
+    }
+  };
+
+  /* ---- edición al vuelo desde "Visibilidad en catálogo público"
+     (botones de lápiz). Nombre/detalle son campos propios de UNA fila
+     de 'productos' (UPDATE simple por id). Categoría y Subgrupo, en
+     cambio, no tienen tabla/id propios en este modelo — 'categoria' es
+     un string repetido en cada producto (más su propia fila espejo en
+     'categorias', usada solo para armar las secciones del catálogo) y
+     'subgrupo' es un string libre sin tabla — así que renombrarlos es
+     necesariamente un UPDATE masivo sobre todos los productos que
+     comparten ese valor, no una edición de una sola fila. ---- */
+  const editarProductoNombreDetalle = async (producto, { nombre, detalle }) => {
+    try {
+      const { error } = await supabase
+        .from("productos")
+        .update({ nombre, descripcion: detalle || null })
+        .eq("id", producto.id);
+      if (error) return { error };
+      await refetchCatalog();
+      return { error: null };
+    } catch (err) {
+      console.error("Error editando producto:", err);
+      return { error: err };
+    }
+  };
+
+  /* ---- Renombrar categoría SIN tocar el esquema SQL (la FK
+     productos_categoria_fkey no tiene ON UPDATE CASCADE, así que un
+     UPDATE directo a categorias.nombre queda bloqueado mientras haya
+     productos apuntando al nombre viejo). Se hace "a mano" en 3 pasos
+     secuenciales, cada uno dejando la base en un estado válido para la
+     FK antes de seguir con el siguiente:
+       1) INSERT del padre nuevo (con el nombre nuevo) — recién ahí
+          los productos van a poder apuntarle sin violar la FK.
+       2) UPDATE de todos los productos que tenían el nombre viejo, al
+          nuevo — ya existe como fila padre desde el paso 1.
+       3) DELETE del padre viejo — ya no lo referencia ningún producto,
+          así que se puede borrar sin violar la FK.
+     Si el paso 2 falla, se deshace el paso 1 (el padre nuevo no debe
+     quedar huérfano/sin usar). Si falla el paso 3, los productos ya
+     quedaron migrados correctamente — solo queda una fila vieja sin
+     productos, que se puede limpiar a mano después. ---- */
+  const renombrarCategoria = async (categoriaActual, nombreNuevoRaw) => {
+    const nombreNuevo = (nombreNuevoRaw || "").trim();
+    if (!nombreNuevo || nombreNuevo === categoriaActual) return { error: null };
+    try {
+      const { data: catViejaRow, error: lookupError } = await supabase
+        .from("categorias")
+        .select("activo, orden")
+        .eq("nombre", categoriaActual)
+        .maybeSingle();
+      if (lookupError) return { error: lookupError };
+
+      // Paso 1: crear el padre nuevo (mismo activo/orden que el viejo,
+      // para que no "salte" de posición en las pestañas del catálogo
+      // por el simple hecho de haberse renombrado).
+      const { error: insertError } = await supabase.from("categorias").insert([
+        {
+          nombre: nombreNuevo,
+          activo: catViejaRow?.activo ?? true,
+          orden: catViejaRow?.orden ?? Date.now(),
+        },
+      ]);
+      if (insertError) return { error: insertError };
+
+      // Paso 2: migrar los productos hijos al nombre nuevo.
+      const { error: updateError } = await supabase
+        .from("productos")
+        .update({ categoria: nombreNuevo })
+        .eq("categoria", categoriaActual);
+      if (updateError) {
+        // Deshace el paso 1 — no dejar un padre nuevo sin productos
+        // por una migración que no se completó.
+        await supabase.from("categorias").delete().eq("nombre", nombreNuevo);
+        return { error: updateError };
+      }
+
+      // Paso 3: eliminar el padre viejo, ya sin productos que lo
+      // referencien. Con .select() encima para poder distinguir "se
+      // borró de verdad" de "RLS lo dejó pasar sin error pero afectó 0
+      // filas" (fantasma). A diferencia de antes: si este paso 3 no
+      // afecta filas (RLS bloqueando en silencio, o la fila ya no
+      // estaba), YA NO se reporta como error duro — los pasos 1 y 2
+      // (lo que realmente importa: los productos migrados al nombre
+      // nuevo) sí funcionaron, así que el rename se considera exitoso
+      // y se le avisa al llamador (ghostCategoria) para que oculte
+      // "categoriaActual" del lado del cliente aunque siga viva en la
+      // base. Solo un choque real de FK (23503 — algo sigue
+      // referenciándola) se sigue tratando como error duro.
+      const { data: deletedRows, error: deleteError } = await supabase
+        .from("categorias")
+        .delete()
+        .eq("nombre", categoriaActual)
+        .select("id");
+
+      if (deleteError) {
+        console.error("No se pudo borrar la categoría vieja tras migrar los productos:", deleteError);
+        if (deleteError.code === "23503") {
+          return {
+            error: new Error(
+              `Los productos ya se migraron a "${nombreNuevo}", pero "${categoriaActual}" todavía tiene algo vinculado y no se pudo borrar.`
+            ),
+            fkConflict: true,
+            ghostCategoria: null,
+          };
+        }
+        await refetchCatalog();
+        return { error: null, fkConflict: false, ghostCategoria: categoriaActual };
+      }
+
+      if (!deletedRows || deletedRows.length === 0) {
+        await refetchCatalog();
+        return { error: null, fkConflict: false, ghostCategoria: categoriaActual };
+      }
+
+      // Refresca sections/productsById/stock desde Supabase — es el
+      // "setCategorias/setProductos" de este proyecto (viven dentro
+      // del hook useCatalog, no como estado suelto en App.jsx), así
+      // que las pestañas del catálogo reflejan el nombre nuevo sin
+      // recargar la página.
+      await refetchCatalog();
+      return { error: null, fkConflict: false, ghostCategoria: null };
+    } catch (err) {
+      console.error("Error renombrando categoría:", err);
+      return { error: err };
+    }
+  };
+
+  const renombrarSubgrupo = async (categoriaLabel, subgrupoActual, nombreNuevoRaw) => {
+    const nombreNuevo = (nombreNuevoRaw || "").trim();
+    if (!nombreNuevo || nombreNuevo === subgrupoActual) return { error: null };
+    try {
+      const { data, error } = await supabase
+        .from("productos")
+        .update({ subgrupo: nombreNuevo })
+        .eq("categoria", categoriaLabel)
+        .eq("subgrupo", subgrupoActual)
+        .select("id");
+      if (error) return { error };
+      if (!data || data.length === 0) {
+        // Nadie se actualizó — o ya no había productos con ese
+        // subgrupo, o RLS bloqueó el UPDATE en silencio. No es un
+        // conflicto de datos real (no hay FK acá), así que no se
+        // reporta como error duro: se avisa al llamador para que
+        // oculte "subgrupoActual" del lado del cliente.
+        return { error: null, ghostSubgrupo: subgrupoActual };
+      }
+      await refetchCatalog();
+      return { error: null, ghostSubgrupo: null };
+    } catch (err) {
+      console.error("Error renombrando subgrupo:", err);
+      return { error: err };
+    }
+  };
+
+  /* ---- eliminar Categoría (botón de papelera junto al lápiz): DELETE
+     directo en 'categorias'. Si todavía tiene productos apuntándole,
+     'productos_categoria_fkey' lo rechaza con foreign_key_violation
+     (23503) — se detecta para poder mostrar el mensaje específico que
+     pide el negocio en vez de un error genérico de Supabase.
+     Si en cambio no afecta ninguna fila (RLS bloqueando en silencio,
+     o la categoría ya no existía), NO se trata como error: se asume
+     que ya no está en la base y se le avisa al llamador (zeroRows)
+     para que la oculte del lado del cliente igual, sin depender de que
+     el backend coopere. ---- */
+  const eliminarCategoria = async (categoriaLabel) => {
+    try {
+      const { data, error } = await supabase
+        .from("categorias")
+        .delete()
+        .eq("nombre", categoriaLabel)
+        .select("id");
+      if (error) {
+        return { error, fkConflict: error.code === "23503", zeroRows: false };
+      }
+      if (!data || data.length === 0) {
+        return { error: null, fkConflict: false, zeroRows: true };
+      }
+      await refetchCatalog();
+      return { error: null, fkConflict: false, zeroRows: false };
+    } catch (err) {
+      console.error("Error eliminando categoría:", err);
+      return { error: err, fkConflict: false, zeroRows: false };
+    }
+  };
+
+  /* ---- eliminar Subgrupo: a diferencia de Categoría, 'subgrupo' no
+     tiene tabla maestra propia (es un string libre en cada fila de
+     'productos', sin FK) — así que no hay una fila que borrar. "Borrar
+     el subgrupo" acá significa soltarlo de todos los productos que lo
+     tienen (subgrupo -> null), que pasan a verse como "Sin subgrupo"
+     dentro de la misma categoría, SIN borrar ningún producto. ---- */
+  const eliminarSubgrupo = async (categoriaLabel, subgrupoActual) => {
+    try {
+      const { data, error } = await supabase
+        .from("productos")
+        .update({ subgrupo: null })
+        .eq("categoria", categoriaLabel)
+        .eq("subgrupo", subgrupoActual)
+        .select("id");
+      if (error) return { error };
+      if (!data || data.length === 0) {
+        return { error: null, zeroRows: true };
+      }
+      await refetchCatalog();
+      return { error: null, zeroRows: false };
+    } catch (err) {
+      console.error("Error eliminando subgrupo:", err);
       return { error: err };
     }
   };
@@ -1582,6 +1797,13 @@ export default function App() {
     }
     if (cobroMetodo !== "EFECTIVO" && cobroMetodo !== "DIGITAL") {
       setCobroError("Elige si el cobro fue en Efectivo o Digital (Yape/Plin/Otros).");
+      return;
+    }
+    // Repetido acá (además del disabled del botón) porque este es el
+    // guardado real: un cobro Digital sin comprobante adjunto no se
+    // puede confirmar.
+    if (cobroMetodo === "DIGITAL" && !scanDetected.photoUrl) {
+      setCobroError("Adjunta el comprobante antes de confirmar un cobro Digital.");
       return;
     }
 
@@ -3482,15 +3704,24 @@ export default function App() {
                   <label className="tz-field-label">Código escaneado</label>
                   <input type="text" className="tz-text-input" value={newProductoCodigo} readOnly />
 
-                  <label className="tz-field-label">Nombre / Descripción</label>
-                  <input
-                    type="text"
-                    autoFocus
-                    className="tz-text-input"
-                    placeholder="Ej. Coca Cola 1.5L"
-                    value={newProductoNombre}
-                    onChange={(e) => setNewProductoNombre(e.target.value)}
-                  />
+                  <label className="tz-field-label">Nombre y detalle</label>
+                  <div className="tz-nombre-detalle-row">
+                    <input
+                      type="text"
+                      autoFocus
+                      className="tz-text-input"
+                      placeholder="Nombre (ej. Inka Kola)"
+                      value={newProductoNombre}
+                      onChange={(e) => setNewProductoNombre(e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      className="tz-text-input"
+                      placeholder="Detalle (ej. 750ml, Personal)"
+                      value={newProductoDetalle}
+                      onChange={(e) => setNewProductoDetalle(e.target.value)}
+                    />
+                  </div>
 
                   <label className="tz-field-label">Precio (S/)</label>
                   <input
@@ -3510,7 +3741,13 @@ export default function App() {
                     className="tz-text-input"
                     placeholder="Elige una existente o escribe una nueva"
                     value={newProductoCategoria}
-                    onChange={(e) => setNewProductoCategoria(e.target.value)}
+                    onChange={(e) => {
+                      setNewProductoCategoria(e.target.value);
+                      // Blindaje: si borran la categoría, el subgrupo
+                      // queda huérfano — se limpia para no arrastrar un
+                      // subgrupo de otra categoría por error.
+                      if (!e.target.value.trim()) setNewProductoSubgrupo("");
+                    }}
                   />
                   <datalist id="tz-categoria-options">
                     {sections.map((s) => (
@@ -3523,34 +3760,44 @@ export default function App() {
                     type="text"
                     list="tz-subgrupo-options"
                     className="tz-text-input"
-                    placeholder="Elige uno existente o escribe uno nuevo"
+                    placeholder={
+                      newProductoCategoria.trim()
+                        ? "Elige uno existente o escribe uno nuevo"
+                        : "Primero elige una categoría"
+                    }
                     value={newProductoSubgrupo}
                     onChange={(e) => setNewProductoSubgrupo(e.target.value)}
+                    disabled={!newProductoCategoria.trim()}
                   />
                   <p className="tz-field-hint">
                     Nota: Si creas un subgrupo nuevo, inicia el nombre con un número (ej. "03
                     Nuevo Pack") para mantener el orden en el catálogo.
                   </p>
                   <datalist id="tz-subgrupo-options">
-                    {Array.from(
-                      new Map(
-                        sections
-                          .flatMap((s) => s.groups)
-                          .filter((g) => g.title)
-                          .map((g) => [g.title, g])
-                      ).values()
-                    )
-                      // Mismo orden natural/numérico que ya aplica
-                      // buildSectionsFromRows al renderizar el catálogo —
-                      // para que las sugerencias reflejen el mismo orden.
-                      .sort((a, b) => {
-                        if (!a.numero) return 1;
-                        if (!b.numero) return -1;
-                        return a.numero.localeCompare(b.numero, undefined, { numeric: true });
-                      })
-                      .map((g) => (
-                        <option key={g.title} value={g.title} />
-                      ))}
+                    {(() => {
+                      // Blindaje: SOLO se sugieren subgrupos que ya
+                      // existen dentro de la categoría elegida — nunca
+                      // los de otras categorías (evita, ej., colgar un
+                      // producto de "Bebidas" bajo "Pack con Whisky").
+                      const categoriaTrim = newProductoCategoria.trim().toLowerCase();
+                      const matchingSection = sections.find(
+                        (s) => s.label.trim().toLowerCase() === categoriaTrim
+                      );
+                      const groups = matchingSection
+                        ? matchingSection.groups.filter((g) => g.title)
+                        : [];
+                      return groups
+                        // Mismo orden natural/numérico que ya aplica
+                        // buildSectionsFromRows al renderizar el
+                        // catálogo — para que las sugerencias reflejen
+                        // el mismo orden.
+                        .sort((a, b) => {
+                          if (!a.numero) return 1;
+                          if (!b.numero) return -1;
+                          return a.numero.localeCompare(b.numero, undefined, { numeric: true });
+                        })
+                        .map((g) => <option key={g.title} value={g.title} />);
+                    })()}
                   </datalist>
 
                   {newProductoError && <p className="tz-error">{newProductoError}</p>}
@@ -3705,6 +3952,11 @@ export default function App() {
                 }}
                 onDelete={eliminarProductoDefinitivo}
                 onSoftDelete={desactivarProductoCatalogo}
+                onEditProducto={editarProductoNombreDetalle}
+                onRenameCategoria={renombrarCategoria}
+                onRenameSubgrupo={renombrarSubgrupo}
+                onDeleteCategoria={eliminarCategoria}
+                onDeleteSubgrupo={eliminarSubgrupo}
               />
             </div>
           </div>
@@ -3715,14 +3967,6 @@ export default function App() {
         <BarcodeScannerModal
           onScan={handleStockProductScan}
           onClose={() => setStockScannerOpen(false)}
-          continuous
-          feedback={
-            scannedStockKey
-              ? `${stockLabels[scannedStockKey] ?? scannedStockKey} — Cantidad: ${
-                  stockEdits[scannedStockKey] || 0
-                }`
-              : stockScanError || null
-          }
         />
       )}
 
@@ -4401,13 +4645,19 @@ export default function App() {
                                             <Camera size={16} />
                                             {scanDetected.photoUrl
                                               ? "Comprobante adjuntado ✓"
-                                              : "Adjuntar comprobante (opcional)"}
+                                              : "Adjuntar comprobante (obligatorio)"}
                                           </button>
                                         )}
                                         {!cameraSupported && (
                                           <p className="tz-camera-note">
                                             No se pudo acceder a la cámara; se abrirá el
                                             selector de fotos.
+                                          </p>
+                                        )}
+                                        {!scanDetected.photoUrl && (
+                                          <p className="tz-field-hint">
+                                            Un cobro Digital no se puede confirmar sin adjuntar
+                                            el comprobante.
                                           </p>
                                         )}
                                       </>
@@ -4424,7 +4674,12 @@ export default function App() {
                                       <button
                                         className="tz-pw-submit tz-payment-save"
                                         onClick={cobrarFiado}
-                                        disabled={cobroSaving || !cobroMetodo || montoBloqueaGuardar}
+                                        disabled={
+                                          cobroSaving ||
+                                          !cobroMetodo ||
+                                          montoBloqueaGuardar ||
+                                          (cobroMetodo === "DIGITAL" && !scanDetected.photoUrl)
+                                        }
                                       >
                                         {cobroSaving ? (
                                           <Loader2 size={16} className="tz-spin" />

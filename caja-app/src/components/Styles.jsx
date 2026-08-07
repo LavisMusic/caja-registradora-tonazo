@@ -1029,17 +1029,6 @@ export default function Styles() {
       .tz-barcode-scanner-region a {
         color: var(--text-dim);
       }
-      .tz-scanner-feedback {
-        margin-top: 12px;
-        padding: 12px 14px;
-        border-radius: 10px;
-        border: 1px solid rgba(43,232,255,0.3);
-        background: rgba(43,232,255,0.08);
-        text-align: center;
-        font-family: 'Orbitron', sans-serif;
-        font-size: 13px;
-        color: var(--cyan);
-      }
       .tz-modal-close {
         position: absolute;
         top: 14px;
@@ -1146,6 +1135,21 @@ export default function Styles() {
       .tz-stock-row-info { display: flex; flex-direction: column; gap: 2px; }
       .tz-stock-row-name { font-weight: 700; font-size: 13.5px; }
       .tz-stock-row-current { font-size: 11.5px; color: var(--text-dim); }
+      /* Badge tenue con el 'detalle' (columna productos.descripcion:
+         "750ml", "Personal") junto al nombre — para distinguir
+         "Coca Cola (Personal)" de "Coca Cola (1L)" de un vistazo. */
+      .tz-vis-row-detail {
+        display: inline-block;
+        width: fit-content;
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        color: var(--cyan);
+        background: rgba(43,232,255,0.1);
+        border: 1px solid rgba(43,232,255,0.3);
+        border-radius: 6px;
+        padding: 1px 7px;
+      }
       .tz-stock-row-input {
         display: flex;
         align-items: center;
@@ -1208,9 +1212,10 @@ export default function Styles() {
         color: var(--text);
         font-family: 'Rajdhani', sans-serif;
         text-align: left;
+        padding: 0;
+        min-width: 0;
       }
       .tz-vis-category-header {
-        padding: 12px 14px;
         font-family: 'Orbitron', sans-serif;
         font-size: 12.5px;
         font-weight: 800;
@@ -1218,11 +1223,49 @@ export default function Styles() {
         text-transform: uppercase;
       }
       .tz-vis-subgroup-header {
-        padding: 9px 12px;
         font-size: 12.5px;
         font-weight: 700;
         color: var(--cyan);
       }
+      /* Fila que envuelve el header clickable (categoría/subgrupo) +
+         su botón de lápiz — el padding que antes vivía en el propio
+         header ahora vive acá, para que el lápiz quede alineado e
+         inserto en la misma fila sin anidar un <button> dentro de
+         otro <button>. */
+      .tz-vis-header-row,
+      .tz-vis-inline-edit-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .tz-vis-category > .tz-vis-header-row,
+      .tz-vis-category > .tz-vis-inline-edit-row {
+        padding: 10px 12px;
+      }
+      .tz-vis-subsection > .tz-vis-header-row,
+      .tz-vis-subsection > .tz-vis-inline-edit-row {
+        padding: 7px 10px;
+      }
+      .tz-vis-inline-edit-row .tz-text-input {
+        flex: 1 1 auto;
+        min-width: 0;
+        padding: 8px 10px;
+      }
+      .tz-vis-edit-btn {
+        width: 30px;
+        height: 30px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid rgba(43,232,255,0.35);
+        background: rgba(43,232,255,0.08);
+        color: var(--cyan);
+        cursor: pointer;
+      }
+      .tz-vis-edit-btn:hover { background: rgba(43,232,255,0.18); }
+      .tz-vis-edit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       .tz-vis-category-meta {
         display: flex;
         align-items: center;
@@ -1232,20 +1275,24 @@ export default function Styles() {
         color: var(--text-dim);
         flex-shrink: 0;
       }
-      .tz-vis-accordion-body {
-        display: grid;
-        grid-template-rows: 0fr;
-        transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-      }
-      .tz-vis-accordion-body.tz-vis-accordion-open {
-        grid-template-rows: 1fr;
+      /* La animación de "acordeón CSS puro" (grid-template-rows 0fr/1fr)
+         se cambió por montaje/desmontaje condicional en React: el
+         contenido cerrado deja de existir en el DOM en vez de
+         intentar colapsarlo a 0px con CSS. Es menos "cinematográfico"
+         que la técnica de grid, pero es imposible que algo se filtre
+         visualmente cuando el nodo directamente no está — que es lo
+         que seguía pasando con la versión anterior. Se mantiene una
+         animación de entrada breve (fade + slide) para no perder toda
+         la sensación de transición. */
+      @keyframes tzAccordionIn {
+        from { opacity: 0; transform: translateY(-6px); }
+        to { opacity: 1; transform: translateY(0); }
       }
       .tz-vis-accordion-inner {
-        overflow: hidden;
-        min-height: 0;
+        animation: tzAccordionIn 0.18s ease;
       }
-      .tz-vis-category > .tz-vis-accordion-body > .tz-vis-accordion-inner {
-        padding: 0 14px 14px;
+      .tz-vis-category > .tz-vis-accordion-inner {
+        padding: 4px 14px 14px;
       }
       .tz-vis-subsection {
         border-top: 1px solid var(--border-soft);
@@ -1268,7 +1315,15 @@ export default function Styles() {
         margin: 0;
         padding: 12px 14px;
       }
-      .tz-vis-scan-btn {
+      /* Selector reforzado (.tz-vis-search-row .tz-vis-scan-btn, no solo
+         .tz-vis-scan-btn): el botón también lleva la clase base
+         .tz-scan-btn (width: 100%), y esa regla vive MÁS ABAJO en esta
+         hoja de estilos — con igual especificidad (una sola clase),
+         gana la que aparece último en el archivo. Sin este refuerzo,
+         "width: 100%" de .tz-scan-btn le ganaba a "width: 42px" acá y
+         el botón se estiraba a todo el ancho, aplastando el input (el
+         bug visual reportado). */
+      .tz-vis-search-row .tz-vis-scan-btn {
         flex: 0 0 auto;
         width: 42px;
         /* Sin alto fijo: 'align-items: stretch' en .tz-vis-search-row
@@ -1414,6 +1469,15 @@ export default function Styles() {
         opacity: 0.8;
         font-style: italic;
       }
+      /* Nombre 70% / Detalle 30% en una sola fila (alta de producto al
+         vuelo) — flex-grow en proporción 7:3 en vez de width en %, así
+         no hay que restar el gap a mano. */
+      .tz-nombre-detalle-row {
+        display: flex;
+        gap: 8px;
+      }
+      .tz-nombre-detalle-row input:first-child { flex: 7 1 0; min-width: 0; }
+      .tz-nombre-detalle-row input:last-child { flex: 3 1 0; min-width: 0; }
       .tz-amount-input {
         width: 100%;
         background: rgba(255,255,255,0.05);
@@ -2102,6 +2166,15 @@ export default function Styles() {
         font-size: 13px;
         cursor: pointer;
       }
+      .tz-scanner-upload-btn {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .tz-scanner-upload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
       .tz-scan-processing {
         display: flex;

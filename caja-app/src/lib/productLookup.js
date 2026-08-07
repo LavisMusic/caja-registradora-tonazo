@@ -67,6 +67,21 @@ function generateStockKey(nombre, stockKeysExistentes) {
   return `${base}-${sufijo}`;
 }
 
+/* 'orden' es una columna integer estándar de Postgres (máx.
+   2 147 483 647). Date.now() son milisegundos desde 1970 — 13 dígitos,
+   ~1 786 000 000 000 en 2026 — que desborda esa columna por completo.
+   ESE desborde era el error real de "Crear producto" (Postgres lo
+   rechaza como valor fuera de rango para integer); el código de
+   barras escaneado, también de 13 dígitos, viajaba correctamente en
+   su propia columna de texto y no tenía nada que ver. Acá se arma un
+   entero chico y monótono (segundos desde una fecha fija reciente) que
+   sigue sirviendo para ordenar "lo más nuevo al final" sin arriesgar
+   overflow durante décadas. */
+function safeOrdenValue() {
+  const EPOCH_BASE = new Date("2024-01-01T00:00:00Z").getTime();
+  return Math.floor((Date.now() - EPOCH_BASE) / 1000);
+}
+
 /* Crea un producto "al vuelo" desde el flujo de escaneo de Editar
    Stock cuando el código no existe todavía en 'productos'. Un
    producto creado así representa mercadería física simple (no un
@@ -81,6 +96,7 @@ function generateStockKey(nombre, stockKeysExistentes) {
 export async function crearProducto({
   codigoBarras,
   nombre,
+  detalle,
   precio,
   categoria,
   subgrupo,
@@ -97,28 +113,36 @@ export async function crearProducto({
   if (!catExistente) {
     const { error: catInsertError } = await supabase
       .from("categorias")
-      .insert([{ nombre: categoriaNombre, activo: true, orden: Date.now() }]);
+      .insert([{ nombre: categoriaNombre, activo: true, orden: safeOrdenValue() }]);
     if (catInsertError) throw catInsertError;
   }
 
   const stockKey = generateStockKey(nombre, stockExistente);
 
+  // Precio SIEMPRE numérico real (parseFloat), nunca el string crudo
+  // del input — y el código de barras SOLO va a 'codigo_barras' (texto),
+  // nunca mezclado con ningún campo numérico.
+  const productoPayload = {
+    nombre: nombre.trim(),
+    descripcion: (detalle || "").trim() || null,
+    precio: parseFloat(precio),
+    categoria: categoriaNombre,
+    subgrupo: (subgrupo || "").trim() || null,
+    codigo_barras: String(codigoBarras || "").trim(),
+    consumos: JSON.stringify([{ key: stockKey, qty: 1 }]),
+    activo: true,
+    visible_publico: true,
+    orden: safeOrdenValue(),
+  };
+
+  // Log explícito del payload exacto antes del INSERT, para poder
+  // comparar tipo por tipo contra las columnas reales de Supabase si
+  // algo vuelve a fallar.
+  console.log("crearProducto: payload enviado a 'productos'", productoPayload);
+
   const { data: insertedProducto, error: prodError } = await supabase
     .from("productos")
-    .insert([
-      {
-        nombre: nombre.trim(),
-        descripcion: null,
-        precio: Number(precio),
-        categoria: categoriaNombre,
-        subgrupo: (subgrupo || "").trim() || null,
-        codigo_barras: codigoBarras,
-        consumos: JSON.stringify([{ key: stockKey, qty: 1 }]),
-        activo: true,
-        visible_publico: true,
-        orden: Date.now(),
-      },
-    ])
+    .insert([productoPayload])
     .select()
     .single();
   if (prodError) throw prodError;

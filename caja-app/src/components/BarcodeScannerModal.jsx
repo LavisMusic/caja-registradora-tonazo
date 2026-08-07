@@ -1,103 +1,157 @@
 import { useEffect, useRef, useState } from "react";
-import { Html5QrcodeScanner, Html5QrcodeSupportedFormats } from "html5-qrcode";
-import { X } from "lucide-react";
+import {
+  Html5Qrcode,
+  Html5QrcodeSupportedFormats,
+  Html5QrcodeScannerState,
+} from "html5-qrcode";
+import { X, Image as ImageIcon, Loader2 } from "lucide-react";
 
 const SCANNER_ELEMENT_ID = "tz-barcode-scanner-region";
-// Ventana de debounce en modo continuo: mientras la cámara sigue
-// enfocando el mismo código físico dispara el callback varias veces
-// por segundo — sin este corte, "Modo Hormiga" sumaría de más por un
-// solo acercamiento de producto.
-const CONTINUOUS_DEBOUNCE_MS = 1500;
 
-/* Escáner híbrido: acepta tanto códigos de barras 1D (EAN/UPC, para
-   productos comprados a proveedores) como códigos QR 2D. Usa la
-   cámara trasera del dispositivo por defecto.
+const SUPPORTED_FORMATS = [
+  Html5QrcodeSupportedFormats.QR_CODE,
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.CODABAR,
+  Html5QrcodeSupportedFormats.ITF,
+];
 
-   Dos modos:
-   - continuous=false (default): onScan se dispara UNA sola vez por
-     apertura y la cámara se detiene apenas hay un match — quien lo
-     use decide si reabre el modal para escanear otro código.
-   - continuous=true ("Modo Hormiga"): la cámara sigue activa después
-     de cada match, y onScan se puede disparar repetidas veces (con
-     debounce) para que escanear el mismo código varias veces seguidas
-     sin cerrar la ventana sume de a uno. Quien lo use debe cerrar el
-     modal explícitamente (botón X / onClose) cuando termine. También
-     acepta un nodo 'feedback' que se muestra debajo de la cámara para
-     dar información en vivo (ej. "Producto X — Cantidad: 3") sin
-     tener que cerrar el modal para verla. */
-export default function BarcodeScannerModal({ onScan, onClose, continuous = false, feedback }) {
+/* Escáner de "cero clics": se usa el API de bajo nivel (Html5Qrcode)
+   en vez de Html5QrcodeScanner porque ESE trae su propia UI (botón de
+   permiso, tabs de cámara/archivo, link de "Stop Scanning") — acá no
+   queremos nada de eso, solo el feed de cámara. La cámara arranca sola
+   apenas el componente se monta (sin ningún botón de "iniciar"), lee
+   en video continuo, y en el milisegundo exacto en que decodifica un
+   código válido detiene la cámara y avisa al padre — quien decide qué
+   hacer (sumar +1 si el producto ya existe, o abrir el alta rápida si
+   el código es nuevo) y normalmente cierra este modal de inmediato.
+   Acepta tanto códigos de barras 1D (EAN/UPC) como QR 2D. Usa la
+   cámara trasera por defecto.
+
+   También ofrece un fallback de subir una foto ya tomada (galería) —
+   útil cuando el autoenfoque de la cámara web no engancha bien un
+   código, o para pruebas de escritorio sin cámara trasera real. Usa
+   html5QrCode.scanFile() sobre la MISMA instancia, así que se detiene
+   el video antes de procesar el archivo (no conviven bien al mismo
+   tiempo) y, si la imagen no trae ningún código legible, se reactiva
+   la cámara para no dejar el modal en un estado muerto. */
+export default function BarcodeScannerModal({ onScan, onClose }) {
   const [cameraError, setCameraError] = useState("");
+  const [fileBusy, setFileBusy] = useState(false);
+  const [fileError, setFileError] = useState("");
+
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan;
+  const html5QrCodeRef = useRef(null);
+  const handledRef = useRef(false);
+  const cancelledRef = useRef(false);
+  const fileInputRef = useRef(null);
+
+  const stopCamera = async () => {
+    const html5QrCode = html5QrCodeRef.current;
+    if (!html5QrCode) return;
+    try {
+      if (html5QrCode.getState() === Html5QrcodeScannerState.SCANNING) {
+        await html5QrCode.stop();
+      }
+    } catch {
+      // Puede fallar si ya se estaba deteniendo — no es un error que
+      // el usuario necesite ver, la cámara igual queda liberada.
+    }
+  };
+
+  const startCamera = async () => {
+    const html5QrCode = html5QrCodeRef.current;
+    if (!html5QrCode) return;
+    try {
+      await html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 260, height: 160 } },
+        (decodedText) => {
+          if (handledRef.current || cancelledRef.current) return;
+          handledRef.current = true;
+          // Detiene la cámara y avisa al padre en el mismo instante del
+          // match — no hay paso de "capturar" ni confirmación manual.
+          stopCamera();
+          onScanRef.current(decodedText);
+        },
+        () => {
+          // Se llama en CADA frame sin código detectado — flujo normal,
+          // no un error, así que se ignora.
+        }
+      );
+    } catch (err) {
+      if (cancelledRef.current) return;
+      console.error("No se pudo iniciar la cámara:", err);
+      setCameraError("No se pudo acceder a la cámara. Revisa los permisos del navegador.");
+    }
+  };
 
   useEffect(() => {
-    const scanner = new Html5QrcodeScanner(
-      SCANNER_ELEMENT_ID,
-      {
-        fps: 10,
-        qrbox: { width: 260, height: 160 },
-        rememberLastUsedCamera: true,
-        videoConstraints: { facingMode: "environment" },
-        formatsToSupport: [
-          Html5QrcodeSupportedFormats.QR_CODE,
-          Html5QrcodeSupportedFormats.EAN_13,
-          Html5QrcodeSupportedFormats.EAN_8,
-          Html5QrcodeSupportedFormats.UPC_A,
-          Html5QrcodeSupportedFormats.UPC_E,
-          Html5QrcodeSupportedFormats.CODE_128,
-          Html5QrcodeSupportedFormats.CODE_39,
-          Html5QrcodeSupportedFormats.CODABAR,
-          Html5QrcodeSupportedFormats.ITF,
-        ],
-      },
-      /* verbose= */ false
-    );
-
-    let handled = false; // solo se usa en modo no-continuo
-    const lastScan = { code: null, time: 0 }; // solo se usa en modo continuo
-
-    scanner.render(
-      (decodedText) => {
-        if (!continuous) {
-          if (handled) return;
-          handled = true;
-          // Corta la cámara apenas hay un match — evita seguir leyendo
-          // el mismo código en bucle mientras el padre procesa/cierra.
-          scanner.clear().catch(() => {});
-          onScanRef.current(decodedText);
-          return;
-        }
-
-        const now = Date.now();
-        if (lastScan.code === decodedText && now - lastScan.time < CONTINUOUS_DEBOUNCE_MS) {
-          return;
-        }
-        lastScan.code = decodedText;
-        lastScan.time = now;
-        onScanRef.current(decodedText);
-      },
-      () => {
-        // Se llama en CADA frame sin código detectado — es el flujo
-        // normal, no un error real, así que se ignora.
-      }
-    );
-
-    // Si el navegador/dispositivo no puede abrir la cámara (permiso
-    // denegado, sin HTTPS, sin cámara), html5-qrcode dibuja su propio
-    // mensaje de error dentro del contenedor — igual mostramos un
-    // aviso propio por si ese mensaje no es visible con el tema oscuro.
-    setTimeout(() => {
-      const el = document.getElementById(SCANNER_ELEMENT_ID);
-      if (el && el.querySelector("img[alt='Info icon']")) {
-        setCameraError("No se pudo acceder a la cámara. Revisa los permisos del navegador.");
-      }
-    }, 1500);
+    cancelledRef.current = false;
+    handledRef.current = false;
+    const html5QrCode = new Html5Qrcode(SCANNER_ELEMENT_ID, {
+      formatsToSupport: SUPPORTED_FORMATS,
+      verbose: false,
+    });
+    html5QrCodeRef.current = html5QrCode;
+    startCamera();
 
     return () => {
-      handled = true;
-      scanner.clear().catch(() => {});
+      cancelledRef.current = true;
+      handledRef.current = true;
+      stopCamera().finally(() => {
+        try {
+          html5QrCode.clear();
+        } catch {
+          // Idem — el DOM del modal ya se está desmontando de todas
+          // formas.
+        }
+      });
     };
-  }, [continuous]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    const html5QrCode = html5QrCodeRef.current;
+    if (!html5QrCode) return;
+
+    setFileError("");
+    setFileBusy(true);
+    // scanFile no convive bien con un escaneo de video corriendo al
+    // mismo tiempo sobre la misma instancia — se frena la cámara
+    // primero.
+    await stopCamera();
+
+    try {
+      const decodedText = await html5QrCode.scanFile(file, /* showImage= */ false);
+      if (handledRef.current || cancelledRef.current) return;
+      handledRef.current = true;
+      html5QrCode.clear();
+      // Mismo flujo que un match de cámara: avisa al padre, que
+      // normalmente cierra el modal.
+      onScanRef.current(decodedText);
+    } catch (err) {
+      console.error("No se pudo leer el código en la imagen:", err);
+      setFileError(
+        "No se encontró ningún código legible en esa imagen. Probá con otra foto o usá la cámara."
+      );
+      // Reactiva la cámara para que puedan seguir intentando sin tener
+      // que cerrar y reabrir el modal a mano.
+      if (!cancelledRef.current) {
+        startCamera();
+      }
+    } finally {
+      setFileBusy(false);
+    }
+  };
 
   return (
     <div className="tz-modal-backdrop" onClick={onClose}>
@@ -108,13 +162,28 @@ export default function BarcodeScannerModal({ onScan, onClose, continuous = fals
         <div className="tz-payment-modal">
           <h2>Escanear Producto</h2>
           <p className="tz-stock-editor-sub">
-            {continuous
-              ? "Escanea el mismo código varias veces seguidas para sumar unidades, sin cerrar esta ventana."
-              : "Apunta la cámara al código de barras o QR del producto."}
+            Apunta la cámara al código de barras o QR — se lee solo, sin tocar nada.
           </p>
           {cameraError && <p className="tz-error">{cameraError}</p>}
           <div id={SCANNER_ELEMENT_ID} className="tz-barcode-scanner-region" />
-          {feedback && <div className="tz-scanner-feedback">{feedback}</div>}
+          {fileError && <p className="tz-error">{fileError}</p>}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
+          <button
+            type="button"
+            className="tz-camera-cancel tz-scanner-upload-btn"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={fileBusy}
+          >
+            {fileBusy ? <Loader2 size={15} className="tz-spin" /> : <ImageIcon size={15} />}
+            {fileBusy ? "Leyendo imagen…" : "Adjuntar imagen con código"}
+          </button>
         </div>
       </div>
     </div>
