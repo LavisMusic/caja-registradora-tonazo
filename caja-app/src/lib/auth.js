@@ -7,3 +7,10 @@ export function celularToDummyEmail(celular) {
   const digits = String(celular || "").replace(/\D/g, "");
   return `${digits}@tonazo.app`;
 }
+
+export function usuarioToDummyEmail(usuario) {
+  const clean = String(usuario || "")
+    .trim()
+    .toLowerCase();
+  return `${clean}@tonazo.staff`;
+}

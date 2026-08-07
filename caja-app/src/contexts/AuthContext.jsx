@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
 
     supabase
       .from("profiles")
-      .select("role")
+      .select("role, nombre")
       .eq("id", session.user.id)
       .single()
       .then(({ data, error }) => {
@@ -67,9 +67,11 @@ export function AuthProvider({ children }) {
   const value = {
     session,
     role: profile?.role ?? null,
+    nombre: profile?.nombre ?? null,
     loading,
     isAdmin: profile?.role === "admin",
     isCliente: profile?.role === "cliente",
+    isCajero: profile?.role === "cajero",
     signOut,
   };
 

@@ -191,6 +191,44 @@ export default function Styles() {
         font-weight: 800;
       }
 
+      /* ---- autocompletado de Razón Social (Gastos) ---- */
+      .tz-suggest-wrap { position: relative; }
+      .tz-suggest-list {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 60;
+        background: var(--panel-solid);
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 4px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 200px;
+        overflow-y: auto;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+      }
+      .tz-suggest-item {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        width: 100%;
+        box-sizing: border-box;
+        background: transparent;
+        border: none;
+        border-radius: 7px;
+        padding: 8px 10px;
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        text-align: left;
+        cursor: pointer;
+      }
+      .tz-suggest-item:hover { background: rgba(43,232,255,0.1); }
+      .tz-suggest-item-name { font-weight: 700; font-size: 13px; }
+      .tz-suggest-item-ruc { font-size: 11px; color: var(--text-dim); }
+
       /* ---------- CONTENEDOR PRINCIPAL (mobile-first) ---------- */
       /* 100% del ancho + box-sizing: border-box para que ningún hijo
          (medidores, tarjetas, textos) se corte por los bordes.
@@ -366,6 +404,11 @@ export default function Styles() {
         min-height: 148px;
       }
       .tz-card:hover { transform: translateY(-2px); }
+      /* Mostrador público (CatalogPage): mismas tarjetas que el Admin,
+         pero sin gesto de clic — nada de mano/pointer ni levante al
+         pasar el mouse, para no insinuar una interacción que no existe. */
+      .tz-card-readonly { cursor: default; }
+      .tz-card-readonly:hover { transform: none; }
       .tz-card-checked {
         box-shadow: 0 0 0 1.5px var(--cyan), 0 0 26px rgba(43,232,255,0.35);
       }
@@ -789,8 +832,20 @@ export default function Styles() {
         box-shadow: 0 0 24px rgba(215,255,59,0.4);
         transition: transform 0.12s ease;
       }
+      .tz-submit-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
       .tz-submit-btn:hover { transform: translateY(-1px); }
       .tz-submit-btn:active { transform: translateY(0); }
+      .tz-submit-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
+      }
 
       /* ---------- HISTORIAL ---------- */
       .tz-history { margin-top: 40px; }
@@ -906,6 +961,11 @@ export default function Styles() {
         color: #16190a;
         box-shadow: 0 0 20px rgba(215,255,59,0.4);
       }
+      .tz-footer-btn-misventas {
+        background: var(--cyan);
+        color: #06131a;
+        box-shadow: 0 0 20px rgba(43,232,255,0.4);
+      }
 
       /* ---------- MODAL ---------- */
       .tz-modal-backdrop {
@@ -923,15 +983,63 @@ export default function Styles() {
         position: relative;
         width: 100%;
         max-width: 460px;
-        max-height: 88vh;
+        max-height: 90vh;
         overflow-y: auto;
         background: var(--panel-solid);
         border: 1px solid rgba(43,232,255,0.25);
         border-radius: 18px;
         padding: 26px 18px 20px;
         box-shadow: 0 0 50px rgba(43,232,255,0.15);
+        /* Firefox */
+        scrollbar-width: thin;
+        scrollbar-color: rgba(43,232,255,0.35) transparent;
       }
       .tz-modal-wide { max-width: 560px; }
+      .tz-modal::-webkit-scrollbar { width: 8px; }
+      .tz-modal::-webkit-scrollbar-track { background: transparent; }
+      .tz-modal::-webkit-scrollbar-thumb {
+        background: rgba(43,232,255,0.3);
+        border-radius: 8px;
+      }
+      .tz-modal::-webkit-scrollbar-thumb:hover { background: rgba(43,232,255,0.5); }
+
+      /* ---- Escáner de códigos (html5-qrcode inyecta su propio DOM
+         dentro de este contenedor: video, selector de cámara, botones
+         de permiso) — solo lo encajamos en el tema oscuro, sin tocar
+         su lógica interna. ---- */
+      .tz-barcode-scanner-region {
+        margin-top: 12px;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid var(--border-soft);
+        background: #000;
+      }
+      .tz-barcode-scanner-region video { border-radius: 12px; }
+      .tz-barcode-scanner-region select,
+      .tz-barcode-scanner-region button {
+        background: rgba(255,255,255,0.08);
+        color: var(--text);
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-family: 'Rajdhani', sans-serif;
+        cursor: pointer;
+      }
+      .tz-barcode-scanner-region span,
+      .tz-barcode-scanner-region a {
+        color: var(--text-dim);
+      }
+      .tz-scanner-feedback {
+        margin-top: 12px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(43,232,255,0.3);
+        background: rgba(43,232,255,0.08);
+        text-align: center;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 13px;
+        color: var(--cyan);
+      }
       .tz-modal-close {
         position: absolute;
         top: 14px;
@@ -1070,6 +1178,137 @@ export default function Styles() {
         letter-spacing: 0.03em;
       }
 
+      /* ---- Acordeón de "Visibilidad en catálogo público": Categoría
+         -> Subgrupo -> productos. La animación de expand/collapse usa
+         grid-template-rows 0fr/1fr (en vez de max-height con un valor
+         arbitrario) porque se anima suave sin importar cuánto mida el
+         contenido real — esto es lo que da la sensación "premium" de
+         no saltar ni recortarse de golpe. ---- */
+      .tz-vis-accordion {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .tz-vis-category {
+        border: 1px solid var(--border-soft);
+        border-radius: 12px;
+        overflow: hidden;
+        background: rgba(255,255,255,0.02);
+      }
+      .tz-vis-category-header,
+      .tz-vis-subgroup-header {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        text-align: left;
+      }
+      .tz-vis-category-header {
+        padding: 12px 14px;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 12.5px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .tz-vis-subgroup-header {
+        padding: 9px 12px;
+        font-size: 12.5px;
+        font-weight: 700;
+        color: var(--cyan);
+      }
+      .tz-vis-category-meta {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-dim);
+        flex-shrink: 0;
+      }
+      .tz-vis-accordion-body {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .tz-vis-accordion-body.tz-vis-accordion-open {
+        grid-template-rows: 1fr;
+      }
+      .tz-vis-accordion-inner {
+        overflow: hidden;
+        min-height: 0;
+      }
+      .tz-vis-category > .tz-vis-accordion-body > .tz-vis-accordion-inner {
+        padding: 0 14px 14px;
+      }
+      .tz-vis-subsection {
+        border-top: 1px solid var(--border-soft);
+      }
+      .tz-vis-subsection:first-child { border-top: none; }
+      .tz-vis-subsection-body { padding: 10px 12px 12px; }
+      .tz-vis-search-row {
+        display: flex;
+        align-items: stretch;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .tz-vis-search-row .tz-text-input {
+        flex: 1 1 auto;
+        /* Sin esto, el input usa su min-width intrínseco (bastante
+           ancho) como piso y fuerza al row entero a desbordar en vez
+           de respetar flex:1 — es lo que aplastaba el botón de al
+           lado dentro del acordeón angosto. */
+        min-width: 0;
+        margin: 0;
+        padding: 12px 14px;
+      }
+      .tz-vis-scan-btn {
+        flex: 0 0 auto;
+        width: 42px;
+        /* Sin alto fijo: 'align-items: stretch' en .tz-vis-search-row
+           ya lo estira exactamente a la altura del input de al lado. */
+        padding: 0;
+        justify-content: center;
+      }
+      .tz-vis-row-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+      .tz-vis-delete-btn {
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid rgba(255,84,112,0.35);
+        background: rgba(255,84,112,0.08);
+        color: var(--danger);
+        cursor: pointer;
+      }
+      .tz-vis-delete-btn:hover { background: rgba(255,84,112,0.18); }
+      .tz-vis-confirm-delete {
+        border: 1px solid rgba(255,84,112,0.35);
+        background: rgba(255,84,112,0.06);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 12.5px;
+      }
+      .tz-vis-confirm-delete p { margin: 0 0 8px; }
+      .tz-vis-confirm-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
       .tz-toggle {
         position: relative;
         display: inline-flex;
@@ -1167,6 +1406,13 @@ export default function Styles() {
         text-transform: uppercase;
         color: var(--text-dim);
         font-weight: 700;
+      }
+      .tz-field-hint {
+        margin: 2px 0 0;
+        font-size: 11px;
+        color: var(--text-dim);
+        opacity: 0.8;
+        font-style: italic;
       }
       .tz-amount-input {
         width: 100%;
@@ -1312,6 +1558,97 @@ export default function Styles() {
         border: 1px solid rgba(255,84,112,0.4);
         color: var(--danger);
       }
+
+      /* ---------- BRANDING (pantallas de login) ---------- */
+      .tz-brand-title {
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 900;
+        font-size: 30px;
+        letter-spacing: 0.08em;
+        text-align: center;
+        margin: 4px 0 2px;
+        background: linear-gradient(90deg, var(--cyan), var(--pink));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+        filter: drop-shadow(0 0 18px rgba(43,232,255,0.35));
+      }
+      .tz-brand-sub {
+        text-align: center;
+        color: var(--text-dim);
+        font-size: 12.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        margin: 0 0 26px;
+      }
+      .tz-csv-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .tz-csv-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-soft);
+        color: var(--text-dim);
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 11.5px;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .tz-csv-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+
+      .tz-arqueo-ok,
+      .tz-arqueo-faltante,
+      .tz-arqueo-sobrante {
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+      .tz-arqueo-ok { color: var(--cyan); }
+      .tz-arqueo-faltante { color: var(--danger); }
+      .tz-arqueo-sobrante { color: var(--green); }
+      p.tz-arqueo-ok,
+      p.tz-arqueo-faltante,
+      p.tz-arqueo-sobrante {
+        margin: -6px 0 0;
+        font-size: 13.5px;
+      }
+
+      .tz-login-field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+      .tz-modal-logo {
+        display: block;
+        height: 88px;
+        width: auto;
+        margin: 0 auto 12px;
+      }
+      .tz-checkbox-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: -4px 0 16px;
+        font-size: 13px;
+        color: var(--text-dim);
+        cursor: pointer;
+        user-select: none;
+      }
+      .tz-checkbox-row input {
+        width: 15px;
+        height: 15px;
+        accent-color: var(--cyan);
+        cursor: pointer;
+      }
       .tz-cliente-action-deuda { border-color: rgba(255,84,112,0.4); color: var(--danger); }
       .tz-cliente-action-deuda:hover { background: rgba(255,84,112,0.12); }
       .tz-cliente-action-pago { border-color: rgba(57,255,176,0.4); color: var(--green); }
@@ -1372,6 +1709,19 @@ export default function Styles() {
         align-items: center;
       }
       .tz-gasto-item-desc { flex: 1 1 100%; }
+      .tz-gasto-item-desc-wrap {
+        flex: 1 1 100%;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .tz-gasto-item-desc-wrap .tz-gasto-item-desc { flex: 1 1 auto; min-width: 0; }
+      .tz-gasto-item-linked {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        color: var(--cyan);
+      }
       .tz-gasto-item-qty { flex: 1 1 64px; text-align: center; padding-left: 4px; padding-right: 4px; }
       .tz-gasto-item-price { flex: 1 1 76px; text-align: center; padding-left: 4px; padding-right: 4px; }
       .tz-gasto-item-subtotal {
@@ -1592,6 +1942,12 @@ export default function Styles() {
         background: rgba(255,149,0,0.16);
         box-shadow: 0 0 14px rgba(255,149,0,0.4);
       }
+      .tz-metodo-btn-efectivo { border-color: rgba(57,255,176,0.5); color: var(--green); }
+      .tz-metodo-btn-efectivo.tz-gasto-tipo-active {
+        border-color: var(--green);
+        background: rgba(57,255,176,0.16);
+        box-shadow: 0 0 14px rgba(57,255,176,0.4);
+      }
 
       .tz-checkout-scan,
       .tz-checkout-fiado {
@@ -1634,6 +1990,7 @@ export default function Styles() {
       .tz-metodo-tag-plin { color: var(--plin); border-color: rgba(0,224,198,0.5); background: rgba(0,224,198,0.1); }
       .tz-metodo-tag-otros { color: var(--gris); border-color: rgba(156,163,175,0.5); background: rgba(156,163,175,0.1); }
       .tz-metodo-tag-fiado { color: var(--orange); border-color: rgba(255,149,0,0.5); background: rgba(255,149,0,0.1); }
+      .tz-metodo-tag-efectivo { color: var(--green); border-color: rgba(57,255,176,0.5); background: rgba(57,255,176,0.1); }
 
       .tz-scan-btn {
         display: flex;

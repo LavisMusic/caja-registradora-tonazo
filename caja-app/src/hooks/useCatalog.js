@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 
 function slugify(text) {
@@ -31,16 +31,26 @@ function buildSectionsFromRows(categoriaRows, productoRows) {
       .filter((p) => p.categoria === cat.nombre)
       .sort((a, b) => a.orden - b.orden);
 
-    // Agrupa por 'subgrupo' preservando el orden de aparición.
-    const groupsOrder = [];
+    // Agrupa por 'subgrupo'.
     const groupsMap = new Map();
     productosDeCategoria.forEach((p) => {
       const groupKey = p.subgrupo || "__sin_subgrupo__";
       if (!groupsMap.has(groupKey)) {
         groupsMap.set(groupKey, []);
-        groupsOrder.push(groupKey);
       }
       groupsMap.get(groupKey).push(p);
+    });
+
+    // Orden ESTRICTO por el número al inicio del nombre del subgrupo
+    // (ej. "01 RON CARTAVIO" antes que "02 OTRO PACK"), no por el
+    // orden de aparición de los productos — el negocio depende de este
+    // orden para que la carta se vea como espera. Natural/numeric
+    // sort: "2" antes que "10" (localeCompare alfabético pondría "10"
+    // primero). Los productos sin subgrupo van siempre al final.
+    const groupsOrder = Array.from(groupsMap.keys()).sort((a, b) => {
+      if (a === "__sin_subgrupo__") return 1;
+      if (b === "__sin_subgrupo__") return -1;
+      return a.localeCompare(b, undefined, { numeric: true });
     });
 
     const groups = groupsOrder.map((groupKey) => {
@@ -56,6 +66,7 @@ function buildSectionsFromRows(categoriaRows, productoRows) {
           name: p.nombre,
           detail: p.descripcion || "",
           price: Number(p.precio),
+          cost: p.costo != null ? Number(p.costo) : null,
           consumes: Array.isArray(p.consumos) ? p.consumos : JSON.parse(p.consumos || "[]"),
           visiblePublico: p.visible_publico ?? true,
         })),
@@ -89,82 +100,78 @@ export function useCatalog() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
+  // Extraído como useCallback (en vez de una función local del efecto)
+  // para poder exponerlo como 'refetch': el flujo de "crear producto al
+  // vuelo" desde Editar Stock hace un INSERT fuera de este hook y
+  // necesita refrescar sections/productsById/stock sin recargar la
+  // página.
+  const load = useCallback(async () => {
+    const { data: categoriaRows, error: categoriaError } = await supabase
+      .from("categorias")
+      .select("*")
+      .eq("activo", true)
+      .order("orden", { ascending: true });
 
-    async function load() {
-      const { data: categoriaRows, error: categoriaError } = await supabase
-        .from("categorias")
-        .select("*")
-        .eq("activo", true)
-        .order("orden", { ascending: true });
-
-      if (categoriaError) {
-        console.error("Error cargando categorias desde Supabase:", categoriaError);
-      }
-
-      const { data: productoRows, error: productoError } = await supabase
-        .from("productos")
-        .select("*")
-        .eq("activo", true)
-        .order("orden", { ascending: true });
-
-      if (productoError) {
-        console.error("Error cargando productos desde Supabase:", productoError);
-      }
-
-      const builtSections = buildSectionsFromRows(categoriaRows || [], productoRows || []);
-      const builtProductsById = buildProductsById(builtSections);
-
-      if (categoriaError || productoError) {
-        if (!cancelled) {
-          setError(
-            "No se pudo cargar el catálogo desde Supabase. Revisa las tablas 'categorias' y 'productos'."
-          );
-        }
-      }
-
-      const { data: stockRows, error: stockError } = await supabase
-        .from("stock")
-        .select("nombre, cantidad, etiqueta");
-
-      if (stockError) {
-        console.error("Error cargando stock desde Supabase:", stockError);
-      }
-
-      const loadedStock = {};
-      const loadedStockLabels = {};
-      (stockRows || []).forEach((row) => {
-        loadedStock[row.nombre] = row.cantidad;
-        loadedStockLabels[row.nombre] = row.etiqueta || row.nombre;
-      });
-
-      Object.values(builtProductsById).forEach((product) => {
-        (product.consumes || []).forEach(({ key }) => {
-          if (loadedStock[key] == null) {
-            console.warn(
-              `La key de stock "${key}" (usada por "${product.name}") no existe todavía en la tabla 'stock'. Se muestra en 0.`
-            );
-            loadedStock[key] = 0;
-            loadedStockLabels[key] = key;
-          }
-        });
-      });
-
-      if (!cancelled) {
-        setSections(builtSections);
-        setProductsById(builtProductsById);
-        setStock(loadedStock);
-        setStockLabels(loadedStockLabels);
-        setLoading(false);
-      }
+    if (categoriaError) {
+      console.error("Error cargando categorias desde Supabase:", categoriaError);
     }
 
-    load();
-    return () => {
-      cancelled = true;
-    };
+    const { data: productoRows, error: productoError } = await supabase
+      .from("productos")
+      .select("*")
+      .eq("activo", true)
+      .order("orden", { ascending: true });
+
+    if (productoError) {
+      console.error("Error cargando productos desde Supabase:", productoError);
+    }
+
+    const builtSections = buildSectionsFromRows(categoriaRows || [], productoRows || []);
+    const builtProductsById = buildProductsById(builtSections);
+
+    if (categoriaError || productoError) {
+      setError(
+        "No se pudo cargar el catálogo desde Supabase. Revisa las tablas 'categorias' y 'productos'."
+      );
+    }
+
+    const { data: stockRows, error: stockError } = await supabase
+      .from("stock")
+      .select("nombre, cantidad, etiqueta");
+
+    if (stockError) {
+      console.error("Error cargando stock desde Supabase:", stockError);
+    }
+
+    const loadedStock = {};
+    const loadedStockLabels = {};
+    (stockRows || []).forEach((row) => {
+      loadedStock[row.nombre] = row.cantidad;
+      loadedStockLabels[row.nombre] = row.etiqueta || row.nombre;
+    });
+
+    Object.values(builtProductsById).forEach((product) => {
+      (product.consumes || []).forEach(({ key }) => {
+        if (loadedStock[key] == null) {
+          console.warn(
+            `La key de stock "${key}" (usada por "${product.name}") no existe todavía en la tabla 'stock'. Se muestra en 0.`
+          );
+          loadedStock[key] = 0;
+          loadedStockLabels[key] = key;
+        }
+      });
+    });
+
+    setSections(builtSections);
+    setProductsById(builtProductsById);
+    setStock(loadedStock);
+    setStockLabels(loadedStockLabels);
+    setLoading(false);
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Alterna si un producto se muestra en el catálogo público (no afecta
   // su disponibilidad para vender desde /admin). Actualiza el estado
@@ -225,5 +232,6 @@ export function useCatalog() {
     loading,
     error,
     setProductVisibility,
+    refetch: load,
   };
 }
