@@ -64,13 +64,51 @@ export default function BarcodeScannerModal({ onScan, onClose }) {
     }
   };
 
-  const startCamera = async () => {
+  /* qrbox rectangular y ancho (no cuadrado): los códigos de barras 1D
+     (EAN/UPC) son alargados, así que un recuadro angosto obliga a
+     alejar el producto para que "entre" — y al alejarlo se pierde
+     foco. Un rectángulo que ocupa casi todo el ancho del visor da
+     margen de sobra para encuadrar sin tener que alejarse. Nota
+     técnica real: en esta versión de html5-qrcode el qrbox no es solo
+     una guía visual, ES la región que se recorta y decodifica (ver
+     getShadedRegionBounds en la librería) — no existe una forma de
+     "solo mostrar la guía pero leer toda la pantalla", así que en vez
+     de eso se agranda el recuadro al máximo razonable para que en la
+     práctica cubra casi todo el visor. */
+  const computeQrbox = (viewfinderWidth, viewfinderHeight) => {
+    const width = Math.min(viewfinderWidth - 24, Math.floor(viewfinderWidth * 0.92));
+    const height = Math.min(viewfinderHeight - 24, Math.floor(viewfinderHeight * 0.5));
+    return {
+      width: Math.max(width, 200),
+      height: Math.max(height, 110),
+    };
+  };
+
+  const startCamera = async ({ withZoom = true } = {}) => {
     const html5QrCode = html5QrCodeRef.current;
     if (!html5QrCode) return;
+
+    // Resolución alta siempre (más densidad de píxeles ayuda a leer
+    // códigos chicos o de lejos); el zoom digital vía "advanced" es
+    // best-effort — no todos los navegadores/cámaras lo soportan, así
+    // que si start() lo rechaza se reintenta una vez sin él.
+    const videoConstraints = {
+      facingMode: "environment",
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+    };
+    if (withZoom) {
+      videoConstraints.advanced = [{ zoom: 2.0 }];
+    }
+
     try {
       await html5QrCode.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 260, height: 160 } },
+        {
+          fps: 15,
+          qrbox: computeQrbox,
+          videoConstraints,
+        },
         (decodedText) => {
           if (handledRef.current || cancelledRef.current) return;
           handledRef.current = true;
@@ -86,6 +124,12 @@ export default function BarcodeScannerModal({ onScan, onClose }) {
       );
     } catch (err) {
       if (cancelledRef.current) return;
+      if (withZoom) {
+        // El zoom digital no fue aceptado (cámara/navegador sin
+        // soporte de la constraint "advanced.zoom") — reintenta con
+        // solo la resolución alta, sin zoom.
+        return startCamera({ withZoom: false });
+      }
       console.error("No se pudo iniciar la cámara:", err);
       setCameraError("No se pudo acceder a la cámara. Revisa los permisos del navegador.");
     }
@@ -162,7 +206,7 @@ export default function BarcodeScannerModal({ onScan, onClose }) {
         <div className="tz-payment-modal">
           <h2>Escanear Producto</h2>
           <p className="tz-stock-editor-sub">
-            Apunta la cámara al código de barras o QR — se lee solo, sin tocar nada.
+            Encuadra el código dentro del recuadro ancho — no hace falta acercar el producto, se lee solo.
           </p>
           {cameraError && <p className="tz-error">{cameraError}</p>}
           <div id={SCANNER_ELEMENT_ID} className="tz-barcode-scanner-region" />
