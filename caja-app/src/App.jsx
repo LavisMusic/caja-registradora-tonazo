@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
+import html2canvas from "html2canvas";
 import { formatSoles, formatDate } from "./utils/format";
 import { useCatalog } from "./hooks/useCatalog";
 import Styles from "./components/Styles";
@@ -43,6 +44,7 @@ import {
 } from "./lib/productLookup";
 import BarcodeScannerModal from "./components/BarcodeScannerModal";
 import CatalogVisibilityAccordion from "./components/CatalogVisibilityAccordion";
+import TicketBoleta from "./components/TicketBoleta";
 
 import logo from "./assets/logo.png";
 
@@ -136,9 +138,21 @@ function buildSaleWhatsappMessage(sale) {
       `• ${it.name}${it.detail ? ` (${it.detail})` : ""} x${it.qty} — ${formatSoles(it.total)}`
   );
   const greeting = sale.nombre ? `Hola ${sale.nombre}, ` : "Hola, ";
-  return `${greeting}aquí tienes el resumen de tu compra en Tonazo:\n\n${lines.join(
+  return `${greeting}aquí tienes el resumen de tu compra:\n\n${lines.join(
     "\n"
   )}\n\nTotal: ${formatSoles(sale.total)}\n¡Gracias por tu compra!`;
+}
+
+/* Perú: los celulares se anotan localmente con 9 dígitos empezando en
+   "9" (ej. 987654321), pero wa.me exige el número en formato
+   internacional completo (con código de país, sin '+'). Si el cajero
+   escribió el número "tal como lo dicta el cliente" (sin 51 adelante,
+   el caso más común), se lo anteponemos acá — si ya viene con código
+   de país (u otro formato), se manda tal cual, sin adivinar de más. */
+function toPeruWhatsappNumber(whatsapp) {
+  const cleaned = (whatsapp || "").replace(/[^\d]/g, "");
+  if (!cleaned) return null;
+  return cleaned.length === 9 && cleaned.startsWith("9") ? `51${cleaned}` : cleaned;
 }
 
 function formatTime(ts) {
@@ -203,7 +217,7 @@ function downloadCSV(filename, headers, rows, delimiter = ",") {
 /* ------------------------------------------------------------------ */
 
 export default function App() {
-  const { signOut, session, isAdmin } = useAuth();
+  const { signOut, session, isAdmin, nombre: cajeroNombre } = useAuth();
 
   /* ---- catálogo dinámico: cargado por el hook compartido useCatalog ---- */
   const {
@@ -369,13 +383,24 @@ export default function App() {
   /* ---- CRM básico (WhatsApp) en el proceso de cobro ---- */
   const [checkoutNombre, setCheckoutNombre] = useState("");
   const [checkoutWhatsapp, setCheckoutWhatsapp] = useState("");
+  const [checkoutNombreSuggestOpen, setCheckoutNombreSuggestOpen] = useState(false);
+  const [checkoutWhatsappSuggestOpen, setCheckoutWhatsappSuggestOpen] = useState(false);
   const [lastSale, setLastSale] = useState(null); // resumen de la última venta enviada
+
+  /* ---- boleta digital por WhatsApp: captura (html2canvas) del
+     TicketBoleta oculto -> imagen -> portapapeles -> abre wa.me para
+     que el cajero solo tenga que pegar (Ctrl+V) la imagen. ---- */
+  const ticketRef = useRef(null);
+  const [boletaSending, setBoletaSending] = useState(false);
+  const [boletaError, setBoletaError] = useState("");
 
   /* ---- checkout: método de pago obligatorio antes de "Enviar Venta" ---- */
   const [checkoutMetodo, setCheckoutMetodo] = useState(null); // 'YAPE'|'PLIN'|'OTROS'|'FIADO'|null
   const [checkoutFiadoClienteId, setCheckoutFiadoClienteId] = useState(null);
   const [checkoutFiadoAddingNew, setCheckoutFiadoAddingNew] = useState(false);
   const [checkoutFiadoNewName, setCheckoutFiadoNewName] = useState("");
+  const [checkoutFiadoNewWhatsapp, setCheckoutFiadoNewWhatsapp] = useState("");
+  const [checkoutFiadoNewPin, setCheckoutFiadoNewPin] = useState("");
   const [checkoutFiadoSaving, setCheckoutFiadoSaving] = useState(false);
 
   /* ---- fiado_items: deuda por producto individual (permite el
@@ -393,6 +418,8 @@ export default function App() {
 
   const paymentMenuRef = useRef(null);
   const globalSearchRef = useRef(null);
+  const checkoutNombreRef = useRef(null);
+  const checkoutWhatsappRef = useRef(null);
 
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -456,6 +483,39 @@ export default function App() {
       document.removeEventListener("touchstart", handleClickOutside);
     };
   }, [globalSearchOpen]);
+
+  /* ---- cierra los dropdowns de autocompletado de Nombre/WhatsApp del
+     checkout al hacer clic afuera (mismo patrón que el resto de la
+     app) ---- */
+  useEffect(() => {
+    if (!checkoutNombreSuggestOpen) return undefined;
+    const handleClickOutside = (e) => {
+      if (checkoutNombreRef.current && !checkoutNombreRef.current.contains(e.target)) {
+        setCheckoutNombreSuggestOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, [checkoutNombreSuggestOpen]);
+
+  useEffect(() => {
+    if (!checkoutWhatsappSuggestOpen) return undefined;
+    const handleClickOutside = (e) => {
+      if (checkoutWhatsappRef.current && !checkoutWhatsappRef.current.contains(e.target)) {
+        setCheckoutWhatsappSuggestOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, [checkoutWhatsappSuggestOpen]);
 
   /* ---- proveedor inteligente: si el RUC (11 dígitos, formato Perú)
      ya existe en la tabla 'proveedores', autocompleta la Razón Social;
@@ -746,13 +806,16 @@ export default function App() {
     });
   };
 
-  /* ---- selección "garantizada" (no toggle) para el buscador global y
+  /* ---- selección "modo caja registradora" para el buscador global y
      el escáner rápido de la pantalla principal: a diferencia de
      toggleProduct (que DESELECCIONA si el producto ya estaba en el
-     carrito), acá siempre queremos terminar con el producto adentro
-     del carrito — elegir la misma sugerencia o escanear el mismo
-     código dos veces no debería sacarlo por accidente. Devuelve
-     false si no hay stock, para que el llamador pueda avisar. ---- */
+     carrito), acá siempre queremos SUMAR — la primera vez agrega el
+     producto con cantidad 1, y si ya estaba en el carrito (típico al
+     escanear la misma unidad dos veces, ej. dos gaseosas iguales) le
+     suma +1 en vez de dejarlo igual, igual que un POS real. Clampa al
+     stock disponible (mismo límite que ya aplica changeQty) para no
+     vender de más. Devuelve false si no hay stock, para que el
+     llamador pueda avisar. ---- */
   const selectProductForSale = (product) => {
     const avail = availabilityFor(product, stock);
     if (avail <= 0) return false;
@@ -762,7 +825,10 @@ export default function App() {
       setSuccessMsg("");
       setLastSale(null);
     }
-    setSelection((prev) => ({ ...prev, [product.id]: prev[product.id] ?? 1 }));
+    setSelection((prev) => {
+      const current = prev[product.id] ?? 0;
+      return { ...prev, [product.id]: Math.min(current + 1, avail) };
+    });
     return true;
   };
 
@@ -1056,7 +1122,15 @@ export default function App() {
     const nombre = checkoutNombre.trim();
     const saleTotal = newEntries.reduce((sum, e) => sum + e.total, 0);
     if (whatsapp) {
-      setLastSale({ purchaseId, nombre, whatsapp, items: newEntries, total: saleTotal });
+      setLastSale({
+        purchaseId,
+        nombre,
+        whatsapp,
+        items: newEntries,
+        total: saleTotal,
+        metodoPago: checkoutMetodo,
+        timestamp,
+      });
     } else {
       setLastSale(null);
     }
@@ -1107,41 +1181,93 @@ export default function App() {
   };
 
   /* ---- checkout: crear un cliente nuevo al vuelo (sin salir del cobro) ---- */
+  /* ---- alta de cliente desde el checkout (sub-flujo Fiado): usa la
+     MISMA Edge Function 'create-cliente' que ya usa la Libreta
+     (saveCliente) en vez de un INSERT directo — el PIN es una
+     credencial real (password de la cuenta de Supabase Auth del
+     cliente, celular@tonazo.app), así que necesita pasar por el
+     service_role del servidor para quedar hasheado, nunca guardarse
+     en texto plano en una tabla normal. Por esto mismo el celular acá
+     es obligatorio (es el usuario de login), no opcional. ---- */
   const saveCheckoutFiadoCliente = async () => {
     const nombre = checkoutFiadoNewName.trim();
+    const celular = checkoutFiadoNewWhatsapp.trim();
+    const pin = checkoutFiadoNewPin.trim();
+
     if (!nombre) {
       setSubmitError("Ingresa el nombre del cliente.");
       return;
     }
+    if (!/^\d{6,15}$/.test(celular)) {
+      setSubmitError("Ingresa un celular válido (solo números, 6 a 15 dígitos).");
+      return;
+    }
+    if (!/^\d{4,10}$/.test(pin)) {
+      setSubmitError("El PIN debe tener entre 4 y 10 dígitos.");
+      return;
+    }
+
     setCheckoutFiadoSaving(true);
     setSubmitError("");
-    const timestamp = Date.now();
 
-    const { data: inserted, error } = await supabase
-      .from("clientes_fiado")
-      .insert([{ nombre, whatsapp: null, fecha: timestamp }])
-      .select();
+    const { data, error } = await supabase.functions.invoke("create-cliente", {
+      body: { nombre, celular, pin },
+    });
 
     setCheckoutFiadoSaving(false);
 
     if (error) {
       console.error("Error al crear cliente desde el checkout:", error);
-      setSubmitError("No se pudo crear el cliente. Intenta de nuevo.");
+      const body = await error.context?.json?.().catch(() => null);
+      setSubmitError(body?.error || "No se pudo crear el cliente. Intenta de nuevo.");
       return;
     }
 
-    const row = inserted && inserted[0];
     const newCliente = {
-      id: row?.id ?? `cliente-${timestamp}`,
-      nombre,
-      whatsapp: "",
-      timestamp: Number(row?.fecha ?? timestamp),
+      id: data.id,
+      nombre: data.nombre,
+      whatsapp: data.whatsapp,
+      timestamp: Number(data.fecha),
     };
 
     setClientes((prev) => [newCliente, ...prev]);
     setCheckoutFiadoClienteId(newCliente.id);
     setCheckoutFiadoAddingNew(false);
     setCheckoutFiadoNewName("");
+    setCheckoutFiadoNewWhatsapp("");
+    setCheckoutFiadoNewPin("");
+  };
+
+  /* ---- autocompletado de Nombre/WhatsApp en el checkout: sugiere
+     clientes ya registrados en 'clientes_fiado' mientras se escribe, y
+     vincula ambos campos entre sí — elegir una sugerencia por nombre
+     también completa su WhatsApp (si lo tiene), y viceversa. Puramente
+     un atajo de tipeo: no obliga a que el cliente exista, el checkout
+     normal (no-Fiado) sigue aceptando cualquier nombre/número nuevo. ---- */
+  const checkoutNombreSuggestions = useMemo(() => {
+    const q = checkoutNombre.trim().toLowerCase();
+    if (!q) return [];
+    return clientes.filter((c) => c.nombre?.toLowerCase().includes(q)).slice(0, 6);
+  }, [checkoutNombre, clientes]);
+
+  const checkoutWhatsappSuggestions = useMemo(() => {
+    const q = checkoutWhatsapp.replace(/[^\d]/g, "");
+    if (!q) return [];
+    return clientes
+      .filter((c) => c.whatsapp && c.whatsapp.replace(/[^\d]/g, "").includes(q))
+      .slice(0, 6);
+  }, [checkoutWhatsapp, clientes]);
+
+  const selectCheckoutClienteByNombre = (c) => {
+    setCheckoutNombre(c.nombre || "");
+    if (c.whatsapp) setCheckoutWhatsapp(c.whatsapp);
+    setCheckoutNombreSuggestOpen(false);
+  };
+
+  const selectCheckoutClienteByWhatsapp = (c) => {
+    setCheckoutWhatsapp(c.whatsapp || "");
+    if (c.nombre) setCheckoutNombre(c.nombre);
+    setCheckoutWhatsappSuggestOpen(false);
   };
 
   /* ---- checkout: ¿ya se puede mostrar "Enviar Venta"? ---- */
@@ -1801,6 +1927,65 @@ export default function App() {
     resetCobroForm();
   };
 
+  /* ---- eliminar cliente + su historial de fiado (Libreta): borra
+     primero las tablas hijas (fiado_items, movimientos_fiado) — que
+     tienen FK a clientes_fiado.id — y recién al final la fila del
+     cliente, en ese orden, para no chocar con la FK. Nota: esto NO
+     borra su cuenta de Supabase Auth (auth_user_id) — un cliente
+     eliminado acá simplemente deja de poder loguearse a ver un fiado
+     que ya no existe, pero su acceso no queda revocado explícitamente;
+     revocarlo requeriría otra Edge Function con service_role. ---- */
+  const eliminarClienteFiado = async (cliente) => {
+    if (
+      !window.confirm(
+        `¿Estás seguro de eliminar el registro de "${cliente.nombre}"? Esto borra también todo su historial de fiados y pagos.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const { error: itemsError } = await supabase
+        .from("fiado_items")
+        .delete()
+        .eq("cliente_id", cliente.id);
+      if (itemsError) {
+        console.error("Error eliminando fiado_items del cliente:", itemsError);
+        alert("No se pudo eliminar el historial de deuda de este cliente.");
+        return;
+      }
+
+      const { error: movError } = await supabase
+        .from("movimientos_fiado")
+        .delete()
+        .eq("cliente_id", cliente.id);
+      if (movError) {
+        console.error("Error eliminando movimientos_fiado del cliente:", movError);
+        alert("No se pudo eliminar el historial de pagos de este cliente.");
+        return;
+      }
+
+      const { error: clienteError } = await supabase
+        .from("clientes_fiado")
+        .delete()
+        .eq("id", cliente.id);
+      if (clienteError) {
+        console.error("Error eliminando cliente:", clienteError);
+        alert("No se pudo eliminar el cliente.");
+        return;
+      }
+
+      setClientes((prev) => prev.filter((c) => c.id !== cliente.id));
+      setFiadoItems((prev) => prev.filter((it) => it.clienteId !== cliente.id));
+      setMovimientos((prev) => prev.filter((m) => m.clienteId !== cliente.id));
+      if (selectedClienteId === cliente.id) setSelectedClienteId(null);
+      if (checkoutFiadoClienteId === cliente.id) setCheckoutFiadoClienteId(null);
+    } catch (err) {
+      console.error("Error eliminando cliente:", err);
+      alert("No se pudo eliminar el cliente. Intenta de nuevo.");
+    }
+  };
+
   const handleCobroMontoChange = (value) => {
     if (value === "" || /^\d*\.?\d{0,2}$/.test(value)) {
       setCobroMonto(value);
@@ -2089,9 +2274,64 @@ export default function App() {
 
   /* ---- genera un link de WhatsApp con el recordatorio de saldo ---- */
   const buildWhatsappLink = (whatsapp, message) => {
-    const cleaned = (whatsapp || "").replace(/[^\d]/g, "");
-    if (!cleaned) return null;
-    return `https://wa.me/${cleaned}?text=${encodeURIComponent(message)}`;
+    const numero = toPeruWhatsappNumber(whatsapp);
+    if (!numero) return null;
+    return `https://wa.me/${numero}?text=${encodeURIComponent(message)}`;
+  };
+
+  /* ---- boleta digital: captura el TicketBoleta oculto (ticketRef) con
+     html2canvas, copia esa imagen al portapapeles del sistema y abre
+     WhatsApp con un mensaje que le indica al cajero que pegue (Ctrl+V)
+     la imagen — WhatsApp Web/App no tiene una API pública para adjuntar
+     una imagen directamente desde un link wa.me, así que el
+     portapapeles es el atajo real para no tener que descargar y volver
+     a subir la boleta a mano. ---- */
+  const enviarBoletaPorWhatsApp = async () => {
+    if (!lastSale) return;
+    const numero = toPeruWhatsappNumber(lastSale.whatsapp);
+    if (!numero) {
+      setBoletaError("Ese número de WhatsApp no es válido.");
+      return;
+    }
+    if (!ticketRef.current) {
+      setBoletaError("No se pudo preparar la boleta. Intenta de nuevo.");
+      return;
+    }
+
+    setBoletaError("");
+    setBoletaSending(true);
+    try {
+      const canvas = await html2canvas(ticketRef.current, { scale: 2, useCORS: true });
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("No se pudo generar la imagen de la boleta.");
+
+      // El portapapeles es la parte más frágil de este flujo (permisos
+      // del navegador, contexto no seguro, etc.) — si falla, avisamos
+      // puntualmente y NO abrimos WhatsApp: sin nada copiado, el aviso
+      // de "presiona Ctrl+V" solo confundiría al cajero.
+      try {
+        await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
+      } catch (clipboardErr) {
+        console.error("Error al copiar la boleta al portapapeles:", clipboardErr);
+        setBoletaError(
+          "No se pudo copiar la imagen al portapapeles (revisa los permisos del navegador para este sitio) — intenta de nuevo."
+        );
+        return;
+      }
+
+      // Mismo texto que el botón "Enviar resumen por WhatsApp" (un solo
+      // formato de mensaje, sin mención a la empresa ni emojis, ya
+      // definido en buildSaleWhatsappMessage) — acá además viaja
+      // codificado con encodeURIComponent para que espacios/símbolos
+      // lleguen bien al link wa.me.
+      const texto = buildSaleWhatsappMessage(lastSale);
+      window.open(`https://wa.me/${numero}?text=${encodeURIComponent(texto)}`, "_blank");
+    } catch (err) {
+      console.error("Error generando la boleta para WhatsApp:", err);
+      setBoletaError("No se pudo generar la boleta. Intenta de nuevo.");
+    } finally {
+      setBoletaSending(false);
+    }
   };
 
   /* ---- módulo de Gastos + Proveedores ---- */
@@ -3469,17 +3709,60 @@ export default function App() {
                     <Check size={16} /> {successMsg}
                   </p>
                   {lastSale && (
-                    <a
-                      href={buildWhatsappLink(
-                        lastSale.whatsapp,
-                        buildSaleWhatsappMessage(lastSale)
-                      )}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="tz-whatsapp-send-btn"
-                    >
-                      <MessageCircle size={15} /> Enviar resumen por WhatsApp
-                    </a>
+                    <>
+                      <a
+                        href={buildWhatsappLink(
+                          lastSale.whatsapp,
+                          buildSaleWhatsappMessage(lastSale)
+                        )}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="tz-whatsapp-send-btn"
+                      >
+                        <MessageCircle size={15} /> Enviar resumen por WhatsApp
+                      </a>
+                      <button
+                        type="button"
+                        className="tz-whatsapp-send-btn tz-whatsapp-send-btn-solid"
+                        onClick={enviarBoletaPorWhatsApp}
+                        disabled={boletaSending}
+                      >
+                        {boletaSending ? (
+                          <>
+                            <Loader2 size={15} className="tz-spin" /> Generando boleta…
+                          </>
+                        ) : (
+                          <>
+                            <MessageCircle size={15} /> Enviar Boleta por WhatsApp
+                          </>
+                        )}
+                      </button>
+                      {boletaError && <p className="tz-error">{boletaError}</p>}
+
+                      {/* ---- ticket oculto: fuera de pantalla, solo existe
+                         para que html2canvas lo capture como imagen ---- */}
+                      <div ref={ticketRef} style={{ position: "absolute", left: -9999, top: 0 }}>
+                        <TicketBoleta
+                          orden={{
+                            id: lastSale.purchaseId,
+                            fecha: formatDate(lastSale.timestamp),
+                            hora: formatTime(lastSale.timestamp),
+                            cajero: cajeroNombre || (isAdmin ? "Admin" : "Cajero"),
+                          }}
+                          cliente={{ nombre: lastSale.nombre }}
+                          productos={lastSale.items.map((it) => ({
+                            cantidad: it.qty,
+                            nombre: it.detail ? `${it.name} · ${it.detail}` : it.name,
+                            precioUnitario: it.price,
+                            subtotal: it.total,
+                          }))}
+                          totales={{
+                            totalPagar: lastSale.total,
+                            metodoPago: lastSale.metodoPago,
+                          }}
+                        />
+                      </div>
+                    </>
                   )}
                 </>
               ) : (
@@ -3508,23 +3791,74 @@ export default function App() {
                       totalItems > 1 ? "es" : ""
                     } · Total ${formatSoles(totalPrice)}`}
                   </p>
-                  <div className="tz-checkout-crm">
-                    <input
-                      type="text"
-                      className="tz-text-input tz-checkout-input"
-                      placeholder="Nombre del cliente (opcional)"
-                      value={checkoutNombre}
-                      onChange={(e) => setCheckoutNombre(e.target.value)}
-                    />
-                    <input
-                      type="text"
-                      inputMode="tel"
-                      className="tz-text-input tz-checkout-input"
-                      placeholder="WhatsApp (opcional)"
-                      value={checkoutWhatsapp}
-                      onChange={(e) => setCheckoutWhatsapp(e.target.value)}
-                    />
-                  </div>
+                  {/* ---- Nombre/WhatsApp generales: el flujo de Fiado maneja
+                     su propio cliente (con su propio nombre/WhatsApp) más
+                     abajo, así que estos dos quedan ocultos ahí para no
+                     duplicar/confundir con dos "clientes" distintos en la
+                     misma venta. ---- */}
+                  {checkoutMetodo !== "FIADO" && (
+                    <div className="tz-checkout-crm">
+                      <div className="tz-global-search-wrap" ref={checkoutNombreRef}>
+                        <input
+                          type="text"
+                          className="tz-text-input tz-checkout-input"
+                          placeholder="Nombre del cliente (opcional)"
+                          value={checkoutNombre}
+                          onChange={(e) => {
+                            setCheckoutNombre(e.target.value);
+                            setCheckoutNombreSuggestOpen(true);
+                          }}
+                          onFocus={() => setCheckoutNombreSuggestOpen(true)}
+                        />
+                        {checkoutNombreSuggestOpen && checkoutNombreSuggestions.length > 0 && (
+                          <div className="tz-global-search-dropdown">
+                            {checkoutNombreSuggestions.map((c) => (
+                              <button
+                                type="button"
+                                key={c.id}
+                                className="tz-global-search-item"
+                                onClick={() => selectCheckoutClienteByNombre(c)}
+                              >
+                                <span className="tz-global-search-item-name">{c.nombre}</span>
+                                {c.whatsapp && (
+                                  <span className="tz-global-search-item-meta">{c.whatsapp}</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="tz-global-search-wrap" ref={checkoutWhatsappRef}>
+                        <input
+                          type="text"
+                          inputMode="tel"
+                          className="tz-text-input tz-checkout-input"
+                          placeholder="WhatsApp (opcional)"
+                          value={checkoutWhatsapp}
+                          onChange={(e) => {
+                            setCheckoutWhatsapp(e.target.value);
+                            setCheckoutWhatsappSuggestOpen(true);
+                          }}
+                          onFocus={() => setCheckoutWhatsappSuggestOpen(true)}
+                        />
+                        {checkoutWhatsappSuggestOpen && checkoutWhatsappSuggestions.length > 0 && (
+                          <div className="tz-global-search-dropdown">
+                            {checkoutWhatsappSuggestions.map((c) => (
+                              <button
+                                type="button"
+                                key={c.id}
+                                className="tz-global-search-item"
+                                onClick={() => selectCheckoutClienteByWhatsapp(c)}
+                              >
+                                <span className="tz-global-search-item-name">{c.whatsapp}</span>
+                                <span className="tz-global-search-item-meta">{c.nombre}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* ---- método de pago: obligatorio antes de poder enviar ---- */}
                   <div className="tz-metodo-pago">
@@ -3710,12 +4044,30 @@ export default function App() {
                               onChange={(e) => setCheckoutFiadoNewName(e.target.value)}
                               autoFocus
                             />
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              className="tz-text-input"
+                              placeholder="Celular (será su usuario para iniciar sesión)"
+                              value={checkoutFiadoNewWhatsapp}
+                              onChange={(e) => setCheckoutFiadoNewWhatsapp(e.target.value)}
+                            />
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              className="tz-text-input"
+                              placeholder="PIN (4 a 10 dígitos)"
+                              value={checkoutFiadoNewPin}
+                              onChange={(e) => setCheckoutFiadoNewPin(e.target.value)}
+                            />
                             <div className="tz-add-entry-actions">
                               <button
                                 className="tz-camera-cancel"
                                 onClick={() => {
                                   setCheckoutFiadoAddingNew(false);
                                   setCheckoutFiadoNewName("");
+                                  setCheckoutFiadoNewWhatsapp("");
+                                  setCheckoutFiadoNewPin("");
                                 }}
                               >
                                 Cancelar
@@ -4669,15 +5021,14 @@ export default function App() {
                         };
                         const open = selectedClienteId === c.id;
                         const formOpen = cobroFormFor && cobroFormFor.clienteId === c.id;
-                        const whatsappLink =
-                          c.whatsapp && info.saldo > 0
-                            ? buildWhatsappLink(
-                                c.whatsapp,
-                                `Hola ${c.nombre}, este es un recordatorio de tu saldo pendiente de ${formatSoles(
-                                  info.saldo
-                                )} en Tonazo. ¡Gracias!`
-                              )
-                            : null;
+                        const whatsappLink = c.whatsapp
+                          ? buildWhatsappLink(
+                              c.whatsapp,
+                              `Hola ${c.nombre}, este es un recordatorio de tu saldo pendiente de ${formatSoles(
+                                info.saldo
+                              )} en Tonazo. ¡Gracias!`
+                            )
+                          : null;
 
                         return (
                           <li key={c.id} className="tz-history-row">
@@ -4745,16 +5096,30 @@ export default function App() {
                                       </button>
                                     </>
                                   )}
-                                  {whatsappLink && (
-                                    <a
-                                      href={whatsappLink}
-                                      target="_blank"
-                                      rel="noreferrer"
+                                  {info.saldo > 0.009 && (
+                                    <button
+                                      type="button"
                                       className="tz-cliente-action-btn tz-cliente-action-whatsapp"
+                                      onClick={() => window.open(whatsappLink, "_blank", "noreferrer")}
+                                      disabled={!c.whatsapp}
+                                      title={
+                                        c.whatsapp
+                                          ? undefined
+                                          : "Este cliente no tiene WhatsApp registrado"
+                                      }
                                     >
                                       <MessageCircle size={13} /> Recordar
-                                    </a>
+                                    </button>
                                   )}
+                                  <button
+                                    type="button"
+                                    className="tz-cliente-action-btn tz-cliente-action-delete"
+                                    onClick={() => eliminarClienteFiado(c)}
+                                    aria-label={`Eliminar cliente ${c.nombre}`}
+                                    title="Eliminar cliente"
+                                  >
+                                    <Trash2 size={13} /> Eliminar
+                                  </button>
                                 </div>
 
                                 {formOpen &&

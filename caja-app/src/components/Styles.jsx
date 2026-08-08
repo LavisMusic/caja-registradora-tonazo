@@ -340,12 +340,17 @@ export default function Styles() {
         top: calc(100% + 6px);
         left: 0;
         right: 0;
-        z-index: 20;
-        background: var(--panel);
+        z-index: 60;
+        /* Fondo SÓLIDO (no 'var(--panel)', que es semitransparente —
+           rgba con alpha 0.55 — y se mezclaba con las pestañas de
+           categoría detrás del dropdown). 'var(--panel-solid)' es la
+           misma variable que ya usan .tz-modal y .tz-payment-menu para
+           flotar opaco sobre el resto de la interfaz. */
+        background: var(--panel-solid);
         border: 1px solid var(--border-soft);
         border-radius: 12px;
         overflow: hidden;
-        box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+        box-shadow: 0 8px 30px rgba(0,0,0,0.5);
         max-height: 320px;
         overflow-y: auto;
       }
@@ -1777,6 +1782,8 @@ export default function Styles() {
       .tz-cliente-action-pago:hover { background: rgba(57,255,176,0.12); }
       .tz-cliente-action-whatsapp { border-color: rgba(37,211,102,0.5); color: #25d366; }
       .tz-cliente-action-whatsapp:hover { background: rgba(37,211,102,0.14); }
+      .tz-cliente-action-delete { border-color: rgba(255,84,112,0.5); color: var(--danger); }
+      .tz-cliente-action-delete:hover { background: rgba(255,84,112,0.14); }
 
       /* ---------- GASTOS + PROVEEDORES ---------- */
       .tz-gasto-row-2col {
@@ -1994,6 +2001,12 @@ export default function Styles() {
         flex-wrap: wrap;
       }
       .tz-checkout-input { flex: 1 1 140px; font-size: 12.5px; padding: 9px 11px; }
+      /* Los inputs de Nombre/WhatsApp con autocompletado van envueltos en
+         '.tz-global-search-wrap' (para poder anclar el dropdown) — ese
+         wrap, no el <input> directamente, es ahora el hijo flex real
+         de '.tz-checkout-crm', así que hereda acá el mismo flex-basis
+         que antes tenía '.tz-checkout-input'. */
+      .tz-checkout-crm .tz-global-search-wrap { flex: 1 1 140px; }
       .tz-whatsapp-send-btn {
         display: flex;
         align-items: center;
@@ -2010,6 +2023,17 @@ export default function Styles() {
         font-size: 13px;
       }
       .tz-whatsapp-send-btn:hover { background: rgba(37,211,102,0.22); }
+      .tz-whatsapp-send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+      /* Variante sólida: la boleta-imagen es la acción principal (vs. el
+         resumen de texto, que queda como link secundario en outline) —
+         más peso visual, mismo verde de marca de WhatsApp. */
+      .tz-whatsapp-send-btn-solid {
+        background: #25d366;
+        border-color: #25d366;
+        color: #05130c;
+        margin-top: 8px;
+      }
+      .tz-whatsapp-send-btn-solid:hover { background: #2fe676; }
 
       /* ---------- MÉTODO DE PAGO (checkout) ---------- */
       .tz-metodo-pago {
