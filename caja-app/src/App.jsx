@@ -41,6 +41,7 @@ import {
   resolveStockKey,
   crearProducto,
   safeOrdenValue,
+  calcularCostoPromedioPonderado,
 } from "./lib/productLookup";
 import BarcodeScannerModal from "./components/BarcodeScannerModal";
 import CatalogVisibilityAccordion from "./components/CatalogVisibilityAccordion";
@@ -55,15 +56,38 @@ import logo from "./assets/logo.png";
 /* publico.                                                             */
 /* ------------------------------------------------------------------ */
 
-/* Costo asumido por producto para calcular la Ganancia Neta.
-   No existe todavía una columna de costos reales en la tabla
-   'productos' de Supabase, así que se asume un costo = 55% del
-   precio de venta. Ajusta este número (o agrega una columna "costo"
-   a 'productos' y úsala aquí) cuando tengas tus costos reales. */
+/* Costo asumido por producto para calcular la Ganancia Neta, SOLO
+   cuando no hay forma de derivarlo de verdad — ver unitCostFor. */
 const DEFAULT_COST_RATIO = 0.55;
 
-function unitCostFor(product) {
+/* Costo real de un producto = suma del costo promedio ponderado (ver
+   'stock.precio_costo', calcularCostoPromedioPonderado en
+   productLookup.js) de cada clave que consume, multiplicado por
+   cuánto consume de ella. Esto funciona igual de bien para un
+   producto simple (una sola clave, qty 1) que para un combo (varias
+   claves) — el costo del combo es naturalmente la suma del costo de
+   sus partes, sin necesitar su propio dato de costo independiente.
+   Si CUALQUIERA de sus claves todavía no tiene un costo cargado (nunca
+   se le hizo un ingreso de stock con costo), no se puede confiar en el
+   resultado parcial — cae a 'productos.costo' (override manual, si
+   existe) y, en último caso, a la estimación del 55%. */
+function unitCostFor(product, stockCostos) {
   if (!product) return 0;
+
+  if (Array.isArray(product.consumes) && product.consumes.length > 0 && stockCostos) {
+    let total = 0;
+    let allKnown = true;
+    for (const { key, qty } of product.consumes) {
+      const costoUnitario = stockCostos[key];
+      if (costoUnitario == null) {
+        allKnown = false;
+        break;
+      }
+      total += costoUnitario * qty;
+    }
+    if (allKnown) return total;
+  }
+
   return product.cost != null ? product.cost : product.price * DEFAULT_COST_RATIO;
 }
 
@@ -226,6 +250,8 @@ export default function App() {
     stock,
     setStock,
     stockLabels,
+    stockCostos,
+    setStockCostos,
     loading: catalogLoading,
     error: catalogError,
     setProductVisibility,
@@ -256,6 +282,10 @@ export default function App() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [stockEdits, setStockEdits] = useState({});
+  // Costo TOTAL (no unitario) de la compra que entra a cada clave —
+  // junto con stockEdits[key] (unidades) alimenta el Costo Promedio
+  // Ponderado al guardar (ver saveStockEdits).
+  const [stockCostEdits, setStockCostEdits] = useState({});
   const [savingStock, setSavingStock] = useState(false);
   const [stockSavedMsg, setStockSavedMsg] = useState("");
   const [visibilityError, setVisibilityError] = useState("");
@@ -1300,6 +1330,7 @@ export default function App() {
   const openEdit = () => {
     setEditOpen(true);
     setStockEdits({});
+    setStockCostEdits({});
     setStockSavedMsg("");
     setStockSearchTerm("");
     setScannedStockKey(null);
@@ -1310,6 +1341,7 @@ export default function App() {
   const closeEdit = () => {
     setEditOpen(false);
     setStockEdits({});
+    setStockCostEdits({});
     setStockSavedMsg("");
     setStockSearchTerm("");
     setScannedStockKey(null);
@@ -1320,6 +1352,12 @@ export default function App() {
   const handleStockEditChange = (key, value) => {
     if (value === "" || /^[0-9]+$/.test(value)) {
       setStockEdits((prev) => ({ ...prev, [key]: value }));
+    }
+  };
+
+  const handleStockCostEditChange = (key, value) => {
+    if (value === "" || /^\d*\.?\d{0,2}$/.test(value)) {
+      setStockCostEdits((prev) => ({ ...prev, [key]: value }));
     }
   };
 
@@ -1701,16 +1739,44 @@ export default function App() {
       setStockSavedMsg("Ingresa al menos una cantidad para agregar.");
       return;
     }
+
+    // El costo TOTAL de la compra es obligatorio para cada clave con
+    // unidades cargadas — sin él no hay forma de calcular el Costo
+    // Promedio Ponderado, y guardar cantidad sin costo dejaría el
+    // costo de esa clave desactualizado en silencio.
+    const sinCosto = additions.filter((k) => {
+      const c = parseFloat(stockCostEdits[k]);
+      return stockCostEdits[k] === undefined || stockCostEdits[k] === "" || isNaN(c) || c < 0;
+    });
+    if (sinCosto.length > 0) {
+      setStockSavedMsg(
+        `Ingresa el costo TOTAL de la compra para: ${sinCosto
+          .map((k) => stockLabels[k] ?? k)
+          .join(", ")}.`
+      );
+      return;
+    }
+
     setSavingStock(true);
 
     const newStock = { ...stock };
+    const newStockCostos = { ...stockCostos };
     additions.forEach((key) => {
-      newStock[key] = (newStock[key] ?? 0) + parseInt(stockEdits[key], 10);
+      const unidadesIngresan = parseInt(stockEdits[key], 10);
+      const costoTotalCompra = parseFloat(stockCostEdits[key]);
+      newStock[key] = (newStock[key] ?? 0) + unidadesIngresan;
+      newStockCostos[key] = calcularCostoPromedioPonderado({
+        stockActual: stock[key] ?? 0,
+        costoActualUnitario: stockCostos[key],
+        unidadesIngresan,
+        costoTotalCompra,
+      });
     });
 
     const stockUpdates = additions.map((key) => ({
       nombre: key,
       cantidad: newStock[key],
+      precio_costo: newStockCostos[key],
     }));
 
     const { error } = await supabase
@@ -1726,7 +1792,9 @@ export default function App() {
     }
 
     setStock(newStock);
+    setStockCostos(newStockCostos);
     setStockEdits({});
+    setStockCostEdits({});
     setStockSavedMsg("Stock actualizado correctamente.");
   };
 
@@ -2916,7 +2984,7 @@ export default function App() {
         const match = Object.values(productsById).find(
           (p) => p.name === s.name && (p.detail || "") === (s.detail || "")
         );
-        return sum + unitCostFor(match) * s.qty;
+        return sum + unitCostFor(match, stockCostos) * s.qty;
       }, 0);
 
     // Costo de mercadería de TODAS las ventas del turno (se sigue
@@ -3042,7 +3110,7 @@ export default function App() {
       recaudadoTotal,
       avgTicket,
     };
-  }, [sales, comprobantes, gastos, movimientos, turnoCutoff]);
+  }, [sales, comprobantes, gastos, movimientos, turnoCutoff, stockCostos]);
 
   /* ---- exporta el historial de cierres a un .csv ---- */
   const exportCierresCSV = () => {
@@ -4462,26 +4530,56 @@ export default function App() {
 
                     return (
                       <div className="tz-stock-list">
-                        {filteredStockKeys.map((key) => (
-                          <div className="tz-stock-row" key={key}>
-                            <div className="tz-stock-row-info">
-                              <span className="tz-stock-row-name">{stockLabels[key] ?? key}</span>
-                              <span className="tz-stock-row-current">
-                                Stock actual: {stock[key] ?? 0}
-                              </span>
+                        {filteredStockKeys.map((key) => {
+                          const unidadesNum = parseFloat(stockEdits[key]);
+                          const costoTotalNum = parseFloat(stockCostEdits[key]);
+                          const costoUnitarioLote =
+                            unidadesNum > 0 && !isNaN(costoTotalNum) && costoTotalNum >= 0
+                              ? costoTotalNum / unidadesNum
+                              : null;
+                          const costoActual = stockCostos[key];
+
+                          return (
+                            <div className="tz-stock-cost-item" key={key}>
+                              <div className="tz-stock-row-info">
+                                <span className="tz-stock-row-name">{stockLabels[key] ?? key}</span>
+                                <span className="tz-stock-row-current">
+                                  Stock actual: {stock[key] ?? 0}
+                                  {costoActual != null &&
+                                    ` · Costo actual: ${formatSoles(costoActual)}/u`}
+                                </span>
+                              </div>
+                              <div className="tz-stock-cost-inputs">
+                                <label className="tz-stock-cost-field">
+                                  <span>Unidades que ingresan</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="0"
+                                    value={stockEdits[key] ?? ""}
+                                    onChange={(e) => handleStockEditChange(key, e.target.value)}
+                                  />
+                                </label>
+                                <label className="tz-stock-cost-field">
+                                  <span>Costo TOTAL de esta compra (S/)</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="0.00"
+                                    value={stockCostEdits[key] ?? ""}
+                                    onChange={(e) => handleStockCostEditChange(key, e.target.value)}
+                                  />
+                                </label>
+                              </div>
+                              {costoUnitarioLote != null && (
+                                <p className="tz-stock-cost-hint">
+                                  Costo unitario de este lote: {formatSoles(costoUnitarioLote)}
+                                </p>
+                              )}
                             </div>
-                            <div className="tz-stock-row-input">
-                              <span className="tz-stock-plus">+</span>
-                              <input
-                                type="number"
-                                min="0"
-                                placeholder="0"
-                                value={stockEdits[key] ?? ""}
-                                onChange={(e) => handleStockEditChange(key, e.target.value)}
-                              />
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     );
                   })()}

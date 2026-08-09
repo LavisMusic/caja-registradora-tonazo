@@ -1232,6 +1232,60 @@ export default function Styles() {
       }
       .tz-stock-row-input input:focus { outline: none; }
 
+      /* ---- Costo Promedio Ponderado: fila de "Agregar Unidades al
+         Stock" con 2 inputs (unidades + costo TOTAL de la compra) en
+         vez del "+cantidad" simple — usa su propia clase de wrapper
+         (no reutiliza '.tz-stock-row', que también usan las filas de
+         "Visibilidad en catálogo" con un layout de una sola línea que
+         no debe tocarse) porque necesita apilarse en columna. ---- */
+      .tz-stock-cost-item {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .tz-stock-cost-inputs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .tz-stock-cost-field {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        flex: 1 1 130px;
+        min-width: 0;
+      }
+      .tz-stock-cost-field span {
+        font-size: 10.5px;
+        color: var(--text-dim);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+      .tz-stock-cost-field input {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        padding: 8px 10px;
+        color: var(--text);
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .tz-stock-cost-field input:focus { outline: none; border-color: var(--cyan); }
+      .tz-stock-cost-hint {
+        margin: 0;
+        font-size: 11px;
+        color: var(--yellow);
+        font-weight: 600;
+      }
+
       .tz-stock-editor-section {
         margin: 24px 0 4px;
         padding-top: 18px;

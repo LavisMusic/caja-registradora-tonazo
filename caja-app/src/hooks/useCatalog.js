@@ -97,6 +97,7 @@ export function useCatalog() {
   const [productsById, setProductsById] = useState({});
   const [stock, setStock] = useState({});
   const [stockLabels, setStockLabels] = useState({});
+  const [stockCostos, setStockCostos] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -137,7 +138,7 @@ export function useCatalog() {
 
     const { data: stockRows, error: stockError } = await supabase
       .from("stock")
-      .select("nombre, cantidad, etiqueta");
+      .select("nombre, cantidad, etiqueta, precio_costo");
 
     if (stockError) {
       console.error("Error cargando stock desde Supabase:", stockError);
@@ -145,9 +146,11 @@ export function useCatalog() {
 
     const loadedStock = {};
     const loadedStockLabels = {};
+    const loadedStockCostos = {};
     (stockRows || []).forEach((row) => {
       loadedStock[row.nombre] = row.cantidad;
       loadedStockLabels[row.nombre] = row.etiqueta || row.nombre;
+      loadedStockCostos[row.nombre] = row.precio_costo != null ? Number(row.precio_costo) : null;
     });
 
     Object.values(builtProductsById).forEach((product) => {
@@ -158,6 +161,7 @@ export function useCatalog() {
           );
           loadedStock[key] = 0;
           loadedStockLabels[key] = key;
+          loadedStockCostos[key] = null;
         }
       });
     });
@@ -166,6 +170,7 @@ export function useCatalog() {
     setProductsById(builtProductsById);
     setStock(loadedStock);
     setStockLabels(loadedStockLabels);
+    setStockCostos(loadedStockCostos);
     setLoading(false);
   }, []);
 
@@ -229,6 +234,8 @@ export function useCatalog() {
     stock,
     setStock,
     stockLabels,
+    stockCostos,
+    setStockCostos,
     loading,
     error,
     setProductVisibility,

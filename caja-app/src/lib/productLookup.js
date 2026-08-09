@@ -67,6 +67,40 @@ function generateStockKey(nombre, stockKeysExistentes) {
   return `${base}-${sufijo}`;
 }
 
+/* Costo Promedio Ponderado de una clave de stock al recibir un lote
+   nuevo. Fórmula estricta:
+     Nuevo Costo = ((StockActual * CostoActual) + CostoTotalCompra)
+                   / (StockActual + UnidadesIngresan)
+   Caso especial (primer ingreso real): si no había stock previo, o el
+   costo previo no se conocía (null/0 — ej. mercadería cargada antes
+   de que existiera este sistema de costeo), no hay nada que
+   promediar todavía — el costo nuevo ES el de este lote
+   (CostoTotalCompra / UnidadesIngresan). Devuelve null si los datos
+   de entrada no permiten calcular nada (0 unidades — división por
+   cero — o un costo total inválido), para que el llamador decida qué
+   hacer en vez de guardar un NaN/Infinity en la base. */
+export function calcularCostoPromedioPonderado({
+  stockActual,
+  costoActualUnitario,
+  unidadesIngresan,
+  costoTotalCompra,
+}) {
+  const unidades = Number(unidadesIngresan);
+  if (!unidades || unidades <= 0) return null;
+
+  const costoTotal = Number(costoTotalCompra);
+  if (isNaN(costoTotal) || costoTotal < 0) return null;
+
+  const stockPrevio = Number(stockActual) || 0;
+  const costoPrevio = Number(costoActualUnitario) || 0;
+
+  if (stockPrevio <= 0 || costoPrevio <= 0) {
+    return costoTotal / unidades;
+  }
+
+  return (stockPrevio * costoPrevio + costoTotal) / (stockPrevio + unidades);
+}
+
 /* 'orden' es una columna integer estándar de Postgres (máx.
    2 147 483 647). Date.now() son milisegundos desde 1970 — 13 dígitos,
    ~1 786 000 000 000 en 2026 — que desborda esa columna por completo.
