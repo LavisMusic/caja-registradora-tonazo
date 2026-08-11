@@ -5,6 +5,7 @@ import { useCatalog } from "../hooks/useCatalog";
 import LoginModal from "../components/LoginModal";
 import ClienteFiadoView from "./ClienteFiadoView";
 import Styles from "../components/Styles";
+import LogoEasterEgg from "../components/LogoEasterEgg";
 import { formatSoles } from "../utils/format";
 import logo from "../assets/logo.png";
 
@@ -88,7 +89,7 @@ export default function CatalogPage() {
           </button>
 
           <div className="tz-header-center">
-            <img src={logo} alt="TONAZO!" className="tz-logo" />
+            <LogoEasterEgg src={logo} alt="TONAZO!" className="tz-logo" />
             <p className="tz-subtitle">Compra Ya</p>
           </div>
 

@@ -27,10 +27,13 @@ import {
   Users,
   Package,
   ScanLine,
+  Lock,
+  DollarSign,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
 import html2canvas from "html2canvas";
+import * as XLSX from "xlsx";
 import { formatSoles, formatDate } from "./utils/format";
 import { useCatalog } from "./hooks/useCatalog";
 import Styles from "./components/Styles";
@@ -42,9 +45,13 @@ import {
   crearProducto,
   safeOrdenValue,
   calcularCostoPromedioPonderado,
+  composeProductoNombre,
+  composeProductoDescripcion,
 } from "./lib/productLookup";
 import BarcodeScannerModal from "./components/BarcodeScannerModal";
 import CatalogVisibilityAccordion from "./components/CatalogVisibilityAccordion";
+import ColorPicker from "./components/ColorPicker";
+import LogoEasterEgg from "./components/LogoEasterEgg";
 import TicketBoleta from "./components/TicketBoleta";
 
 import logo from "./assets/logo.png";
@@ -203,6 +210,176 @@ function availabilityFor(product, stock) {
   );
 }
 
+/* Igual que resolveStockKey() de productLookup.js, pero sobre
+   'item.consumes' YA parseado (el shape que trae productsById) en vez
+   del 'producto.consumos' crudo (string/array) que viene directo de
+   Supabase. Un producto solo es "editable" desde Agregar Unidades al
+   Stock si consume de UNA sola clave — un combo (varias claves) no
+   tiene forma no ambigua de saber a cuál sumarle la mercadería. */
+function resolveStockKeyFromConsumes(consumes) {
+  const claves = [...new Set((consumes || []).map((c) => c.key).filter(Boolean))];
+  return claves.length === 1 ? claves[0] : null;
+}
+
+// Umbral de "stock crítico" para la alerta visual roja en las
+// tarjetas — tanto en la grilla general como dentro del modal de
+// variantes.
+const LOW_STOCK_THRESHOLD = 5;
+
+// Tag de stock reutilizado en tarjeta simple, tarjeta maestra y modal
+// de variantes, para que la alerta roja de stock crítico (<=5) sea
+// siempre igual en los tres lugares.
+function StockTag({ avail }) {
+  const soldOut = avail <= 0;
+  const low = avail > 0 && avail <= LOW_STOCK_THRESHOLD;
+  if (soldOut) return <span className="tz-tag tz-tag-danger">AGOTADO</span>;
+  if (low)
+    return (
+      <span className="tz-tag tz-tag-danger">
+        <AlertTriangle size={11} strokeWidth={2.5} /> ¡Quedan {avail}!
+      </span>
+    );
+  return <span className="tz-tag tz-tag-ok">Stock: {avail}</span>;
+}
+
+/* Fila del ticket/carrito con controles de edición: [-] [input] [+] +
+   basurero. El input de cantidad usa estado LOCAL (texto libre) en vez
+   de escribir directo en 'selection' en cada tecla — así el cajero
+   puede seleccionar todo y escribir "20" sin que cada dígito
+   intermedio (ej. el "2" antes de completar "20") dispare un clamp o
+   un render raro. Se compromete a 'selection' (vía onQtyChange) recién
+   al perder foco o presionar Enter; un valor inválido revierte al
+   último válido en vez de dejar el carrito en un estado roto. */
+function CartRow({ product, qty, avail, onQtyChange, onRemove }) {
+  const [localQty, setLocalQty] = useState(String(qty));
+
+  useEffect(() => {
+    setLocalQty(String(qty));
+  }, [qty]);
+
+  const commit = (raw) => {
+    const parsed = parseInt(raw, 10);
+    if (isNaN(parsed)) {
+      setLocalQty(String(qty));
+      return;
+    }
+    const clamped = Math.min(Math.max(parsed, 1), Math.max(avail, 1));
+    onQtyChange(clamped);
+    setLocalQty(String(clamped));
+  };
+
+  return (
+    <div className="tz-cart-row">
+      <div className="tz-cart-row-info">
+        <span className="tz-cart-row-name">
+          {product.name}
+          {product.detail ? ` · ${product.detail}` : ""}
+        </span>
+        <span className="tz-cart-row-amount">{formatSoles(product.price * qty)}</span>
+      </div>
+      <div className="tz-cart-row-controls">
+        <div className="tz-qty-stepper tz-cart-qty-stepper">
+          <button
+            type="button"
+            onClick={() => onQtyChange(Math.max(qty - 1, 1))}
+            disabled={qty <= 1}
+            aria-label={`Disminuir cantidad de ${product.name}`}
+          >
+            <Minus size={14} />
+          </button>
+          <input
+            type="number"
+            min="1"
+            max={avail}
+            className="tz-cart-qty-input"
+            value={localQty}
+            onChange={(e) => setLocalQty(e.target.value)}
+            onBlur={(e) => commit(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                commit(e.currentTarget.value);
+                e.currentTarget.blur();
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => onQtyChange(Math.min(qty + 1, avail))}
+            disabled={qty >= avail}
+            aria-label={`Aumentar cantidad de ${product.name}`}
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+        <button
+          type="button"
+          className="tz-cart-remove-btn"
+          onClick={onRemove}
+          aria-label={`Quitar ${product.name} del ticket`}
+          title="Quitar del ticket"
+        >
+          <Trash2 size={15} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* Fase 2 "Inventario Inteligente" (v3 — agrupación ESTRICTA y GLOBAL a
+   la sección): agrupa productos que son variantes (sabor/color) de un
+   mismo producto base, para no saturar la grilla con una tarjeta por
+   cada una. Agrupa exclusivamente por 'item.baseName' (columna
+   'productos.nombre_base', ver useCatalog.js y crearProducto/
+   editarProductoNombreDetalle en productLookup.js), que es el dato que
+   el admin declara explícitamente al crear o editar un producto.
+
+   IMPORTANTE: la agrupación corre sobre TODOS los productos de la
+   sección/categoría de una sola vez (todos sus subgrupos juntos), NUNCA
+   subgrupo por subgrupo — si se agrupara subgrupo por subgrupo, dos
+   variantes con el mismo nombre_base pero archivadas bajo un subgrupo
+   distinto (o una con subgrupo y otra sin él) jamás se verían entre sí
+   y quedarían separadas en pantalla pese a compartir nombre_base. Cada
+   tarjeta resultante (maestra o simple) se dibuja UNA sola vez, bajo el
+   encabezado del subgrupo "más temprano" (menor índice) entre sus
+   variantes — así el resto de subgrupos no queda con huecos ni con la
+   tarjeta duplicada.
+
+   Un grupo de 1 se renderiza como tarjeta normal de siempre, sin modal.
+   El escáner de código de barras NUNCA pasa por esta función (resuelve
+   directo por codigo_barras a un producto exacto), así que la
+   agrupación no lo afecta — ver handleGlobalScan/handleStockProductScan,
+   que llaman a buscarProductoPorCodigo + selectProductForSale/
+   toggleProduct sin tocar la grilla agrupada en ningún punto. */
+function buildSectionDisplayEntries(sectionGroups) {
+  const groups = [];
+  const indexByKey = new Map();
+
+  sectionGroups.forEach((sectionGroup, gi) => {
+    sectionGroup.items.forEach((item) => {
+      const baseName = (item.baseName || item.name).trim();
+      const baseKey = baseName.toLowerCase();
+      if (!indexByKey.has(baseKey)) {
+        const group = { baseName, members: [] };
+        indexByKey.set(baseKey, group);
+        groups.push(group);
+      }
+      indexByKey.get(baseKey).members.push({ item, gi });
+    });
+  });
+
+  const entriesByGi = new Map();
+  groups.forEach((g) => {
+    const homeGi = Math.min(...g.members.map((m) => m.gi));
+    const entry =
+      g.members.length > 1
+        ? { type: "group", baseName: g.baseName, variants: g.members.map((m) => m.item) }
+        : { type: "single", item: g.members[0].item };
+    if (!entriesByGi.has(homeGi)) entriesByGi.set(homeGi, []);
+    entriesByGi.get(homeGi).push(entry);
+  });
+  return entriesByGi;
+}
+
 function nextPurchaseId(sales) {
   let max = 0;
   sales.forEach((s) => {
@@ -212,28 +389,42 @@ function nextPurchaseId(sales) {
   return `V-${String(max + 1).padStart(4, "0")}`;
 }
 
-/* Arma un CSV a partir de cabeceras + filas y dispara la descarga vía
-   Blob, sin ninguna librería. El BOM al inicio es para que Excel abra
-   los acentos/ñ bien en vez de mostrarlos rotos. */
-function downloadCSV(filename, headers, rows, delimiter = ",") {
-  const escapeCell = (value) => {
-    const text = String(value ?? "");
-    const needsQuotes = new RegExp(`["${delimiter}\n]`).test(text);
-    return needsQuotes ? `"${text.replace(/"/g, '""')}"` : text;
-  };
-  const csvContent = [headers, ...rows]
-    .map((row) => row.map(escapeCell).join(delimiter))
-    .join("\n");
+/* Arma un .xlsx de una o más hojas a partir de { nombre, filas }[] —
+   cada 'filas' es un array de arrays (primera fila = encabezados) — y
+   dispara la descarga. Reemplaza al viejo downloadCSV: xlsx soporta
+   múltiples hojas por archivo (CSV no), que es lo que necesitan los
+   reportes nuevos (datos + resumen mensual en el mismo archivo). */
+function downloadXLSX(filename, sheets) {
+  const workbook = XLSX.utils.book_new();
+  sheets.forEach(({ nombre, filas }) => {
+    const worksheet = XLSX.utils.aoa_to_sheet(filas);
+    // Autoancho: SheetJS no lo calcula solo — se estima el ancho de
+    // cada columna a partir del texto más largo que tenga (encabezado
+    // incluido), con un piso y un techo para que ni una columna vacía
+    // quede microscópica ni un texto larguísimo se coma toda la hoja.
+    if (filas.length > 0) {
+      worksheet["!cols"] = filas[0].map((_, colIdx) => {
+        const maxLen = filas.reduce((max, row) => {
+          const cell = row[colIdx];
+          const text = cell == null ? "" : String(cell);
+          return Math.max(max, text.length);
+        }, 0);
+        return { wch: Math.min(Math.max(maxLen + 2, 8), 45) };
+      });
+    }
+    XLSX.utils.book_append_sheet(workbook, worksheet, nombre.slice(0, 31));
+  });
+  XLSX.writeFile(workbook, filename);
+}
 
-  const blob = new Blob([`\uFEFF${csvContent}`], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+const MESES_ES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+// "2026-08" -> "Agosto 2026"
+function formatMesEs(yearMonthKey) {
+  const [year, month] = yearMonthKey.split("-").map(Number);
+  return `${MESES_ES[month - 1]} ${year}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -241,7 +432,7 @@ function downloadCSV(filename, headers, rows, delimiter = ",") {
 /* ------------------------------------------------------------------ */
 
 export default function App() {
-  const { signOut, session, isAdmin, nombre: cajeroNombre } = useAuth();
+  const { signOut, session, isAdmin, isCajero, nombre: cajeroNombre } = useAuth();
 
   /* ---- catálogo dinámico: cargado por el hook compartido useCatalog ---- */
   const {
@@ -252,6 +443,8 @@ export default function App() {
     stockLabels,
     stockCostos,
     setStockCostos,
+    stockUltimoCosto,
+    setStockUltimoCosto,
     loading: catalogLoading,
     error: catalogError,
     setProductVisibility,
@@ -287,8 +480,19 @@ export default function App() {
   // Ponderado al guardar (ver saveStockEdits).
   const [stockCostEdits, setStockCostEdits] = useState({});
   const [savingStock, setSavingStock] = useState(false);
+
+  /* ---- edición rápida de precio de venta desde la tarjeta del
+     producto (solo admin) ---- */
+  const [editingPriceProduct, setEditingPriceProduct] = useState(null);
+  const [editingPriceValue, setEditingPriceValue] = useState("");
+  const [editingPriceSaving, setEditingPriceSaving] = useState(false);
+  const [editingPriceError, setEditingPriceError] = useState("");
   const [stockSavedMsg, setStockSavedMsg] = useState("");
   const [visibilityError, setVisibilityError] = useState("");
+
+  /* ---- Fase 2 "Inventario Inteligente": modal rápido de selección
+     de variante, abierto al tocar una tarjeta maestra agrupada ---- */
+  const [variantModalGroup, setVariantModalGroup] = useState(null);
 
   /* ---- "Agregar unidades al stock": búsqueda manual por texto +
      escáner de producto (mismo html5-qrcode/productLookup.js que ya
@@ -304,21 +508,47 @@ export default function App() {
   const [newProductoOpen, setNewProductoOpen] = useState(false);
   const [newProductoCodigo, setNewProductoCodigo] = useState("");
   const [newProductoNombre, setNewProductoNombre] = useState("");
-  const [newProductoDetalle, setNewProductoDetalle] = useState("");
+  const [newProductoVariante, setNewProductoVariante] = useState("");
+  const [newProductoPresentacion, setNewProductoPresentacion] = useState("");
+  const [newProductoColor, setNewProductoColor] = useState(null);
   const [newProductoPrecio, setNewProductoPrecio] = useState("");
   const [newProductoCategoria, setNewProductoCategoria] = useState("");
   const [newProductoSubgrupo, setNewProductoSubgrupo] = useState("");
+  // Stock inicial + costo, capturados en el MISMO formulario de alta
+  // (unificación con "Agregar Unidades al Stock" — ver saveNewProducto)
+  // para que el costo promedio ponderado exista desde el primer día,
+  // no recién cuando alguien pase por Agregar Unidades después.
+  const [newProductoUnidades, setNewProductoUnidades] = useState("");
+  const [newProductoCostoTotal, setNewProductoCostoTotal] = useState("");
   const [newProductoSaving, setNewProductoSaving] = useState(false);
   const [newProductoError, setNewProductoError] = useState("");
+
+  /* ---- "+ Nueva variedad" (Agregar Unidades al Stock): alta rápida
+     de una variante del mismo producto base sin salir de la pantalla
+     de ingreso de mercadería — reusa agregarVariante(), la misma
+     función que ya usa "+ Añadir Variante" en Visibilidad. ---- */
+  const [nuevaVariedadOpen, setNuevaVariedadOpen] = useState(false);
+  const [nuevaVariedadSabor, setNuevaVariedadSabor] = useState("");
+  const [nuevaVariedadPresentacion, setNuevaVariedadPresentacion] = useState("");
+  const [nuevaVariedadColor, setNuevaVariedadColor] = useState(null);
+  const [nuevaVariedadSaving, setNuevaVariedadSaving] = useState(false);
+  const [nuevaVariedadError, setNuevaVariedadError] = useState("");
 
   /* ---- módulo global de "Métodos de Pago" (header) ---- */
   const [comprobantes, setComprobantes] = useState([]);
   const [paymentMenuOpen, setPaymentMenuOpen] = useState(false); // menú Yape/Plin/Otros del header
   const [activeMethodModal, setActiveMethodModal] = useState(null); // 'YAPE' | 'PLIN' | 'OTROS' | null
   const [expandedEntryId, setExpandedEntryId] = useState(null); // acordeón de boleta expandido
+  // Historial de Ventas: colapsado por defecto (solo últimas 5) para
+  // no empujar el resto del dashboard hacia abajo.
+  const [historialExpanded, setHistorialExpanded] = useState(false);
 
   const [modalView, setModalView] = useState("manual"); // 'manual' | 'camera' | 'processing' | 'review'
   const [manualAmount, setManualAmount] = useState("");
+
+  /* ---- calculadora de vuelto (checkout, solo método Efectivo) ---- */
+  const [montoRecibido, setMontoRecibido] = useState("");
+  const MONTOS_RAPIDOS = [20, 50, 100, 200];
 
   const [scanDetected, setScanDetected] = useState({ method: "", opId: "", photoUrl: "" });
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -368,7 +598,7 @@ export default function App() {
   const [rucLookupStatus, setRucLookupStatus] = useState("idle"); // idle | found | not_found
   const [razonSocialSuggestOpen, setRazonSocialSuggestOpen] = useState(false);
   const [gastoItems, setGastoItems] = useState([
-    { id: "item-0", descripcion: "", cantidad: "1", precioUnitario: "", productoId: null, stockKey: null },
+    { id: "item-0", descripcion: "", cantidad: "1", costoTotal: "", productoId: null, stockKey: null },
   ]);
   const [gastoSaving, setGastoSaving] = useState(false);
   const [gastoError, setGastoError] = useState("");
@@ -391,7 +621,11 @@ export default function App() {
   const [anulandoVentaId, setAnulandoVentaId] = useState(null);
   const [anularError, setAnularError] = useState("");
 
-  /* ---- Cajeros (solo admin): alta de personal operativo ---- */
+  /* ---- Usuarios (solo admin): alta de cajeros + gestión (cambiar PIN,
+     eliminar) de cajeros Y clientes. 'cajeros' guarda ambos roles pese
+     al nombre de la variable (viene del panel original "Cajeros",
+     ampliado después a "Usuarios" sin renombrar todo el estado) — cada
+     fila trae { id, nombre, role }. ---- */
   const [cajerosOpen, setCajerosOpen] = useState(false);
   const [cajeros, setCajeros] = useState([]);
   const [cajerosLoading, setCajerosLoading] = useState(false);
@@ -401,6 +635,31 @@ export default function App() {
   const [newCajeroPin, setNewCajeroPin] = useState("");
   const [cajeroSaving, setCajeroSaving] = useState(false);
   const [cajeroError, setCajeroError] = useState("");
+  const [usuarioActionError, setUsuarioActionError] = useState("");
+  const [deletingUsuarioId, setDeletingUsuarioId] = useState(null);
+
+  /* ---- modal "Cambiar PIN" (dentro del panel de Usuarios) ---- */
+  const [pinModalUser, setPinModalUser] = useState(null); // { id, nombre, role } | null
+  const [pinModalValue, setPinModalValue] = useState("");
+  const [pinModalSaving, setPinModalSaving] = useState(false);
+  const [pinModalError, setPinModalError] = useState("");
+
+  /* ---- Fase 1 "Control de Dinero": estado global de la caja
+     (abierta/cerrada + fondo inicial) — fila única en 'estado_caja'.
+     null mientras carga; después siempre {estado, fondoInicial,
+     abiertaPor, abiertaEn, cerradaEn}. ---- */
+  const [estadoCaja, setEstadoCaja] = useState(null);
+  const [fondoInicialInput, setFondoInicialInput] = useState("");
+  const [aperturaSaving, setAperturaSaving] = useState(false);
+  const [aperturaError, setAperturaError] = useState("");
+  // Confirmación de turno del cajero: NO vive en la base — es "ya vi
+  // el fondo inicial de ESTE turno puntual" y se guarda en
+  // sessionStorage (sobrevive a un F5 en medio del turno, pero no a
+  // cerrar la pestaña, y una apertura nueva con otro 'abiertaEn'
+  // siempre vuelve a pedir confirmación).
+  const [turnoConfirmadoEn, setTurnoConfirmadoEn] = useState(() =>
+    typeof window !== "undefined" ? sessionStorage.getItem("tz_turno_confirmado_en") : null
+  );
 
   /* ---- módulo de Cierre de Caja (snapshot + recibo) ---- */
   const [cierres, setCierres] = useState([]);
@@ -584,6 +843,52 @@ export default function App() {
     setRazonSocialSuggestOpen(false);
   };
 
+  /* ---- autocompletado de "Descripción" en los ítems de Gastos: a
+     diferencia del vínculo por escaneo (handleProductScan, que enlaza
+     por 'productos' vía código de barras), este busca directo en
+     'stock' por nombre — permite marcar como "Ingreso de Mercadería"
+     un ítem sin tener el código de barras a mano. Un único id de fila
+     abierto a la vez (mismo patrón que razonSocialSuggestOpen). ---- */
+  const [gastoItemSuggestOpenId, setGastoItemSuggestOpenId] = useState(null);
+
+  const gastoItemStockSuggestions = (query) => {
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return Object.keys(stock)
+      .filter((key) => (stockLabels[key] ?? key).toLowerCase().includes(q))
+      .sort((a, b) => (stockLabels[a] ?? a).localeCompare(stockLabels[b] ?? b))
+      .slice(0, 6);
+  };
+
+  const selectGastoItemStock = (itemId, key) => {
+    setGastoItems((prev) =>
+      prev.map((it) =>
+        it.id === itemId
+          ? { ...it, descripcion: stockLabels[key] ?? key, stockKey: key, productoId: null }
+          : it
+      )
+    );
+    setGastoItemSuggestOpenId(null);
+  };
+
+  /* ---- resuelve a qué clave de 'stock' corresponde un ítem del gasto
+     al momento de guardar: si ya viene vinculado (escaneo o
+     autocompletado) se usa ese vínculo tal cual; si no, se intenta un
+     match EXACTO (no parcial, para no cruzar "Coca Cola" con "Coca
+     Cola 1.5L" por accidente) contra las etiquetas de 'stock', por si
+     el usuario tipeó el nombre completo a mano sin pasar por la
+     sugerencia. Un gasto genérico ("Pago de luz") simplemente no
+     matchea nada y queda fuera de la actualización de stock. ---- */
+  const resolveGastoItemStockKey = (it) => {
+    if (it.stockKey) return it.stockKey;
+    const desc = it.descripcion.trim().toLowerCase();
+    if (!desc) return null;
+    return (
+      Object.keys(stock).find((key) => (stockLabels[key] ?? key).trim().toLowerCase() === desc) ||
+      null
+    );
+  };
+
   /* ---- carga inicial: SELECT a Supabase (historial, comprobantes, libreta,
      proveedores, gastos, cierres). El catálogo/stock los trae useCatalog. ---- */
   useEffect(() => {
@@ -608,7 +913,16 @@ export default function App() {
         qty: row.cantidad,
         price: row.precio,
         total: row.total,
+        // Costo congelado al momento de la venta — null en filas
+        // anteriores a la migración 0026 (no se puede reconstruir
+        // retroactivamente). costOf() en todayStats trata null como 0.
+        costoUnitario: row.costo_unitario != null ? Number(row.costo_unitario) : null,
+        costoTotal: row.costo_total != null ? Number(row.costo_total) : null,
+        montoRecibido: row.monto_recibido != null ? Number(row.monto_recibido) : null,
+        vuelto: row.vuelto != null ? Number(row.vuelto) : null,
         metodoPago: row.metodo_pago || null,
+        // Auditoría: null en filas anteriores a la migración 0032.
+        vendedor: row.vendedor || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -764,8 +1078,33 @@ export default function App() {
         diferencia: row.diferencia != null ? Number(row.diferencia) : null,
         ingresoEfectivo: row.ingreso_efectivo != null ? Number(row.ingreso_efectivo) : null,
         ingresoDigital: row.ingreso_digital != null ? Number(row.ingreso_digital) : null,
+        cajeroNombre: row.cajero_nombre || null,
+        fondoInicial: row.fondo_inicial != null ? Number(row.fondo_inicial) : null,
+        abiertaEn: row.abierta_en != null ? Number(row.abierta_en) : null,
         timestamp: Number(row.fecha),
       }));
+
+      // 6.5) ESTADO DE CAJA (fila única — abierta/cerrada + fondo inicial)
+      const { data: estadoCajaRow, error: estadoCajaLoadError } = await supabase
+        .from("estado_caja")
+        .select("*")
+        .eq("id", 1)
+        .maybeSingle();
+
+      if (estadoCajaLoadError) {
+        console.error("Error cargando estado_caja desde Supabase:", estadoCajaLoadError);
+      }
+
+      const loadedEstadoCaja = estadoCajaRow
+        ? {
+            estado: estadoCajaRow.estado,
+            fondoInicial:
+              estadoCajaRow.fondo_inicial != null ? Number(estadoCajaRow.fondo_inicial) : null,
+            abiertaPor: estadoCajaRow.abierta_por || null,
+            abiertaEn: estadoCajaRow.abierta_en != null ? Number(estadoCajaRow.abierta_en) : null,
+            cerradaEn: estadoCajaRow.cerrada_en != null ? Number(estadoCajaRow.cerrada_en) : null,
+          }
+        : { estado: "cerrada", fondoInicial: null, abiertaPor: null, abiertaEn: null, cerradaEn: null };
 
       // 7) PAGOS PENDIENTES (comprobantes de clientes por aprobar)
       const { data: pagoRows, error: pagoLoadError } = await supabase
@@ -796,6 +1135,7 @@ export default function App() {
         setProveedores(loadedProveedores);
         setGastos(loadedGastos);
         setCierres(loadedCierres);
+        setEstadoCaja(loadedEstadoCaja);
         setPagosPendientes(loadedPagosPendientes);
         setRestLoading(false);
       }
@@ -871,6 +1211,18 @@ export default function App() {
     });
   };
 
+  // Quita un ítem del ticket por completo (botón de basurero en
+  // CartRow) — a diferencia de toggleProduct(), sin chequeo de stock:
+  // sacar algo del carrito siempre debe poder hacerse, incluso si ese
+  // producto quedó agotado mientras estaba seleccionado.
+  const removeFromCart = (id) => {
+    setSelection((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
   const selectedIds = Object.keys(selection);
   const selectedCount = selectedIds.length;
   const totalItems = selectedIds.reduce((sum, id) => sum + selection[id], 0);
@@ -927,12 +1279,20 @@ export default function App() {
         setSubmitError("Adjunta el comprobante (foto) antes de enviar la venta.");
         return;
       }
+    } else if (checkoutMetodo === "EFECTIVO") {
+      // A diferencia de Yape/Plin/Otros, acá el monto NO tiene que
+      // coincidir exacto con el total — el cajero anota cuánto billete
+      // le dieron (puede ser mayor) para calcular el vuelto. Solo se
+      // exige que alcance para cubrir la venta.
+      const recibido = parseFloat(montoRecibido);
+      if (!montoRecibido || isNaN(recibido) || recibido < totalPrice - 0.009) {
+        setSubmitError("Ingresa el monto recibido (debe alcanzar para cubrir el total).");
+        return;
+      }
     } else {
-      // FIADO y EFECTIVO no tienen un campo de monto manual editable:
-      // el monto sale directo de 'newEntries' (price * qty), la MISMA
-      // fuente que 'totalPrice'. No hay forma de que difieran — no
-      // existe un número que un cajero pueda escribir mal acá, a
-      // diferencia de Yape/Plin/Otros.
+      // FIADO: el monto sale directo de 'newEntries' (price * qty), la
+      // MISMA fuente que 'totalPrice'. No hay forma de que difieran —
+      // no existe un número que un cajero pueda escribir mal acá.
     }
 
     // consumo total agregado por clave de stock
@@ -980,9 +1340,30 @@ export default function App() {
 
     const purchaseId = nextPurchaseId(sales);
     const timestamp = Date.now();
+    // Vuelto: solo tiene sentido para Efectivo (billetes físicos) —
+    // el resto de métodos no maneja "cambio". Se congela junto con el
+    // resto de la venta, duplicado en cada línea del purchase_id
+    // (mismo criterio ya usado acá para 'metodo_pago').
+    const montoRecibidoNum = checkoutMetodo === "EFECTIVO" ? parseFloat(montoRecibido) : null;
+    const vueltoNum =
+      checkoutMetodo === "EFECTIVO" && montoRecibidoNum != null
+        ? montoRecibidoNum - totalPrice
+        : null;
+    // Auditoría: quién procesó la venta. Admin siempre se guarda como
+    // "Admin" (no hay múltiples cuentas admin que distinguir); un
+    // cajero se guarda con su nombre real para poder rastrear ventas
+    // por persona. Texto libre congelado en cada fila — ver migración
+    // 0032.
+    const vendedorLabel = isAdmin ? "Admin" : cajeroNombre || "Cajero";
     const newEntries = selectedIds.map((id) => {
       const product = productsById[id];
       const qty = selection[id];
+      // Fotografía del costo: el costo promedio ponderado ACTUAL
+      // (unitCostFor/stockCostos) se calcula una única vez, ACÁ, y
+      // queda congelado en 'historial' — el Dashboard de hoy nunca
+      // vuelve a preguntarle a 'stock' cuál es el costo, así que un
+      // ingreso de mercadería mañana no altera las ventas de hoy.
+      const costoUnitario = unitCostFor(product, stockCostos);
       return {
         productId: id,
         name: product.name,
@@ -990,6 +1371,8 @@ export default function App() {
         qty,
         price: product.price,
         total: product.price * qty,
+        costoUnitario,
+        costoTotal: costoUnitario * qty,
       };
     });
 
@@ -1006,7 +1389,12 @@ export default function App() {
           cantidad: e.qty,
           precio: e.price,
           total: e.total,
+          costo_unitario: e.costoUnitario,
+          costo_total: e.costoTotal,
+          monto_recibido: montoRecibidoNum,
+          vuelto: vueltoNum,
           metodo_pago: checkoutMetodo,
+          vendedor: vendedorLabel,
           fecha: timestamp,
         }))
       )
@@ -1136,7 +1524,12 @@ export default function App() {
       qty: row.cantidad ?? newEntries[idx].qty,
       price: row.precio ?? newEntries[idx].price,
       total: row.total ?? newEntries[idx].total,
+      costoUnitario: row.costo_unitario ?? newEntries[idx].costoUnitario,
+      costoTotal: row.costo_total ?? newEntries[idx].costoTotal,
+      montoRecibido: row.monto_recibido ?? montoRecibidoNum,
+      vuelto: row.vuelto ?? vueltoNum,
       metodoPago: row.metodo_pago ?? checkoutMetodo,
+      vendedor: row.vendedor ?? vendedorLabel,
       timestamp: Number(row.fecha ?? timestamp),
     }));
 
@@ -1304,9 +1697,15 @@ export default function App() {
   const isPaymentStepComplete = (() => {
     if (!checkoutMetodo) return false;
     if (checkoutMetodo === "FIADO") return !!checkoutFiadoClienteId;
-    // Efectivo: sin escaneo ni monto manual — se procesa de inmediato,
-    // el monto sale directo de 'totalPrice' igual que Fiado.
-    if (checkoutMetodo === "EFECTIVO") return true;
+    // Efectivo: exige 'Monto Recibido' >= total (si no, el vuelto
+    // saldría negativo) — el total de la venta sale de 'totalPrice',
+    // no de este monto (a diferencia de Yape/Plin/Otros, acá el monto
+    // recibido puede ser MAYOR al total a propósito, para calcular
+    // vuelto).
+    if (checkoutMetodo === "EFECTIVO") {
+      const recibido = parseFloat(montoRecibido);
+      return !isNaN(recibido) && recibido >= totalPrice - 0.009;
+    }
     const amt = parseFloat(manualAmount);
     const amountOk = !isNaN(amt) && amt > 0 && Math.abs(amt - totalPrice) <= 0.009;
     // Yape/Plin/Otros: además del monto, exige el comprobante — mismo
@@ -1320,11 +1719,23 @@ export default function App() {
     setNewProductoOpen(false);
     setNewProductoCodigo("");
     setNewProductoNombre("");
-    setNewProductoDetalle("");
+    setNewProductoVariante("");
+    setNewProductoPresentacion("");
+    setNewProductoColor(null);
     setNewProductoPrecio("");
+    setNewProductoUnidades("");
+    setNewProductoCostoTotal("");
     setNewProductoCategoria("");
     setNewProductoSubgrupo("");
     setNewProductoError("");
+  };
+
+  const resetNuevaVariedadForm = () => {
+    setNuevaVariedadOpen(false);
+    setNuevaVariedadSabor("");
+    setNuevaVariedadPresentacion("");
+    setNuevaVariedadColor(null);
+    setNuevaVariedadError("");
   };
 
   const openEdit = () => {
@@ -1336,6 +1747,7 @@ export default function App() {
     setScannedStockKey(null);
     setStockScanError("");
     resetNewProductoForm();
+    resetNuevaVariedadForm();
   };
 
   const closeEdit = () => {
@@ -1347,6 +1759,7 @@ export default function App() {
     setScannedStockKey(null);
     setStockScanError("");
     resetNewProductoForm();
+    resetNuevaVariedadForm();
   };
 
   const handleStockEditChange = (key, value) => {
@@ -1406,18 +1819,23 @@ export default function App() {
     }
   };
 
-  /* ---- alta rápida de producto (código escaneado no encontrado):
-     INSERT en 'productos' (+ 'categorias' si la categoría es nueva) y
-     su clave de stock 1:1 recién creada, vía crearProducto(). Al
-     terminar, refresca el catálogo y deja ese producto filtrado en la
-     pantalla de "Agregar unidades al stock" con cantidad 1, listo
-     para seguir sumando. ---- */
+  /* ---- alta de producto (código escaneado no encontrado, o manual
+     desde el buscador): INSERT en 'productos' (+ 'categorias' si la
+     categoría es nueva) Y su stock inicial YA con costo, en la misma
+     operación — unificado con "Agregar Unidades al Stock" para que el
+     costo promedio ponderado exista desde el primer día (ver
+     crearProducto() en productLookup.js). Al terminar, refresca el
+     catálogo y deja el producto recién creado filtrado en la pantalla
+     de "Agregar unidades al stock" (ya con su stock/costo cargados,
+     sin nada pendiente de guardar). ---- */
   const saveNewProducto = async () => {
-    const nombre = newProductoNombre.trim();
+    const nombreBase = newProductoNombre.trim();
     const precioNum = parseFloat(newProductoPrecio);
+    const unidadesNum = parseInt(newProductoUnidades, 10);
+    const costoTotalNum = parseFloat(newProductoCostoTotal);
 
-    if (!nombre) {
-      setNewProductoError("Ingresa el nombre del producto.");
+    if (!nombreBase) {
+      setNewProductoError("Ingresa el nombre base del producto.");
       return;
     }
     if (!newProductoCategoria.trim()) {
@@ -1425,7 +1843,19 @@ export default function App() {
       return;
     }
     if (isNaN(precioNum) || precioNum <= 0) {
-      setNewProductoError("Ingresa un precio válido.");
+      setNewProductoError("Ingresa un precio de venta válido.");
+      return;
+    }
+    // Mismo criterio que Agregar Unidades al Stock: sin unidades +
+    // costo total no hay forma de calcular el costo promedio
+    // ponderado, y crear el producto sin costo dejaría la Ganancia
+    // Neta desactualizada desde el día 1.
+    if (isNaN(unidadesNum) || unidadesNum <= 0) {
+      setNewProductoError("Ingresa las unidades que ingresan al stock inicial.");
+      return;
+    }
+    if (isNaN(costoTotalNum) || costoTotalNum < 0) {
+      setNewProductoError("Ingresa el costo TOTAL de esta compra.");
       return;
     }
 
@@ -1433,20 +1863,29 @@ export default function App() {
     setNewProductoError("");
 
     try {
-      const { stockKey } = await crearProducto({
+      await crearProducto({
         codigoBarras: newProductoCodigo,
-        nombre,
-        detalle: newProductoDetalle,
+        nombreBase,
+        variante: newProductoVariante,
+        presentacion: newProductoPresentacion,
+        color: newProductoColor,
         precio: precioNum,
         categoria: newProductoCategoria,
         subgrupo: newProductoSubgrupo,
         stockExistente: stock,
+        unidadesIniciales: unidadesNum,
+        costoTotalInicial: costoTotalNum,
       });
       await refetchCatalog();
+      const nombreCreado = composeProductoNombre({
+        nombreBase,
+        variante: newProductoVariante,
+        presentacion: newProductoPresentacion,
+      });
       resetNewProductoForm();
-      setScannedStockKey(stockKey);
-      setStockSearchTerm("");
-      setStockEdits((prev) => ({ ...prev, [stockKey]: "1" }));
+      setScannedStockKey(null);
+      setStockSearchTerm(nombreCreado);
+      setStockSavedMsg(`"${nombreCreado}" creado con ${unidadesNum} unidades en stock.`);
     } catch (err) {
       console.error("Error creando producto:", err);
       setNewProductoError(
@@ -1498,19 +1937,29 @@ export default function App() {
   };
 
   /* ---- edición al vuelo desde "Visibilidad en catálogo público"
-     (botones de lápiz). Nombre/detalle son campos propios de UNA fila
-     de 'productos' (UPDATE simple por id). Categoría y Subgrupo, en
+     (botones de lápiz). nombre_base/variante/presentacion/color son
+     campos propios de UNA fila de 'productos' (UPDATE simple por id);
+     nombre/descripcion se RECOMPONEN a partir de ellos (mismo criterio
+     que crearProducto, para no dejar esos dos campos desincronizados
+     de la agrupación estricta del POS). Categoría y Subgrupo, en
      cambio, no tienen tabla/id propios en este modelo — 'categoria' es
      un string repetido en cada producto (más su propia fila espejo en
      'categorias', usada solo para armar las secciones del catálogo) y
      'subgrupo' es un string libre sin tabla — así que renombrarlos es
      necesariamente un UPDATE masivo sobre todos los productos que
      comparten ese valor, no una edición de una sola fila. ---- */
-  const editarProductoNombreDetalle = async (producto, { nombre, detalle }) => {
+  const editarProductoNombreDetalle = async (producto, { nombreBase, variante, presentacion, color }) => {
     try {
       const { error } = await supabase
         .from("productos")
-        .update({ nombre, descripcion: detalle || null })
+        .update({
+          nombre: composeProductoNombre({ nombreBase, variante, presentacion }),
+          descripcion: composeProductoDescripcion({ variante, presentacion }),
+          nombre_base: (nombreBase || "").trim(),
+          variante: (variante || "").trim() || null,
+          presentacion: (presentacion || "").trim() || null,
+          color_variante: color || null,
+        })
         .eq("id", producto.id);
       if (error) return { error };
       await refetchCatalog();
@@ -1519,6 +1968,60 @@ export default function App() {
       console.error("Error editando producto:", err);
       return { error: err };
     }
+  };
+
+  /* ---- edición rápida de precio de venta (lápiz en la tarjeta del
+     producto, solo admin — el botón mismo ya está gateado por isAdmin
+     en el render, esto es la lógica de guardado). ---- */
+  const openPriceEdit = (item) => {
+    setEditingPriceProduct(item);
+    setEditingPriceValue(String(item.price));
+    setEditingPriceError("");
+  };
+
+  const closePriceEdit = () => {
+    setEditingPriceProduct(null);
+    setEditingPriceValue("");
+    setEditingPriceError("");
+  };
+
+  const savePriceEdit = async () => {
+    if (!editingPriceProduct) return;
+    const nuevoPrecio = parseFloat(editingPriceValue);
+    if (isNaN(nuevoPrecio) || nuevoPrecio <= 0) {
+      setEditingPriceError("Ingresa un precio válido, mayor a 0.");
+      return;
+    }
+
+    setEditingPriceSaving(true);
+    setEditingPriceError("");
+
+    const { data, error } = await supabase
+      .from("productos")
+      .update({ precio: nuevoPrecio })
+      .eq("id", editingPriceProduct.id)
+      .select("id");
+
+    setEditingPriceSaving(false);
+
+    if (error) {
+      console.error("Error actualizando precio:", error);
+      setEditingPriceError(
+        error.message ? `No se pudo guardar: ${error.message}` : "No se pudo guardar el precio."
+      );
+      return;
+    }
+    // Mismo blindaje que el resto de la app: RLS puede dejar pasar un
+    // UPDATE sin afectar filas, sin devolver error.
+    if (!data || data.length === 0) {
+      setEditingPriceError(
+        "No se pudo guardar (0 filas afectadas) — revisa los permisos de UPDATE en 'productos'."
+      );
+      return;
+    }
+
+    await refetchCatalog();
+    closePriceEdit();
   };
 
   /* ---- Renombrar categoría SIN tocar el esquema SQL (la FK
@@ -1730,6 +2233,66 @@ export default function App() {
     }
   };
 
+  /* ---- + Añadir Variante (Visibilidad en Catálogo y Agregar
+     Unidades): alta rápida de un producto "hermano" del de referencia
+     — mismo NOMBRE BASE, categoría, subgrupo y precio base, pero con
+     su PROPIA clave de stock (una variante de color/sabor es
+     mercadería físicamente distinta, no debe compartir inventario con
+     la original). Reusa crearProducto(), la misma función del alta al
+     escanear un código no encontrado — acá solo cambia de dónde salen
+     nombreBase/categoría/precio (de un producto existente, no de un
+     formulario en blanco). 'productoBase.baseName' (no '.name') es la
+     fuente correcta: si productoBase YA es en sí mismo una variante
+     (ej. se pidió "+ variante" desde una fila que es "Hey FIT - Fresa"),
+     igual hereda el mismo nombre_base compartido, no el nombre
+     completo con el sabor viejo pegado. ---- */
+  const agregarVariante = async (productoBase, categoriaLabel, subgrupoRaw, { variante, presentacion, color }) => {
+    try {
+      await crearProducto({
+        nombreBase: productoBase.baseName || productoBase.name,
+        variante,
+        presentacion,
+        color,
+        precio: productoBase.price,
+        categoria: categoriaLabel,
+        subgrupo: subgrupoRaw,
+        stockExistente: stock,
+      });
+      await refetchCatalog();
+      return { error: null };
+    } catch (err) {
+      console.error("Error creando variante:", err);
+      return { error: err };
+    }
+  };
+
+  /* ---- "+ Nueva variedad" en Agregar Unidades al Stock: mismo
+     agregarVariante() de arriba, pero disparado desde el buscador de
+     ingreso de mercadería en vez de Visibilidad — 'referenceItem' es
+     cualquier variante ya existente de esa base (para heredar
+     categoría/subgrupo/precio). ---- */
+  const saveNuevaVariedad = async (referenceItem) => {
+    const sabor = nuevaVariedadSabor.trim();
+    if (!sabor) {
+      setNuevaVariedadError("Escribe el sabor o variedad nueva.");
+      return;
+    }
+    setNuevaVariedadSaving(true);
+    setNuevaVariedadError("");
+    const { error } = await agregarVariante(
+      referenceItem,
+      referenceItem.sectionLabel,
+      referenceItem.subgrupoRaw,
+      { variante: sabor, presentacion: nuevaVariedadPresentacion, color: nuevaVariedadColor }
+    );
+    setNuevaVariedadSaving(false);
+    if (error) {
+      setNuevaVariedadError(error.message ? `No se pudo crear: ${error.message}` : "No se pudo crear la variedad.");
+      return;
+    }
+    resetNuevaVariedadForm();
+  };
+
   /* ---- guardar unidades extra: UPDATE/upsert a 'stock' ---- */
   const saveStockEdits = async () => {
     const additions = Object.keys(stockEdits).filter(
@@ -1761,6 +2324,7 @@ export default function App() {
 
     const newStock = { ...stock };
     const newStockCostos = { ...stockCostos };
+    const newStockUltimoCosto = { ...stockUltimoCosto };
     additions.forEach((key) => {
       const unidadesIngresan = parseInt(stockEdits[key], 10);
       const costoTotalCompra = parseFloat(stockCostEdits[key]);
@@ -1771,12 +2335,27 @@ export default function App() {
         unidadesIngresan,
         costoTotalCompra,
       });
+      // 'último costo' NO se promedia — se SOBRESCRIBE con el costo
+      // unitario de este lote específico (a diferencia de
+      // precio_costo, que sí acumula).
+      newStockUltimoCosto[key] = costoTotalCompra / unidadesIngresan;
     });
 
+    // 'etiqueta' va siempre incluida (no solo cantidad/precio_costo):
+    // si esta clave todavía no tiene fila propia en 'stock' (ej. una
+    // key referenciada por 'consumos' que useCatalog solo mostraba en
+    // 0 localmente, sin fila real en la base — ver el warning en
+    // useCatalog.js), el upsert hace un INSERT nuevo ahí mismo, y sin
+    // 'etiqueta' esa fila nueva podría chocar con un NOT NULL en
+    // Supabase. Para una fila que YA existe, esto solo la reescribe
+    // con el mismo valor que ya tenía (stockLabels[key] se cargó
+    // originalmente desde esa misma columna) — no rompe nada.
     const stockUpdates = additions.map((key) => ({
       nombre: key,
       cantidad: newStock[key],
       precio_costo: newStockCostos[key],
+      ultimo_costo_compra: newStockUltimoCosto[key],
+      etiqueta: stockLabels[key] ?? key,
     }));
 
     const { error } = await supabase
@@ -1786,13 +2365,29 @@ export default function App() {
     setSavingStock(false);
 
     if (error) {
-      console.error("Error al actualizar stock en Supabase:", error);
-      setStockSavedMsg("No se pudo actualizar el stock en Supabase.");
+      // Log completo (message/details/hint/code) — los errores de
+      // PostgREST traen la razón real acá (ej. columna inexistente si
+      // falta correr la migración de 'precio_costo', o violación de
+      // constraint), y el mensaje de la UI ahora la muestra también
+      // para no depender de abrir la consola del navegador.
+      console.error("Error al actualizar stock en Supabase:", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        error,
+      });
+      setStockSavedMsg(
+        error.message
+          ? `No se pudo actualizar el stock: ${error.message}`
+          : "No se pudo actualizar el stock en Supabase."
+      );
       return;
     }
 
     setStock(newStock);
     setStockCostos(newStockCostos);
+    setStockUltimoCosto(newStockUltimoCosto);
     setStockEdits({});
     setStockCostEdits({});
     setStockSavedMsg("Stock actualizado correctamente.");
@@ -1819,6 +2414,7 @@ export default function App() {
   const resetEntryForm = () => {
     setModalView("manual");
     setManualAmount("");
+    setMontoRecibido("");
     setScanDetected({ method: "", opId: "", photoUrl: "" });
     setScanError("");
     setPhotoUploading(false);
@@ -1828,6 +2424,12 @@ export default function App() {
   const handleManualAmountChange = (value) => {
     if (value === "" || /^\d*\.?\d{0,2}$/.test(value)) {
       setManualAmount(value);
+    }
+  };
+
+  const handleMontoRecibidoChange = (value) => {
+    if (value === "" || /^\d*\.?\d{0,2}$/.test(value)) {
+      setMontoRecibido(value);
     }
   };
 
@@ -2424,7 +3026,7 @@ export default function App() {
         id: `item-${Date.now()}`,
         descripcion: "",
         cantidad: "1",
-        precioUnitario: "",
+        costoTotal: "",
         productoId: null,
         stockKey: null,
       },
@@ -2479,14 +3081,14 @@ export default function App() {
           id: `item-barcode-${Date.now()}`,
           descripcion,
           cantidad: "1",
-          precioUnitario: "",
+          costoTotal: "",
           productoId: producto.id,
           stockKey,
         };
         // Si la última fila está vacía (el caso típico: recién se abrió
         // el formulario), la reutiliza en vez de amontonar filas vacías.
         const last = prev[prev.length - 1];
-        const lastIsEmpty = last && !last.descripcion.trim() && !last.precioUnitario;
+        const lastIsEmpty = last && !last.descripcion.trim() && !last.costoTotal;
         return lastIsEmpty ? [...prev.slice(0, -1), nuevaFila] : [...prev, nuevaFila];
       });
 
@@ -2510,7 +3112,7 @@ export default function App() {
         id: `item-${Date.now()}-${prev.length}`,
         descripcion: "",
         cantidad: "1",
-        precioUnitario: "",
+        costoTotal: "",
         productoId: null,
         stockKey: null,
       },
@@ -2526,10 +3128,12 @@ export default function App() {
       prev.map((it) => {
         if (it.id !== id) return it;
         // Si el usuario reescribe la descripción de una fila que vino
-        // de un escaneo, el vínculo con ese producto/stock ya no es
-        // confiable — se suelta para no sumarle stock al producto
-        // equivocado.
-        if (field === "descripcion" && it.productoId) {
+        // de un escaneo o de elegir una sugerencia de 'stock', el
+        // vínculo ya no es confiable — se suelta para no sumarle stock
+        // al producto equivocado. (resolveGastoItemStockKey igual lo
+        // re-vincula al guardar si el texto final vuelve a matchear
+        // exacto con algo de 'stock'.)
+        if (field === "descripcion" && (it.productoId || it.stockKey)) {
           return { ...it, descripcion: value, productoId: null, stockKey: null };
         }
         return { ...it, [field]: value };
@@ -2537,11 +3141,10 @@ export default function App() {
     );
   };
 
-  const gastoItemsTotal = gastoItems.reduce((sum, it) => {
-    const qty = parseFloat(it.cantidad) || 0;
-    const price = parseFloat(it.precioUnitario) || 0;
-    return sum + qty * price;
-  }, 0);
+  // El total general = suma de los Costos Totales de cada ítem — ya no
+  // hace falta multiplicar por cantidad, 'costoTotal' YA es el monto
+  // completo pagado por ese ítem (no un precio unitario).
+  const gastoItemsTotal = gastoItems.reduce((sum, it) => sum + (parseFloat(it.costoTotal) || 0), 0);
 
   // Mixto = ambos métodos prendidos a la vez. Con solo uno prendido se
   // comporta como antes (EFECTIVO o DIGITAL exclusivo).
@@ -2550,33 +3153,65 @@ export default function App() {
   const gastoMontoDigitalNum = parseFloat(gastoMontoDigital) || 0;
   const gastoMixtoDiferencia = gastoItemsTotal - (gastoMontoEfectivoNum + gastoMontoDigitalNum);
 
-  /* ---- exporta el historial de gastos visible a un .csv ---- */
-  const exportGastosCSV = () => {
-    // Mismo criterio que exportCierresCSV: columnas individuales,
-    // delimitador ";" y montos numéricos puros (sin "S/") para poder
-    // sumar directo en Excel.
+  /* ---- Reporte de Precios y Márgenes (solo admin): cruza 'productos'
+     (vía productsById, ya armado por useCatalog) con 'stock' — costo
+     promedio ponderado (stockCostos) y último costo ingresado
+     (stockUltimoCosto) se derivan de las claves que cada producto
+     consume, igual que unitCostFor. Para un combo (varias claves), el
+     costo es la suma del costo de sus partes — no existe un "costo
+     propio" independiente para un combo. Si alguna clave todavía no
+     tiene 'último costo' cargado, esa celda queda vacía (no en 0 —
+     0 significaría "gratis", que sería un dato falso, no ausente). ---- */
+  const exportReportePreciosXLSX = () => {
     const headers = [
-      "Fecha",
-      "Tipo Comprobante",
-      "N° Comprobante",
-      "Proveedor",
-      "RUC",
-      "Origen",
-      "Monto",
+      "Producto",
+      "Stock Actual",
+      "Costo Promedio (S/)",
+      "Último Costo Ingresado (S/)",
+      "Precio de Venta (S/)",
+      "Ganancia Neta (S/)",
+      "Margen (%)",
     ];
-    const rows = gastos.map((g) => {
-      const proveedor = proveedores.find((p) => p.id === g.proveedorId);
-      return [
-        `${formatDate(g.timestamp)} ${formatTime(g.timestamp)}`,
-        g.tipoComprobante,
-        g.numeroComprobante || "",
-        proveedor ? proveedor.razonSocial : "",
-        proveedor ? proveedor.ruc : "",
-        g.origen === "EXTERNO" ? "Externo" : "Caja",
-        g.total.toFixed(2),
-      ];
-    });
-    downloadCSV(`gastos-${Date.now()}.csv`, headers, rows, ";");
+    const productos = Object.values(productsById).sort((a, b) => a.name.localeCompare(b.name));
+    const filas = [
+      headers,
+      ...productos.map((p) => {
+        const stockActual = availabilityFor(p, stock);
+        const costoPromedio = unitCostFor(p, stockCostos);
+
+        let ultimoCosto = null;
+        if (Array.isArray(p.consumes) && p.consumes.length > 0) {
+          let total = 0;
+          let allKnown = true;
+          for (const { key, qty } of p.consumes) {
+            const u = stockUltimoCosto[key];
+            if (u == null) {
+              allKnown = false;
+              break;
+            }
+            total += u * qty;
+          }
+          if (allKnown) ultimoCosto = total;
+        }
+
+        const gananciaNeta = p.price - costoPromedio;
+        const margen = p.price > 0 ? (gananciaNeta / p.price) * 100 : null;
+
+        return [
+          p.detail ? `${p.name} (${p.detail})` : p.name,
+          stockActual === Infinity ? "" : stockActual,
+          Number(costoPromedio.toFixed(2)),
+          ultimoCosto != null ? Number(ultimoCosto.toFixed(2)) : "",
+          Number(p.price.toFixed(2)),
+          Number(gananciaNeta.toFixed(2)),
+          margen != null ? Number(margen.toFixed(1)) : "",
+        ];
+      }),
+    ];
+
+    downloadXLSX(`precios-margenes-${Date.now()}.xlsx`, [
+      { nombre: "Precios y Márgenes", filas },
+    ]);
   };
 
   /* ---- guardar gasto: si el RUC es nuevo, primero crea el proveedor
@@ -2584,9 +3219,7 @@ export default function App() {
   const saveGasto = async () => {
     const validItems = gastoItems.filter(
       (it) =>
-        it.descripcion.trim() &&
-        parseFloat(it.cantidad) > 0 &&
-        parseFloat(it.precioUnitario) >= 0
+        it.descripcion.trim() && parseFloat(it.cantidad) > 0 && parseFloat(it.costoTotal) >= 0
     );
     if (validItems.length === 0) {
       setGastoError("Agrega al menos un ítem con descripción, cantidad y precio.");
@@ -2676,13 +3309,24 @@ export default function App() {
       const gastoRow = insertedGasto && insertedGasto[0];
       const gastoId = gastoRow?.id;
 
-      const itemsToInsert = validItems.map((it) => ({
-        gasto_id: gastoId,
-        descripcion: it.descripcion.trim(),
-        cantidad: parseFloat(it.cantidad),
-        precio_unitario: parseFloat(it.precioUnitario),
-        subtotal: parseFloat(it.cantidad) * parseFloat(it.precioUnitario),
-      }));
+      // 'gasto_items' sigue guardando precio_unitario/subtotal (así lo
+      // lee el resto de la app: historial expandido, CSV) — pero el
+      // formulario ya no pide precio unitario, pide el Costo Total del
+      // ítem directamente. precio_unitario queda como dato DERIVADO
+      // (costoTotal / cantidad) solo para mantener ese esquema; el
+      // subtotal es el costoTotal tal cual lo escribió el cajero, sin
+      // volver a multiplicar (evita arrastrar redondeos de más).
+      const itemsToInsert = validItems.map((it) => {
+        const cantidad = parseFloat(it.cantidad);
+        const costoTotal = parseFloat(it.costoTotal);
+        return {
+          gasto_id: gastoId,
+          descripcion: it.descripcion.trim(),
+          cantidad,
+          precio_unitario: costoTotal / cantidad,
+          subtotal: costoTotal,
+        };
+      });
 
       const { data: insertedItems, error: itemsErr } = await supabase
         .from("gasto_items")
@@ -2691,41 +3335,79 @@ export default function App() {
 
       if (itemsErr) throw itemsErr;
 
-      // ---- Transacción dual (paso B): "Ingreso de Mercadería" — por
-      // cada ítem vinculado a un producto escaneado con una clave de
-      // stock única, suma la cantidad recibida al stock actual. No es
-      // una transacción real de Postgres (el cliente de Supabase no
-      // soporta eso desde el navegador) — si esto falla, el gasto YA
-      // quedó guardado (correcto: la plata sí salió de caja), así que
-      // solo se avisa para que el admin corrija el stock a mano en vez
-      // de fingir que todo el guardado falló.
-      const stockDeltas = {};
+      // ---- Transacción dual (paso B): "Ingreso de Mercadería" — todo
+      // ítem que matchea una clave de 'stock' (vinculado por escaneo,
+      // por la sugerencia de autocompletado, o porque su descripción
+      // final coincide exacto con una etiqueta de stock — ver
+      // resolveGastoItemStockKey) suma su cantidad al stock actual Y
+      // recalcula 'precio_costo' con Costo Promedio Ponderado, igual
+      // que "Agregar Unidades al Stock" (calcularCostoPromedioPonderado).
+      // Si DOS ítems del mismo gasto apuntan a la misma clave (ej. la
+      // misma bebida en dos líneas), se agregan ANTES de aplicar la
+      // fórmula una sola vez por clave — aplicarla dos veces seguidas
+      // partiendo del mismo "stock actual" para cada línea daría un
+      // promedio incorrecto. No es una transacción real de Postgres
+      // (el cliente de Supabase no soporta eso desde el navegador) —
+      // si esto falla, el gasto YA quedó guardado (correcto: la plata
+      // sí salió de caja), así que solo se avisa para que el admin
+      // corrija el stock a mano en vez de fingir que todo el guardado
+      // falló.
+      const stockDeltas = {}; // { key: { unidades, costoTotal } }
       validItems.forEach((it) => {
-        if (it.stockKey) {
-          const qty = parseFloat(it.cantidad) || 0;
-          stockDeltas[it.stockKey] = (stockDeltas[it.stockKey] || 0) + qty;
-        }
+        const key = resolveGastoItemStockKey(it);
+        if (!key) return;
+        const qty = parseFloat(it.cantidad) || 0;
+        // 'costoTotal' ya ES el monto pagado por este ítem — no hace
+        // falta multiplicar por cantidad (a diferencia de antes, que
+        // lo derivaba de un precio unitario tipeado aparte).
+        const costoTotalItem = parseFloat(it.costoTotal) || 0;
+        if (!stockDeltas[key]) stockDeltas[key] = { unidades: 0, costoTotal: 0 };
+        stockDeltas[key].unidades += qty;
+        stockDeltas[key].costoTotal += costoTotalItem;
       });
       const stockKeysToUpdate = Object.keys(stockDeltas);
       let stockWarning = "";
       if (stockKeysToUpdate.length > 0) {
         const newStock = { ...stock };
+        const newStockCostos = { ...stockCostos };
+        const newStockUltimoCosto = { ...stockUltimoCosto };
         stockKeysToUpdate.forEach((key) => {
-          newStock[key] = (newStock[key] ?? 0) + stockDeltas[key];
+          const { unidades, costoTotal } = stockDeltas[key];
+          newStockCostos[key] = calcularCostoPromedioPonderado({
+            stockActual: stock[key] ?? 0,
+            costoActualUnitario: stockCostos[key],
+            unidadesIngresan: unidades,
+            costoTotalCompra: costoTotal,
+          });
+          // Igual que en "Agregar Unidades al Stock": el último costo
+          // se sobreescribe con el de ESTE lote, no se promedia.
+          newStockUltimoCosto[key] = costoTotal / unidades;
+          newStock[key] = (newStock[key] ?? 0) + unidades;
         });
         const stockUpdates = stockKeysToUpdate.map((key) => ({
           nombre: key,
           cantidad: newStock[key],
+          precio_costo: newStockCostos[key],
+          ultimo_costo_compra: newStockUltimoCosto[key],
+          etiqueta: stockLabels[key] ?? key,
         }));
         const { error: stockErr } = await supabase
           .from("stock")
           .upsert(stockUpdates, { onConflict: "nombre" });
         if (stockErr) {
-          console.error("Error al actualizar stock desde Ingreso de Mercadería:", stockErr);
+          console.error("Error al actualizar stock/costo desde Ingreso de Mercadería:", {
+            message: stockErr.message,
+            details: stockErr.details,
+            hint: stockErr.hint,
+            code: stockErr.code,
+            error: stockErr,
+          });
           stockWarning =
-            "El gasto se guardó, pero no se pudo sumar el stock automáticamente. Corrígelo en 'Editar Stock'.";
+            "El gasto se guardó, pero no se pudo sumar el stock/costo automáticamente. Corrígelo en 'Editar Stock'.";
         } else {
           setStock(newStock);
+          setStockCostos(newStockCostos);
+          setStockUltimoCosto(newStockUltimoCosto);
         }
       }
 
@@ -2888,9 +3570,12 @@ export default function App() {
     }
   };
 
-  /* ---- Cajeros: se cargan solo cuando el admin abre el modal (no en
+  /* ---- Usuarios: se cargan solo cuando el admin abre el modal (no en
      el efecto grande de arranque) — es una pantalla de gestión, no
-     algo que haga falta tener listo apenas carga el POS. ---- */
+     algo que haga falta tener listo apenas carga el POS. Trae cajeros
+     Y clientes en una sola consulta (profiles ya tiene 'nombre' para
+     ambos — ver create-cliente/migración 0033), ordenados por rol para
+     que la lista salga agrupada visualmente. ---- */
   useEffect(() => {
     if (!cajerosOpen) return;
     let active = true;
@@ -2898,12 +3583,13 @@ export default function App() {
 
     supabase
       .from("profiles")
-      .select("id, nombre")
-      .eq("role", "cajero")
+      .select("id, nombre, role")
+      .in("role", ["cajero", "cliente"])
+      .order("role", { ascending: true })
       .then(({ data, error }) => {
         if (!active) return;
         if (error) {
-          console.error("Error cargando cajeros:", error);
+          console.error("Error cargando usuarios:", error);
         } else {
           setCajeros(data || []);
         }
@@ -2914,6 +3600,67 @@ export default function App() {
       active = false;
     };
   }, [cajerosOpen]);
+
+  const openPinModal = (usuario) => {
+    setPinModalUser(usuario);
+    setPinModalValue("");
+    setPinModalError("");
+  };
+
+  const closePinModal = () => {
+    setPinModalUser(null);
+    setPinModalValue("");
+    setPinModalError("");
+  };
+
+  const savePinModal = async () => {
+    if (!pinModalUser) return;
+    const pin = pinModalValue.trim();
+    if (!/^\d{4,10}$/.test(pin)) {
+      setPinModalError("La clave debe tener entre 4 y 10 dígitos.");
+      return;
+    }
+    setPinModalSaving(true);
+    setPinModalError("");
+
+    const { error } = await supabase.functions.invoke("manage-usuario", {
+      body: { action: "reset-pin", userId: pinModalUser.id, pin },
+    });
+
+    setPinModalSaving(false);
+
+    if (error) {
+      console.error("Error al cambiar PIN vía Edge Function:", error);
+      const body = await error.context?.json?.().catch(() => null);
+      setPinModalError(body?.error || "No se pudo cambiar el PIN. Intenta de nuevo.");
+      return;
+    }
+
+    closePinModal();
+  };
+
+  const eliminarUsuarioAuth = async (usuario) => {
+    const tipoLabel = usuario.role === "cajero" ? "cajero" : "cliente";
+    if (!window.confirm(`¿Seguro que deseas eliminar a este ${tipoLabel}?`)) return;
+
+    setUsuarioActionError("");
+    setDeletingUsuarioId(usuario.id);
+
+    const { error } = await supabase.functions.invoke("manage-usuario", {
+      body: { action: "delete", userId: usuario.id },
+    });
+
+    setDeletingUsuarioId(null);
+
+    if (error) {
+      console.error("Error al eliminar usuario vía Edge Function:", error);
+      const body = await error.context?.json?.().catch(() => null);
+      setUsuarioActionError(body?.error || "No se pudo eliminar el usuario. Intenta de nuevo.");
+      return;
+    }
+
+    setCajeros((prev) => prev.filter((c) => c.id !== usuario.id));
+  };
 
   const resetCajeroForm = () => {
     setAddCajeroOpen(false);
@@ -2957,7 +3704,7 @@ export default function App() {
       return;
     }
 
-    setCajeros((prev) => [...prev, { id: data.id, nombre: data.nombre }]);
+    setCajeros((prev) => [...prev, { id: data.id, nombre: data.nombre, role: "cajero" }]);
     resetCajeroForm();
   };
 
@@ -2979,13 +3726,15 @@ export default function App() {
     // cobra. total === cashRevenue + fiadoHoy, siempre.
     const fiadoHoy = total - cashRevenue;
 
-    const costOf = (list) =>
-      list.reduce((sum, s) => {
-        const match = Object.values(productsById).find(
-          (p) => p.name === s.name && (p.detail || "") === (s.detail || "")
-        );
-        return sum + unitCostFor(match, stockCostos) * s.qty;
-      }, 0);
+    // "Congelamiento del Costo": el costo de una venta ya hecha es el
+    // que se guardó en 'historial.costo_total' EN EL MOMENTO de esa
+    // venta (ver submitVenta) — nunca se vuelve a buscar el costo
+    // actual de 'productsById'/'stockCostos' acá. Si mañana cambia el
+    // costo promedio ponderado (nuevo ingreso de mercadería), las
+    // ventas de hoy no se mueven retroactivamente. Ventas de antes de
+    // la migración 0026 no tienen costo congelado (costoTotal: null)
+    // y aportan 0 — no hay forma de reconstruir ese dato con certeza.
+    const costOf = (list) => list.reduce((sum, s) => sum + (s.costoTotal || 0), 0);
 
     // Costo de mercadería de TODAS las ventas del turno (se sigue
     // reportando como referencia general), y el de solo las ventas al
@@ -3110,38 +3859,255 @@ export default function App() {
       recaudadoTotal,
       avgTicket,
     };
-  }, [sales, comprobantes, gastos, movimientos, turnoCutoff, stockCostos]);
+  }, [sales, comprobantes, gastos, movimientos, turnoCutoff]);
 
-  /* ---- exporta el historial de cierres a un .csv ---- */
-  const exportCierresCSV = () => {
-    // Columnas separadas y valores numéricos puros (sin "S/" ni texto)
-    // para que Excel pueda sumar directo; ";" como delimitador porque
-    // Excel en español usa "," como separador decimal.
+  /* ---- 📥 Historial de Gastos (solo admin): una fila por CADA ÍTEM de
+     cada gasto (no una fila por gasto) — así el proveedor/comprobante
+     de la boleta se repite en sus líneas, igual que el resto de los
+     exports "detallados" de esta app, y se puede sumar/filtrar en
+     Excel sin tener que abrir cada boleta a mano. ---- */
+  const exportHistorialGastosXLSX = () => {
     const headers = [
       "Fecha",
-      "Recaudado",
-      "Ingreso Efectivo",
-      "Ingreso Digital",
-      "Ventas",
-      "Gastos",
-      "Ganancia Neta (Ventas)",
-      "Ganancia Neta (Fiados)",
-      "Efectivo Real",
-      "Diferencia",
+      "Hora",
+      "Proveedor",
+      "RUC",
+      "Tipo Comprobante",
+      "N° Comprobante",
+      "Origen",
+      "Método de Pago",
+      "Descripción Ítem",
+      "Cantidad",
+      "Precio Unitario (S/)",
+      "Subtotal Ítem (S/)",
+      "Total Gasto (S/)",
     ];
-    const rows = cierres.map((c) => [
-      `${formatDate(c.timestamp)} ${formatTime(c.timestamp)}`,
-      c.recaudadoTotal.toFixed(2),
-      c.ingresoEfectivo != null ? c.ingresoEfectivo.toFixed(2) : "",
-      c.ingresoDigital != null ? c.ingresoDigital.toFixed(2) : "",
-      c.ventasRegistradas,
-      c.gastosTotal.toFixed(2),
-      c.gananciaVentas != null ? c.gananciaVentas.toFixed(2) : "",
-      c.gananciaFiados != null ? c.gananciaFiados.toFixed(2) : "",
-      c.efectivoReal != null ? c.efectivoReal.toFixed(2) : "",
-      c.diferencia != null ? c.diferencia.toFixed(2) : "",
+    const filas = [headers];
+    gastos.forEach((g) => {
+      const proveedor = proveedores.find((p) => p.id === g.proveedorId);
+      const itemsDelGasto = g.items.length > 0 ? g.items : [null];
+      itemsDelGasto.forEach((it) => {
+        filas.push([
+          formatDate(g.timestamp),
+          formatTime(g.timestamp),
+          proveedor ? proveedor.razonSocial : "",
+          proveedor ? proveedor.ruc : "",
+          g.tipoComprobante || "",
+          g.numeroComprobante || "",
+          g.origen === "EXTERNO" ? "Externo" : "Caja",
+          g.metodoPago || "",
+          it ? it.descripcion : "",
+          it ? it.cantidad : "",
+          it ? Number(it.precioUnitario.toFixed(2)) : "",
+          it ? Number(it.subtotal.toFixed(2)) : "",
+          Number(g.total.toFixed(2)),
+        ]);
+      });
+    });
+    downloadXLSX(`historial-gastos-${Date.now()}.xlsx`, [{ nombre: "Gastos", filas }]);
+  };
+
+  /* ---- 🛒 Historial de Ventas (solo admin): una fila por línea de
+     'historial', con todo lo que queda CONGELADO al momento de la
+     venta (precio, costo, monto recibido y vuelto — ver submitVenta).
+     Nunca se recalcula con datos actuales de 'productos'/'stock'. ---- */
+  const exportHistorialVentasXLSX = () => {
+    const headers = [
+      "ID Compra",
+      "Fecha",
+      "Hora",
+      "Producto",
+      "Detalle",
+      "Cantidad",
+      "Precio Venta (S/)",
+      "Total (S/)",
+      "Costo Unitario (S/)",
+      "Costo Total (S/)",
+      "Método de Pago",
+      "Vendedor",
+      "Monto Recibido (S/)",
+      "Vuelto (S/)",
+    ];
+    const filas = [
+      headers,
+      ...sales.map((s) => [
+        s.purchaseId,
+        formatDate(s.timestamp),
+        formatTime(s.timestamp),
+        s.name,
+        s.detail || "",
+        s.qty,
+        Number(s.price.toFixed(2)),
+        Number(s.total.toFixed(2)),
+        s.costoUnitario != null ? Number(s.costoUnitario.toFixed(2)) : "",
+        s.costoTotal != null ? Number(s.costoTotal.toFixed(2)) : "",
+        s.metodoPago || "",
+        s.vendedor || "",
+        s.montoRecibido != null ? Number(s.montoRecibido.toFixed(2)) : "",
+        s.vuelto != null ? Number(s.vuelto.toFixed(2)) : "",
+      ]),
+    ];
+    downloadXLSX(`historial-ventas-${Date.now()}.xlsx`, [{ nombre: "Ventas", filas }]);
+  };
+
+  /* ---- 📥 Exportar Historial de Cierres (solo admin, modal Cierre de
+     Caja): TODOS los campos de cada corte de turno con el mayor
+     detalle posible, más un "Resumen Mensual" (recaudado/gastos/
+     ganancia agrupados por mes, calculado desde 'sales'/'gastos'
+     crudos — no desde 'cierres' — para no depender de que el mes en
+     curso ya tenga un cierre hecho). ---- */
+  const exportHistorialCierresXLSX = () => {
+    const headersCierres = [
+      "Fecha Cierre",
+      "Hora Cierre",
+      "Cajero",
+      "Fecha Apertura",
+      "Hora Apertura",
+      "Fondo Inicial (S/)",
+      "Recaudado Total (S/)",
+      "Ingreso Efectivo (S/)",
+      "Ingreso Digital (S/)",
+      "Productos Vendidos",
+      "Ventas Registradas",
+      "Gastos Total (S/)",
+      "Ganancia Neta Ventas (S/)",
+      "Ganancia Neta Fiados (S/)",
+      "Ganancia Neta Total (S/)",
+      "Ticket General (S/)",
+      "Efectivo Real (S/)",
+      "Diferencia (S/)",
+    ];
+    const filasCierres = [
+      headersCierres,
+      ...cierres.map((c) => [
+        formatDate(c.timestamp),
+        formatTime(c.timestamp),
+        c.cajeroNombre || "",
+        // 'abiertaEn' es la fotografía real del momento de apertura
+        // (desde estado_caja, migración 0029) — para cierres de antes
+        // de esa migración no hay forma de reconstruirlo, así que cae
+        // a 'turnoInicio' (el corte de estadísticas, la mejor
+        // aproximación disponible) en vez de quedar vacío.
+        formatDate(c.abiertaEn ?? c.turnoInicio),
+        formatTime(c.abiertaEn ?? c.turnoInicio),
+        c.fondoInicial != null ? Number(c.fondoInicial.toFixed(2)) : "",
+        Number(c.recaudadoTotal.toFixed(2)),
+        c.ingresoEfectivo != null ? Number(c.ingresoEfectivo.toFixed(2)) : "",
+        c.ingresoDigital != null ? Number(c.ingresoDigital.toFixed(2)) : "",
+        c.productosVendidos,
+        c.ventasRegistradas,
+        Number(c.gastosTotal.toFixed(2)),
+        c.gananciaVentas != null ? Number(c.gananciaVentas.toFixed(2)) : "",
+        c.gananciaFiados != null ? Number(c.gananciaFiados.toFixed(2)) : "",
+        Number(c.gananciaNeta.toFixed(2)),
+        Number(c.ticketGeneral.toFixed(2)),
+        c.efectivoReal != null ? Number(c.efectivoReal.toFixed(2)) : "",
+        c.diferencia != null ? Number(c.diferencia.toFixed(2)) : "",
+      ]),
+    ];
+
+    const mensual = {};
+    const getOrInit = (key) => {
+      if (!mensual[key]) mensual[key] = { recaudado: 0, costo: 0, gastos: 0 };
+      return mensual[key];
+    };
+    sales.forEach((s) => {
+      const d = new Date(s.timestamp);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const m = getOrInit(key);
+      m.recaudado += s.total;
+      m.costo += s.costoTotal || 0;
+    });
+    gastos.forEach((g) => {
+      const d = new Date(g.timestamp);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      getOrInit(key).gastos += g.total;
+    });
+    const headersMensual = [
+      "Mes",
+      "Total Recaudado (S/)",
+      "Total Gastos (S/)",
+      "Ganancia Neta Mensual (S/)",
+    ];
+    const filasMensual = [
+      headersMensual,
+      ...Object.keys(mensual)
+        .sort()
+        .map((key) => {
+          const m = mensual[key];
+          const gananciaNetaMensual = m.recaudado - m.costo - m.gastos;
+          return [
+            formatMesEs(key),
+            Number(m.recaudado.toFixed(2)),
+            Number(m.gastos.toFixed(2)),
+            Number(gananciaNetaMensual.toFixed(2)),
+          ];
+        }),
+    ];
+
+    downloadXLSX(`historial-cierres-${Date.now()}.xlsx`, [
+      { nombre: "Cierres", filas: filasCierres },
+      { nombre: "Resumen Mensual", filas: filasMensual },
     ]);
-    downloadCSV(`cierres-caja-${Date.now()}.csv`, headers, rows, ";");
+  };
+
+  /* ---- Apertura de Caja (solo admin — el botón que dispara esto ya
+     está gateado por isAdmin en el render): carga el fondo inicial
+     contado a mano y abre la caja para que el POS quede disponible
+     tanto para admin como para cajero. ---- */
+  const abrirCaja = async () => {
+    const fondo = parseFloat(fondoInicialInput);
+    if (isNaN(fondo) || fondo < 0) {
+      setAperturaError("Ingresa el fondo inicial (billetes y monedas contados), 0 o más.");
+      return;
+    }
+
+    setAperturaSaving(true);
+    setAperturaError("");
+
+    const abiertaEn = Date.now();
+    const nombreQuienAbre = cajeroNombre || (isAdmin ? "Admin" : "Cajero");
+
+    const { error } = await supabase
+      .from("estado_caja")
+      .update({
+        estado: "abierta",
+        fondo_inicial: fondo,
+        abierta_por: nombreQuienAbre,
+        abierta_en: abiertaEn,
+        cerrada_en: null,
+      })
+      .eq("id", 1);
+
+    setAperturaSaving(false);
+
+    if (error) {
+      console.error("Error al abrir caja:", error);
+      setAperturaError(
+        error.message ? `No se pudo abrir la caja: ${error.message}` : "No se pudo abrir la caja."
+      );
+      return;
+    }
+
+    setEstadoCaja({
+      estado: "abierta",
+      fondoInicial: fondo,
+      abiertaPor: nombreQuienAbre,
+      abiertaEn,
+      cerradaEn: null,
+    });
+    setFondoInicialInput("");
+  };
+
+  /* ---- Confirmación de turno (solo cajero): reconoce el fondo
+     inicial de ESTA apertura puntual (abiertaEn) antes de dejarlo
+     entrar al POS — puramente local (sessionStorage), no hay nada que
+     guardar en Supabase acá. ---- */
+  const confirmarTurno = () => {
+    if (!estadoCaja?.abiertaEn) return;
+    const marca = String(estadoCaja.abiertaEn);
+    sessionStorage.setItem("tz_turno_confirmado_en", marca);
+    setTurnoConfirmadoEn(marca);
   };
 
   /* ---- Cierre de Caja: guarda una instantánea de los contadores del
@@ -3171,6 +4137,11 @@ export default function App() {
         : null,
       ingreso_efectivo: todayStats.ingresoEfectivo,
       ingreso_digital: todayStats.ingresoDigital,
+      cajero_nombre: cajeroNombre || (isAdmin ? "Admin" : "Cajero"),
+      // Fotografía del estado_caja vigente — fondo inicial y momento
+      // exacto de apertura de ESTE turno que se está cerrando ahora.
+      fondo_inicial: estadoCaja?.fondoInicial ?? null,
+      abierta_en: estadoCaja?.abiertaEn ?? null,
       fecha: timestamp,
     };
 
@@ -3207,12 +4178,36 @@ export default function App() {
       diferencia: snapshot.diferencia,
       ingresoEfectivo: snapshot.ingreso_efectivo,
       ingresoDigital: snapshot.ingreso_digital,
+      cajeroNombre: snapshot.cajero_nombre,
+      fondoInicial: snapshot.fondo_inicial,
+      abiertaEn: snapshot.abierta_en,
       timestamp: Number(row?.fecha ?? timestamp),
     };
 
     setCierres((prev) => [newCierre, ...prev]);
     setConfirmCierreOpen(false);
     setEfectivoReal("");
+
+    // Fase 1 "Control de Dinero": cerrar caja SIEMPRE marca
+    // estado_caja como 'cerrada', sin importar el rol. El efecto es
+    // distinto según quién cierra: el admin sigue con acceso total
+    // (el gating de estado_caja solo bloquea al cajero); el cajero
+    // queda bloqueado hasta la próxima apertura. No se revierte el
+    // cierre ya guardado si esto falla — mismo criterio que el resto
+    // de la app (el dato importante ya quedó registrado).
+    const { error: estadoCajaCloseError } = await supabase
+      .from("estado_caja")
+      .update({ estado: "cerrada", cerrada_en: timestamp })
+      .eq("id", 1);
+
+    if (estadoCajaCloseError) {
+      console.error("Error al cerrar estado_caja:", estadoCajaCloseError);
+      setCierreError(
+        "El cierre se guardó, pero no se pudo actualizar el estado de la caja. Recarga la página si el bloqueo no aparece."
+      );
+    } else {
+      setEstadoCaja((prev) => (prev ? { ...prev, estado: "cerrada", cerradaEn: timestamp } : prev));
+    }
   };
 
   /* ---- estadísticas globales por método de pago (para el modal de
@@ -3327,6 +4322,13 @@ export default function App() {
 
   const activeSection = sections.find((s) => s.key === activeTab);
 
+  // Agrupación por nombre_base calculada UNA vez por sección activa,
+  // sobre TODOS sus subgrupos a la vez — ver buildSectionDisplayEntries.
+  const sectionEntriesByGi = useMemo(
+    () => (activeSection ? buildSectionDisplayEntries(activeSection.groups) : new Map()),
+    [activeSection]
+  );
+
   /* ---- buscador global: sugerencias por nombre sobre TODO el
      catálogo (no solo la pestaña activa), tope de 8 para que el
      dropdown no tape media pantalla. ---- */
@@ -3427,9 +4429,108 @@ export default function App() {
     );
   }
 
+  /* ---- Fase 1 "Control de Dinero y Flujo de Sesión": gating de
+     acceso al POS según estado_caja, SOLO para el rol cajero — el
+     admin nunca queda bloqueado de esta forma, ve un modal de
+     apertura obligatorio en su lugar (más abajo, dentro del return
+     principal). 'estadoCaja' siempre está definido acá (loadedEstadoCaja
+     nunca es null, incluso si la tabla estuviera vacía). ---- */
+  const cajaAbierta = estadoCaja?.estado === "abierta";
+  const turnoYaConfirmado =
+    !!estadoCaja?.abiertaEn && turnoConfirmadoEn === String(estadoCaja.abiertaEn);
+
+  if (isCajero && !cajaAbierta) {
+    // Si turnoConfirmadoEn tiene algo guardado, este cajero ya había
+    // confirmado un turno (el que justo se cerró) — el texto refleja
+    // que fue SU turno el que terminó, no que la caja ya estaba
+    // cerrada cuando llegó.
+    const turnoFinalizado = !!turnoConfirmadoEn;
+    return (
+      <div className="tz-root tz-caja-blocked">
+        <Styles />
+        <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
+        <Lock size={44} />
+        <h1>{turnoFinalizado ? "Turno Finalizado" : "Caja Cerrada"}</h1>
+        <p>Caja Cerrada — {turnoFinalizado ? "hasta tu próximo turno." : "Esperando apertura."}</p>
+        <button className="tz-header-btn tz-caja-blocked-logout" onClick={signOut}>
+          <LogOut size={16} /> Cerrar sesión
+        </button>
+      </div>
+    );
+  }
+
+  if (isCajero && cajaAbierta && !turnoYaConfirmado) {
+    return (
+      <div className="tz-root tz-caja-blocked">
+        <Styles />
+        <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
+        <DollarSign size={44} />
+        <h1>Confirmar Turno</h1>
+        <p>Caja abierta por {estadoCaja.abiertaPor || "el admin"}.</p>
+        <div className="tz-caja-fondo-readonly">
+          <span>Fondo inicial</span>
+          <strong>{formatSoles(estadoCaja.fondoInicial ?? 0)}</strong>
+        </div>
+        <button className="tz-submit-btn" onClick={confirmarTurno}>
+          <Check size={16} /> Confirmar e Iniciar Turno
+        </button>
+        <button className="tz-header-btn tz-caja-blocked-logout" onClick={signOut}>
+          <LogOut size={16} /> Cerrar sesión
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="tz-root">
       <Styles />
+
+      {/* ---------------- MODAL OBLIGATORIO: APERTURA DE CAJA (solo admin) ----------------
+         Sin botón de cerrar ni backdrop clickeable — la caja tiene que
+         abrirse antes de poder hacer cualquier otra cosa. Solo se
+         dispara para isAdmin: el cajero nunca ve esto, para él la caja
+         cerrada es la pantalla de bloqueo de más arriba. */}
+      {isAdmin && !cajaAbierta && (
+        <div className="tz-modal-backdrop tz-caja-apertura-backdrop">
+          <div className="tz-modal">
+            <div className="tz-add-entry">
+              <h2>Apertura de Caja</h2>
+              <p className="tz-stock-editor-sub">
+                Cuenta el efectivo físico (billetes y monedas) con el que arranca el turno antes
+                de habilitar la caja.
+              </p>
+              <label className="tz-field-label">Fondo inicial (S/)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.10"
+                autoFocus
+                className="tz-amount-input"
+                placeholder="0.00"
+                value={fondoInicialInput}
+                onChange={(e) => setFondoInicialInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") abrirCaja();
+                }}
+              />
+              {aperturaError && <p className="tz-error">{aperturaError}</p>}
+              <button
+                className="tz-submit-btn"
+                onClick={abrirCaja}
+                disabled={aperturaSaving}
+                style={{ marginTop: 10 }}
+              >
+                {aperturaSaving ? (
+                  <Loader2 size={16} className="tz-spin" />
+                ) : (
+                  <DollarSign size={16} />
+                )}
+                Abrir Caja
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ---------------- HEADER ---------------- */}
       <header className="tz-header">
@@ -3444,7 +4545,7 @@ export default function App() {
           </button>
 
           <div className="tz-header-center">
-            <img src={logo} alt="TONAZO!" className="tz-logo" />
+            <LogoEasterEgg src={logo} alt="TONAZO!" className="tz-logo" />
             <p className="tz-subtitle">Caja Registradora</p>
           </div>
 
@@ -3503,11 +4604,14 @@ export default function App() {
           {isAdmin && (
             <button
               className="tz-header-btn"
-              onClick={() => setCajerosOpen(true)}
-              aria-label="Cajeros"
+              onClick={() => {
+                setUsuarioActionError("");
+                setCajerosOpen(true);
+              }}
+              aria-label="Usuarios"
             >
               <Users size={19} />
-              <span className="tz-header-btn-label">Cajeros</span>
+              <span className="tz-header-btn-label">Usuarios</span>
             </button>
           )}
 
@@ -3550,9 +4654,8 @@ export default function App() {
               </span>
               <span className="tz-stat-value tz-green">{formatSoles(todayStats.netProfit)}</span>
               <span className="tz-stat-sub">
-                costo merc. estimado ({Math.round(DEFAULT_COST_RATIO * 100)}%)
                 {todayStats.gastosHoyCaja > 0
-                  ? ` · − ${formatSoles(todayStats.gastosHoyCaja)} gastos`
+                  ? `− ${formatSoles(todayStats.gastosHoyCaja)} gastos`
                   : ""}
               </span>
             </div>
@@ -3666,12 +4769,90 @@ export default function App() {
                 </div>
               )}
               <div className="tz-grid">
-                {group.items.map((item) => {
+                {(sectionEntriesByGi.get(gi) || []).map((entry) => {
+                  if (entry.type === "group") {
+                    const { baseName, variants } = entry;
+                    const avails = variants.map((v) => availabilityFor(v, stock));
+                    const totalAvail = avails.reduce((sum, a) => sum + (a > 0 ? a : 0), 0);
+                    const allSoldOut = avails.every((a) => a <= 0);
+                    // "Crítico a nivel familia": alguna variante tocó 0
+                    // (aunque otras tengan de sobra) o alguna quedó en
+                    // el umbral de poco stock — la tarjeta maestra debe
+                    // avisar aunque el TOTAL sumado se vea saludable.
+                    const anyCritical = avails.some((a) => a <= LOW_STOCK_THRESHOLD);
+                    const prices = variants.map((v) => v.price);
+                    const minPrice = Math.min(...prices);
+                    const maxPrice = Math.max(...prices);
+                    const isStar = variants.some((v) => v.id === bestSellerId);
+
+                    return (
+                      <div
+                        key={baseName}
+                        className={`tz-card tz-card-group ${
+                          allSoldOut ? "tz-card-disabled" : ""
+                        } ${isStar ? "tz-card-star" : ""}`}
+                        onClick={() => !allSoldOut && setVariantModalGroup({ baseName, variants })}
+                      >
+                        {isStar && (
+                          <div className="tz-star-ribbon">
+                            <Star size={11} strokeWidth={2.5} /> ESTRELLA
+                          </div>
+                        )}
+                        <div className="tz-card-top">
+                          <div>
+                            <h3 className="tz-card-name">{baseName}</h3>
+                            <p className="tz-card-detail">{variants.length} variantes</p>
+                          </div>
+                        </div>
+                        <div className="tz-card-bottom">
+                          {variants.some((v) => v.color) && (
+                            <div className="tz-variant-dots">
+                              {variants.slice(0, 8).map((v) => {
+                                const vAvail = availabilityFor(v, stock);
+                                const vSoldOut = vAvail <= 0;
+                                return (
+                                  <span
+                                    key={v.id}
+                                    className={`tz-variant-dot ${vSoldOut ? "tz-variant-dot-soldout" : ""}`}
+                                    style={{ background: v.color || "var(--border-soft)" }}
+                                    title={`${v.variant || v.name}${vSoldOut ? " (agotado)" : ""}`}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+                          <div className="tz-card-stockrow">
+                            {allSoldOut ? (
+                              <span className="tz-tag tz-tag-danger">AGOTADO</span>
+                            ) : anyCritical ? (
+                              <span className="tz-tag tz-tag-danger">
+                                <AlertTriangle size={11} strokeWidth={2.5} /> Stock: {totalAvail} ·
+                                variante(s) con poco stock
+                              </span>
+                            ) : (
+                              <span className="tz-tag tz-tag-ok">Stock: {totalAvail}</span>
+                            )}
+                          </div>
+                          <div className="tz-card-priceqty">
+                            <div className="tz-price-block">
+                              <span className="tz-price-label">Precio</span>
+                              <span className="tz-price">
+                                {minPrice === maxPrice
+                                  ? formatSoles(minPrice)
+                                  : `${formatSoles(minPrice)} - ${formatSoles(maxPrice)}`}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const item = entry.item;
                   const avail = availabilityFor(item, stock);
                   const checked = selection[item.id] != null;
                   const qty = selection[item.id] ?? 1;
                   const soldOut = avail <= 0;
-                  const low = avail > 0 && avail <= 3;
                   const isStar = item.id === bestSellerId;
 
                   return (
@@ -3704,20 +4885,30 @@ export default function App() {
                           </h3>
                           {item.detail && <p className="tz-card-detail">{item.detail}</p>}
                         </div>
-                        <div className={`tz-checkbox ${checked ? "tz-checkbox-on" : ""}`}>
-                          {checked && <Check size={16} strokeWidth={3} />}
+                        <div className="tz-card-top-actions">
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              className="tz-card-edit-price-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openPriceEdit(item);
+                              }}
+                              aria-label={`Editar precio de ${item.name}`}
+                              title="Editar precio"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                          )}
+                          <div className={`tz-checkbox ${checked ? "tz-checkbox-on" : ""}`}>
+                            {checked && <Check size={16} strokeWidth={3} />}
+                          </div>
                         </div>
                       </div>
 
                       <div className="tz-card-bottom">
                         <div className="tz-card-stockrow">
-                          {soldOut ? (
-                            <span className="tz-tag tz-tag-danger">AGOTADO</span>
-                          ) : low ? (
-                            <span className="tz-tag tz-tag-warn">¡Quedan {avail}!</span>
-                          ) : (
-                            <span className="tz-tag tz-tag-ok">Stock: {avail}</span>
-                          )}
+                          <StockTag avail={avail} />
                         </div>
 
                         <div className="tz-card-priceqty">
@@ -3759,6 +4950,60 @@ export default function App() {
             ))
           )}
         </section>
+
+        {/* ---------------- MODAL: ¿QUÉ VARIANTE? (Fase 2) ---------------- */}
+        {variantModalGroup && (
+          <div
+            className="tz-modal-backdrop"
+            onClick={() => setVariantModalGroup(null)}
+          >
+            <div
+              className="tz-modal tz-variant-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="tz-modal-close"
+                onClick={() => setVariantModalGroup(null)}
+                aria-label="Cerrar"
+              >
+                <X size={18} />
+              </button>
+              <h2>{variantModalGroup.baseName}</h2>
+              <p className="tz-variant-modal-subtitle">¿Qué variante?</p>
+              <div className="tz-variant-grid">
+                {variantModalGroup.variants.map((v) => {
+                  const avail = availabilityFor(v, stock);
+                  const soldOut = avail <= 0;
+                  return (
+                    <button
+                      key={v.id}
+                      type="button"
+                      className={`tz-variant-btn ${soldOut ? "tz-variant-btn-disabled" : ""}`}
+                      disabled={soldOut}
+                      style={
+                        v.color && !soldOut
+                          ? {
+                              borderColor: v.color,
+                              boxShadow: `0 0 16px ${v.color}66, inset 0 0 0 1px ${v.color}55`,
+                              color: v.color,
+                            }
+                          : undefined
+                      }
+                      onClick={() => {
+                        if (selectProductForSale(v)) setVariantModalGroup(null);
+                      }}
+                    >
+                      <span className="tz-variant-btn-label">{v.variant || v.detail || v.name}</span>
+                      <span className="tz-variant-btn-price">{formatSoles(v.price)}</span>
+                      <StockTag avail={avail} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ---------------- BARRA DE ENVÍO ---------------- */}
         {/* Se oculta por completo cuando no hay nada seleccionado y no hay
@@ -3839,17 +5084,18 @@ export default function App() {
                     {selectedIds.map((id) => {
                       const product = productsById[id];
                       const qty = selection[id];
+                      const avail = availabilityFor(product, stock);
                       return (
-                        <div key={id} className="tz-cart-row">
-                          <span className="tz-cart-row-name">
-                            {product.name}
-                            {product.detail ? ` · ${product.detail}` : ""}
-                          </span>
-                          <span className="tz-cart-row-qty">x{qty}</span>
-                          <span className="tz-cart-row-amount">
-                            {formatSoles(product.price * qty)}
-                          </span>
-                        </div>
+                        <CartRow
+                          key={id}
+                          product={product}
+                          qty={qty}
+                          avail={avail}
+                          onQtyChange={(newQty) =>
+                            setSelection((prev) => ({ ...prev, [id]: newQty }))
+                          }
+                          onRemove={() => removeFromCart(id)}
+                        />
                       );
                     })}
                   </div>
@@ -4166,6 +5412,52 @@ export default function App() {
                         )}
                       </div>
                     )}
+
+                    {/* ---- sub-flujo: Efectivo (calculadora de vuelto) ---- */}
+                    {checkoutMetodo === "EFECTIVO" && (
+                      <div className="tz-checkout-fiado">
+                        <label className="tz-field-label">Monto recibido (S/)</label>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          className="tz-amount-input"
+                          placeholder="0.00"
+                          value={montoRecibido}
+                          onChange={(e) => handleMontoRecibidoChange(e.target.value)}
+                          autoFocus
+                        />
+                        <div className="tz-vuelto-quick-buttons">
+                          {MONTOS_RAPIDOS.map((m) => (
+                            <button
+                              type="button"
+                              key={m}
+                              className="tz-vuelto-quick-btn"
+                              onClick={() => setMontoRecibido(String(m))}
+                            >
+                              S/ {m}
+                            </button>
+                          ))}
+                        </div>
+                        {(() => {
+                          const recibidoNum = parseFloat(montoRecibido);
+                          if (montoRecibido === "" || isNaN(recibidoNum)) return null;
+                          const vuelto = recibidoNum - totalPrice;
+                          if (vuelto < -0.009) {
+                            return (
+                              <p className="tz-error">
+                                <AlertTriangle size={14} /> Falta{" "}
+                                {formatSoles(Math.abs(vuelto))} para cubrir el total.
+                              </p>
+                            );
+                          }
+                          return (
+                            <p className="tz-vuelto-display">
+                              VUELTO: <strong>{formatSoles(Math.max(vuelto, 0))}</strong>
+                            </p>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -4203,46 +5495,67 @@ export default function App() {
               </p>
             </div>
           ) : (
-            <div className="tz-table-wrap">
-              <table className="tz-table">
-                <thead>
-                  <tr>
-                    <th>ID Compra</th>
-                    <th>Producto</th>
-                    <th>Detalle</th>
-                    <th>Cant.</th>
-                    <th>Precio</th>
-                    <th>Método de Pago</th>
-                    <th>Hora</th>
-                    <th>Fecha</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sales.map((s) => (
-                    <tr key={s.saleId}>
-                      <td className="tz-id-cell">{s.purchaseId}</td>
-                      <td>{s.name}</td>
-                      <td className="tz-dim-cell">{s.detail || "—"}</td>
-                      <td>{s.qty}</td>
-                      <td className="tz-pink-cell">{formatSoles(s.total)}</td>
-                      <td>
-                        {s.metodoPago ? (
-                          <span
-                            className={`tz-metodo-tag tz-metodo-tag-${s.metodoPago.toLowerCase()}`}
-                          >
-                            {s.metodoPago}
-                          </span>
-                        ) : (
-                          <span className="tz-dim-cell">—</span>
-                        )}
-                      </td>
-                      <td className="tz-dim-cell">{formatTime(s.timestamp)}</td>
-                      <td className="tz-dim-cell">{formatDate(s.timestamp)}</td>
+            <>
+              <div className="tz-table-wrap">
+                <table className="tz-table">
+                  <thead>
+                    <tr>
+                      <th>ID Compra</th>
+                      <th>Producto</th>
+                      <th>Detalle</th>
+                      <th>Cant.</th>
+                      <th>Precio</th>
+                      <th>Método de Pago</th>
+                      <th>Vendedor</th>
+                      <th>Hora</th>
+                      <th>Fecha</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {/* Colapsado por defecto: solo las 5 ventas más
+                       recientes ('sales' ya viene ordenado del más
+                       nuevo al más viejo) — evita que este historial
+                       empuje el resto del dashboard hacia abajo. */}
+                    {(historialExpanded ? sales : sales.slice(0, 5)).map((s) => (
+                      <tr key={s.saleId}>
+                        <td className="tz-id-cell">{s.purchaseId}</td>
+                        <td>{s.name}</td>
+                        <td className="tz-dim-cell">{s.detail || "—"}</td>
+                        <td>{s.qty}</td>
+                        <td className="tz-pink-cell">{formatSoles(s.total)}</td>
+                        <td>
+                          {s.metodoPago ? (
+                            <span
+                              className={`tz-metodo-tag tz-metodo-tag-${s.metodoPago.toLowerCase()}`}
+                            >
+                              {s.metodoPago}
+                            </span>
+                          ) : (
+                            <span className="tz-dim-cell">—</span>
+                          )}
+                        </td>
+                        <td className="tz-dim-cell">{s.vendedor || "—"}</td>
+                        <td className="tz-dim-cell">{formatTime(s.timestamp)}</td>
+                        <td className="tz-dim-cell">{formatDate(s.timestamp)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {sales.length > 5 && (
+                <button
+                  type="button"
+                  className="tz-history-toggle-btn"
+                  onClick={() => setHistorialExpanded((prev) => !prev)}
+                >
+                  {historialExpanded ? (
+                    <>🔼 Ocultar</>
+                  ) : (
+                    <>🔽 Ver historial completo ({sales.length})</>
+                  )}
+                </button>
+              )}
+            </>
           )}
         </section>
       </main>
@@ -4323,26 +5636,37 @@ export default function App() {
                     </>
                   )}
 
-                  <label className="tz-field-label">Nombre y detalle</label>
-                  <div className="tz-nombre-detalle-row">
-                    <input
-                      type="text"
-                      autoFocus
-                      className="tz-text-input"
-                      placeholder="Nombre (ej. Inka Kola)"
-                      value={newProductoNombre}
-                      onChange={(e) => setNewProductoNombre(e.target.value)}
-                    />
-                    <input
-                      type="text"
-                      className="tz-text-input"
-                      placeholder="Detalle (ej. 750ml, Personal)"
-                      value={newProductoDetalle}
-                      onChange={(e) => setNewProductoDetalle(e.target.value)}
-                    />
-                  </div>
+                  <label className="tz-field-label">Nombre Base</label>
+                  <input
+                    type="text"
+                    autoFocus
+                    className="tz-text-input"
+                    placeholder="Ej. Hey FIT, Zaphitos"
+                    value={newProductoNombre}
+                    onChange={(e) => setNewProductoNombre(e.target.value)}
+                  />
 
-                  <label className="tz-field-label">Precio (S/)</label>
+                  <label className="tz-field-label">Sabor / Variedad (opcional)</label>
+                  <input
+                    type="text"
+                    className="tz-text-input"
+                    placeholder="Ej. Fresa, Azul"
+                    value={newProductoVariante}
+                    onChange={(e) => setNewProductoVariante(e.target.value)}
+                  />
+
+                  <label className="tz-field-label">Presentación / Medida (opcional)</label>
+                  <input
+                    type="text"
+                    className="tz-text-input"
+                    placeholder="Ej. 600ml, 50g"
+                    value={newProductoPresentacion}
+                    onChange={(e) => setNewProductoPresentacion(e.target.value)}
+                  />
+
+                  <ColorPicker value={newProductoColor} onChange={setNewProductoColor} />
+
+                  <label className="tz-field-label">Precio de venta (S/)</label>
                   <input
                     type="number"
                     min="0"
@@ -4352,6 +5676,48 @@ export default function App() {
                     value={newProductoPrecio}
                     onChange={(e) => setNewProductoPrecio(e.target.value)}
                   />
+
+                  <p className="tz-field-label" style={{ marginTop: 8 }}>
+                    Stock inicial (para el Costo Promedio Ponderado desde el día 1)
+                  </p>
+                  <div className="tz-stock-cost-inputs">
+                    <label className="tz-stock-cost-field">
+                      <span>Unidades que ingresan</span>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={newProductoUnidades}
+                        onChange={(e) => setNewProductoUnidades(e.target.value)}
+                      />
+                    </label>
+                    <label className="tz-stock-cost-field">
+                      <span>Costo TOTAL de esta compra (S/)</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={newProductoCostoTotal}
+                        onChange={(e) => setNewProductoCostoTotal(e.target.value)}
+                      />
+                    </label>
+                  </div>
+                  {(() => {
+                    const unidadesNum = parseFloat(newProductoUnidades);
+                    const costoTotalNum = parseFloat(newProductoCostoTotal);
+                    const costoUnitario =
+                      unidadesNum > 0 && !isNaN(costoTotalNum) && costoTotalNum >= 0
+                        ? costoTotalNum / unidadesNum
+                        : null;
+                    return (
+                      costoUnitario != null && (
+                        <p className="tz-stock-cost-hint">
+                          Costo unitario: {formatSoles(costoUnitario)}
+                        </p>
+                      )
+                    );
+                  })()}
 
                   <label className="tz-field-label">Categoría / Sección</label>
                   <input
@@ -4485,16 +5851,35 @@ export default function App() {
 
                   {(() => {
                     const hasQuery = scannedStockKey || stockSearchTerm.trim();
-                    const filteredStockKeys = !hasQuery
+                    const queryLower = stockSearchTerm.trim().toLowerCase();
+
+                    // Busca sobre 'productsById' (TODOS los productos,
+                    // tengan o no stock cargado todavía) en vez de
+                    // 'stock' (solo claves físicas con fila propia) —
+                    // así ninguna variante recién creada queda fuera
+                    // del buscador solo porque su etiqueta de stock no
+                    // calzaba con lo que se escribió.
+                    const matches = !hasQuery
                       ? []
-                      : Object.keys(stock)
-                          .filter((key) => {
+                      : Object.values(productsById)
+                          .map((item) => ({ item, key: resolveStockKeyFromConsumes(item.consumes) }))
+                          .filter(({ key }) => key != null)
+                          .filter(({ item, key }) => {
                             if (scannedStockKey) return key === scannedStockKey;
-                            return (stockLabels[key] ?? key)
-                              .toLowerCase()
-                              .includes(stockSearchTerm.trim().toLowerCase());
+                            return item.name.toLowerCase().includes(queryLower);
                           })
-                          .sort((a, b) => (stockLabels[a] ?? a).localeCompare(stockLabels[b] ?? b));
+                          .sort((a, b) => a.item.name.localeCompare(b.item.name));
+
+                    // Si todos los resultados actuales comparten UN
+                    // mismo nombre_base, se ofrece el flujo rápido de
+                    // "variedades existentes + nueva variedad" debajo
+                    // de la lista (punto 4 del refactor).
+                    const matchedBaseNames = [...new Set(matches.map((m) => m.item.baseName))];
+                    const activeBaseName = matchedBaseNames.length === 1 ? matchedBaseNames[0] : null;
+                    const baseVariants = activeBaseName
+                      ? Object.values(productsById).filter((it) => it.baseName === activeBaseName)
+                      : [];
+                    const referenceItem = baseVariants[0] || matches[0]?.item || null;
 
                     if (!hasQuery) {
                       return (
@@ -4504,7 +5889,7 @@ export default function App() {
                       );
                     }
 
-                    if (filteredStockKeys.length === 0) {
+                    if (matches.length === 0) {
                       return (
                         <div>
                           <p className="tz-method-history-empty">
@@ -4529,58 +5914,146 @@ export default function App() {
                     }
 
                     return (
-                      <div className="tz-stock-list">
-                        {filteredStockKeys.map((key) => {
-                          const unidadesNum = parseFloat(stockEdits[key]);
-                          const costoTotalNum = parseFloat(stockCostEdits[key]);
-                          const costoUnitarioLote =
-                            unidadesNum > 0 && !isNaN(costoTotalNum) && costoTotalNum >= 0
-                              ? costoTotalNum / unidadesNum
-                              : null;
-                          const costoActual = stockCostos[key];
+                      <>
+                        <div className="tz-stock-list">
+                          {matches.map(({ item, key }) => {
+                            const unidadesNum = parseFloat(stockEdits[key]);
+                            const costoTotalNum = parseFloat(stockCostEdits[key]);
+                            const costoUnitarioLote =
+                              unidadesNum > 0 && !isNaN(costoTotalNum) && costoTotalNum >= 0
+                                ? costoTotalNum / unidadesNum
+                                : null;
+                            const costoActual = stockCostos[key];
 
-                          return (
-                            <div className="tz-stock-cost-item" key={key}>
-                              <div className="tz-stock-row-info">
-                                <span className="tz-stock-row-name">{stockLabels[key] ?? key}</span>
-                                <span className="tz-stock-row-current">
-                                  Stock actual: {stock[key] ?? 0}
-                                  {costoActual != null &&
-                                    ` · Costo actual: ${formatSoles(costoActual)}/u`}
-                                </span>
+                            return (
+                              <div className="tz-stock-cost-item" key={item.id}>
+                                <div className="tz-stock-row-info">
+                                  <span className="tz-stock-row-name">
+                                    {item.color && (
+                                      <span
+                                        className="tz-variant-dot tz-variant-dot-inline"
+                                        style={{ background: item.color }}
+                                      />
+                                    )}
+                                    {item.name}
+                                  </span>
+                                  <span className="tz-stock-row-current">
+                                    Stock actual: {stock[key] ?? 0}
+                                    {costoActual != null &&
+                                      ` · Costo actual: ${formatSoles(costoActual)}/u`}
+                                  </span>
+                                </div>
+                                <div className="tz-stock-cost-inputs">
+                                  <label className="tz-stock-cost-field">
+                                    <span>Unidades que ingresan</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      placeholder="0"
+                                      value={stockEdits[key] ?? ""}
+                                      onChange={(e) => handleStockEditChange(key, e.target.value)}
+                                    />
+                                  </label>
+                                  <label className="tz-stock-cost-field">
+                                    <span>Costo TOTAL de esta compra (S/)</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      placeholder="0.00"
+                                      value={stockCostEdits[key] ?? ""}
+                                      onChange={(e) => handleStockCostEditChange(key, e.target.value)}
+                                    />
+                                  </label>
+                                </div>
+                                {costoUnitarioLote != null && (
+                                  <p className="tz-stock-cost-hint">
+                                    Costo unitario de este lote: {formatSoles(costoUnitarioLote)}
+                                  </p>
+                                )}
                               </div>
-                              <div className="tz-stock-cost-inputs">
-                                <label className="tz-stock-cost-field">
-                                  <span>Unidades que ingresan</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    placeholder="0"
-                                    value={stockEdits[key] ?? ""}
-                                    onChange={(e) => handleStockEditChange(key, e.target.value)}
-                                  />
-                                </label>
-                                <label className="tz-stock-cost-field">
-                                  <span>Costo TOTAL de esta compra (S/)</span>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    placeholder="0.00"
-                                    value={stockCostEdits[key] ?? ""}
-                                    onChange={(e) => handleStockCostEditChange(key, e.target.value)}
-                                  />
-                                </label>
-                              </div>
-                              {costoUnitarioLote != null && (
-                                <p className="tz-stock-cost-hint">
-                                  Costo unitario de este lote: {formatSoles(costoUnitarioLote)}
-                                </p>
-                              )}
+                            );
+                          })}
+                        </div>
+
+                        {activeBaseName && referenceItem && !scannedStockKey && (
+                          <div className="tz-variedades-quickadd">
+                            <p className="tz-field-label">Variedades de "{activeBaseName}"</p>
+                            <div className="tz-variant-chips">
+                              {baseVariants.map((v) => (
+                                <button
+                                  key={v.id}
+                                  type="button"
+                                  className="tz-variant-chip"
+                                  style={v.color ? { borderColor: v.color, color: v.color } : undefined}
+                                  onClick={() => setStockSearchTerm(v.name)}
+                                >
+                                  {v.color && (
+                                    <span className="tz-variant-dot" style={{ background: v.color }} />
+                                  )}
+                                  {v.variant || v.detail || v.name}
+                                </button>
+                              ))}
                             </div>
-                          );
-                        })}
-                      </div>
+
+                            {nuevaVariedadOpen ? (
+                              <div className="tz-vis-confirm-delete">
+                                <input
+                                  type="text"
+                                  className="tz-text-input"
+                                  placeholder='Sabor / variedad nueva (ej. "Fresa")'
+                                  value={nuevaVariedadSabor}
+                                  onChange={(e) => setNuevaVariedadSabor(e.target.value)}
+                                  autoFocus
+                                />
+                                <input
+                                  type="text"
+                                  className="tz-text-input"
+                                  placeholder="Presentación / medida (opcional)"
+                                  value={nuevaVariedadPresentacion}
+                                  onChange={(e) => setNuevaVariedadPresentacion(e.target.value)}
+                                />
+                                <ColorPicker value={nuevaVariedadColor} onChange={setNuevaVariedadColor} />
+                                {nuevaVariedadError && <p className="tz-error">{nuevaVariedadError}</p>}
+                                <div className="tz-vis-confirm-actions">
+                                  <button
+                                    type="button"
+                                    className="tz-cliente-action-btn tz-cliente-action-pago"
+                                    onClick={() => saveNuevaVariedad(referenceItem)}
+                                    disabled={nuevaVariedadSaving}
+                                  >
+                                    {nuevaVariedadSaving ? (
+                                      <Loader2 size={13} className="tz-spin" />
+                                    ) : (
+                                      <Check size={13} />
+                                    )}
+                                    Crear variedad
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="tz-cliente-action-btn"
+                                    onClick={resetNuevaVariedadForm}
+                                    disabled={nuevaVariedadSaving}
+                                  >
+                                    <X size={13} /> Cancelar
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                className="tz-camera-cancel tz-scanner-upload-btn"
+                                onClick={() => {
+                                  resetNuevaVariedadForm();
+                                  setNuevaVariedadOpen(true);
+                                }}
+                              >
+                                <Plus size={15} /> Nueva variedad
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </>
                     );
                   })()}
 
@@ -4623,6 +6096,7 @@ export default function App() {
                 onDeleteCategoria={eliminarCategoria}
                 onDeleteSubgrupo={eliminarSubgrupo}
                 onCreateCategoria={crearCategoria}
+                onAddVariante={agregarVariante}
               />
             </div>
           </div>
@@ -4638,6 +6112,52 @@ export default function App() {
 
       {globalScannerOpen && (
         <BarcodeScannerModal onScan={handleGlobalScan} onClose={() => setGlobalScannerOpen(false)} />
+      )}
+
+      {/* ---------------- MODAL: EDITAR PRECIO (solo admin) ---------------- */}
+      {editingPriceProduct && (
+        <div className="tz-modal-backdrop" onClick={closePriceEdit}>
+          <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="tz-modal-close" onClick={closePriceEdit} aria-label="Cerrar">
+              <X size={18} />
+            </button>
+            <div className="tz-add-entry">
+              <h2>Editar precio</h2>
+              <p className="tz-stock-editor-sub">{editingPriceProduct.name}</p>
+              <label className="tz-field-label">Precio de venta (S/)</label>
+              <input
+                type="number"
+                min="0"
+                step="0.10"
+                autoFocus
+                className="tz-text-input"
+                value={editingPriceValue}
+                onChange={(e) => setEditingPriceValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") savePriceEdit();
+                }}
+              />
+              {editingPriceError && <p className="tz-error">{editingPriceError}</p>}
+              <div className="tz-add-entry-actions">
+                <button className="tz-camera-cancel" onClick={closePriceEdit}>
+                  Cancelar
+                </button>
+                <button
+                  className="tz-pw-submit tz-payment-save"
+                  onClick={savePriceEdit}
+                  disabled={editingPriceSaving}
+                >
+                  {editingPriceSaving ? (
+                    <Loader2 size={16} className="tz-spin" />
+                  ) : (
+                    <Save size={16} />
+                  )}
+                  Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ---------------- MODAL: MIS VENTAS (HOY) ---------------- */}
@@ -4723,7 +6243,7 @@ export default function App() {
         </div>
       )}
 
-      {/* ---------------- MODAL: CAJEROS (solo admin) ---------------- */}
+      {/* ---------------- MODAL: USUARIOS (Cajeros y Clientes, solo admin) ---------------- */}
       {cajerosOpen && (
         <div
           className="tz-modal-backdrop"
@@ -4745,24 +6265,56 @@ export default function App() {
             </button>
             <div className="tz-payment-modal">
               <h2>
-                <Users size={17} /> Cajeros
+                <Users size={17} /> Usuarios
               </h2>
               <p className="tz-stock-editor-sub">
-                Cuentas de personal con acceso operativo (ventas, fiados, stock, gastos, cierre
-                de turno) pero sin visibilidad de las cifras financieras del negocio.
+                Cajeros (acceso operativo sin cifras financieras) y clientes con cuenta de fiado.
+                Cambia su PIN de acceso o elimina la cuenta si ya no corresponde.
               </p>
+
+              {usuarioActionError && <p className="tz-error">{usuarioActionError}</p>}
 
               {cajerosLoading ? (
                 <p className="tz-method-history-empty">Cargando…</p>
               ) : cajeros.length === 0 ? (
-                <p className="tz-method-history-empty">Todavía no hay cajeros registrados.</p>
+                <p className="tz-method-history-empty">Todavía no hay cajeros ni clientes registrados.</p>
               ) : (
                 <ul className="tz-history-rows">
                   {cajeros.map((c) => (
                     <li key={c.id} className="tz-history-row">
                       <div className="tz-history-row-head" style={{ cursor: "default" }}>
                         <Users size={14} />
-                        <span>{c.nombre}</span>
+                        <span>{c.nombre || "(sin nombre)"}</span>
+                        <span
+                          className={`tz-metodo-tag ${
+                            c.role === "cajero" ? "tz-metodo-tag-yape" : "tz-metodo-tag-otros"
+                          }`}
+                          style={{ marginLeft: "auto" }}
+                        >
+                          {c.role === "cajero" ? "Cajero" : "Cliente"}
+                        </span>
+                      </div>
+                      <div className="tz-usuario-row-actions">
+                        <button
+                          type="button"
+                          className="tz-camera-cancel tz-usuario-action-btn"
+                          onClick={() => openPinModal(c)}
+                        >
+                          <Lock size={13} /> Cambiar PIN
+                        </button>
+                        <button
+                          type="button"
+                          className="tz-camera-cancel tz-usuario-action-btn tz-usuario-delete-btn"
+                          onClick={() => eliminarUsuarioAuth(c)}
+                          disabled={deletingUsuarioId === c.id}
+                        >
+                          {deletingUsuarioId === c.id ? (
+                            <Loader2 size={13} className="tz-spin" />
+                          ) : (
+                            <Trash2 size={13} />
+                          )}
+                          Eliminar
+                        </button>
                       </div>
                     </li>
                   ))}
@@ -4825,6 +6377,53 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- MODAL: CAMBIAR PIN (dentro de Usuarios) ---------------- */}
+      {pinModalUser && (
+        <div className="tz-modal-backdrop" onClick={closePinModal}>
+          <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="tz-modal-close" onClick={closePinModal} aria-label="Cerrar">
+              <X size={18} />
+            </button>
+            <div className="tz-add-entry">
+              <h2>Cambiar PIN</h2>
+              <p className="tz-stock-editor-sub">{pinModalUser.nombre || "(sin nombre)"}</p>
+              <label className="tz-field-label">Nueva clave (4 a 10 dígitos)</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoFocus
+                className="tz-text-input"
+                placeholder="••••••"
+                value={pinModalValue}
+                onChange={(e) => setPinModalValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") savePinModal();
+                }}
+              />
+              {pinModalError && <p className="tz-error">{pinModalError}</p>}
+              <div className="tz-add-entry-actions">
+                <button className="tz-camera-cancel" onClick={closePinModal}>
+                  Cancelar
+                </button>
+                <button
+                  className="tz-pw-submit tz-payment-save"
+                  onClick={savePinModal}
+                  disabled={pinModalSaving}
+                >
+                  {pinModalSaving ? (
+                    <Loader2 size={16} className="tz-spin" />
+                  ) : (
+                    <>
+                      <Check size={16} /> Guardar
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -5742,12 +7341,17 @@ export default function App() {
 
                   <div className="tz-gasto-items">
                     {gastoItems.map((it) => {
-                      const subtotal =
-                        (parseFloat(it.cantidad) || 0) * (parseFloat(it.precioUnitario) || 0);
+                      const unidadesNum = parseFloat(it.cantidad);
+                      const costoTotalNum = parseFloat(it.costoTotal);
+                      const costoUnitario =
+                        unidadesNum > 0 && !isNaN(costoTotalNum) && costoTotalNum >= 0
+                          ? costoTotalNum / unidadesNum
+                          : null;
+
                       return (
-                        <div key={it.id} className="tz-gasto-item-row">
-                          <div className="tz-gasto-item-desc-wrap">
-                            {it.productoId && (
+                        <div key={it.id} className="tz-stock-cost-item">
+                          <div className="tz-gasto-item-desc-wrap tz-suggest-wrap">
+                            {(it.productoId || it.stockKey) && (
                               <span
                                 className="tz-gasto-item-linked"
                                 title={
@@ -5764,37 +7368,78 @@ export default function App() {
                               className="tz-text-input tz-gasto-item-desc"
                               placeholder="Descripción"
                               value={it.descripcion}
-                              onChange={(e) =>
-                                updateGastoItem(it.id, "descripcion", e.target.value)
-                              }
+                              autoComplete="off"
+                              onChange={(e) => {
+                                updateGastoItem(it.id, "descripcion", e.target.value);
+                                setGastoItemSuggestOpenId(it.id);
+                              }}
+                              onFocus={() => setGastoItemSuggestOpenId(it.id)}
+                              onBlur={() => setTimeout(() => setGastoItemSuggestOpenId(null), 150)}
                             />
+                            {gastoItemSuggestOpenId === it.id &&
+                              gastoItemStockSuggestions(it.descripcion).length > 0 && (
+                                <div className="tz-suggest-list">
+                                  {gastoItemStockSuggestions(it.descripcion).map((key) => (
+                                    <button
+                                      type="button"
+                                      key={key}
+                                      className="tz-suggest-item"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        selectGastoItemStock(it.id, key);
+                                      }}
+                                    >
+                                      <span className="tz-suggest-item-name">
+                                        {stockLabels[key] ?? key}
+                                      </span>
+                                      <span className="tz-suggest-item-ruc">
+                                        Stock: {stock[key] ?? 0}
+                                        {stockCostos[key] != null &&
+                                          ` · Costo actual: ${formatSoles(stockCostos[key])}/u`}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
                           </div>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            className="tz-text-input tz-gasto-item-qty"
-                            placeholder="Cant."
-                            value={it.cantidad}
-                            onChange={(e) => updateGastoItem(it.id, "cantidad", e.target.value)}
-                          />
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            className="tz-text-input tz-gasto-item-price"
-                            placeholder="P. unit."
-                            value={it.precioUnitario}
-                            onChange={(e) =>
-                              updateGastoItem(it.id, "precioUnitario", e.target.value)
-                            }
-                          />
-                          <span className="tz-gasto-item-subtotal">{formatSoles(subtotal)}</span>
-                          <button
-                            className="tz-gasto-item-remove"
-                            onClick={() => removeGastoItemRow(it.id)}
-                            aria-label="Quitar ítem"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+
+                          <div className="tz-stock-cost-inputs">
+                            <label className="tz-stock-cost-field">
+                              <span>Unidades</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0"
+                                value={it.cantidad}
+                                onChange={(e) => updateGastoItem(it.id, "cantidad", e.target.value)}
+                              />
+                            </label>
+                            <label className="tz-stock-cost-field">
+                              <span>Costo Total (S/)</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0.00"
+                                value={it.costoTotal}
+                                onChange={(e) =>
+                                  updateGastoItem(it.id, "costoTotal", e.target.value)
+                                }
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              className="tz-gasto-item-remove"
+                              onClick={() => removeGastoItemRow(it.id)}
+                              aria-label="Quitar ítem"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                          {costoUnitario != null && (
+                            <p className="tz-stock-cost-hint">
+                              Costo unitario: {formatSoles(costoUnitario)}
+                            </p>
+                          )}
                         </div>
                       );
                     })}
@@ -5832,12 +7477,32 @@ export default function App() {
 
               {gastos.length > 0 && (
                 <div className="tz-method-history">
-                  <div className="tz-csv-row">
-                    <span className="tz-method-history-label">Historial de gastos</span>
-                    <button className="tz-csv-btn" onClick={exportGastosCSV}>
-                      <Download size={13} /> Descargar CSV
-                    </button>
-                  </div>
+                  <span className="tz-method-history-label">Historial de gastos</span>
+                  {isAdmin && (
+                    <div className="tz-export-buttons">
+                      <button
+                        type="button"
+                        className="tz-csv-btn"
+                        onClick={exportHistorialGastosXLSX}
+                      >
+                        <Download size={13} /> 📥 Historial de Gastos
+                      </button>
+                      <button
+                        type="button"
+                        className="tz-csv-btn"
+                        onClick={exportReportePreciosXLSX}
+                      >
+                        <Download size={13} /> 📊 Reporte de Precios
+                      </button>
+                      <button
+                        type="button"
+                        className="tz-csv-btn"
+                        onClick={exportHistorialVentasXLSX}
+                      >
+                        <Download size={13} /> 🛒 Historial de Ventas
+                      </button>
+                    </div>
+                  )}
                   <ul className="tz-history-rows">
                     {gastos.map((g) => {
                       const open = expandedGastoId === g.id;
@@ -6097,12 +7762,18 @@ export default function App() {
               {/* ---- historial de cierres pasados, estilo ticket neón ---- */}
               {cierres.length > 0 && (
                 <div className="tz-method-history">
-                  <div className="tz-csv-row">
-                    <span className="tz-method-history-label">Historial de cierres</span>
-                    <button className="tz-csv-btn" onClick={exportCierresCSV}>
-                      <Download size={13} /> Descargar CSV
-                    </button>
-                  </div>
+                  <span className="tz-method-history-label">Historial de cierres</span>
+                  {isAdmin && (
+                    <div className="tz-export-buttons">
+                      <button
+                        type="button"
+                        className="tz-csv-btn"
+                        onClick={exportHistorialCierresXLSX}
+                      >
+                        <Download size={13} /> 📥 Exportar Historial de Cierres
+                      </button>
+                    </div>
+                  )}
                   <div className="tz-cierre-list">
                     {cierres.map((c) => (
                       <div key={c.id} className="tz-receipt tz-receipt-compact">

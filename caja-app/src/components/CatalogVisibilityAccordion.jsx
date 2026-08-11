@@ -9,9 +9,11 @@ import {
   X,
   Pencil,
   Plus,
+  Copy,
 } from "lucide-react";
 import { buscarProductoPorCodigo } from "../lib/productLookup";
 import BarcodeScannerModal from "./BarcodeScannerModal";
+import ColorPicker from "./ColorPicker";
 
 /* Fila de un producto: toggle de visibilidad, editar (nombre/detalle)
    y eliminar (con confirmación inline en vez de un modal aparte, para
@@ -23,17 +25,35 @@ import BarcodeScannerModal from "./BarcodeScannerModal";
    Orden de los controles a la derecha: Toggle, luego Lápiz (editar),
    luego Papelera (eliminar) — el lápiz ocupa el lugar donde antes
    estaba el toggle, y el toggle se corrió un paso a la izquierda. */
-function ProductoRow({ producto, onToggleVisibility, onDelete, onSoftDelete, onEditProducto }) {
+function ProductoRow({
+  producto,
+  onToggleVisibility,
+  onDelete,
+  onSoftDelete,
+  onEditProducto,
+  categoriaLabel,
+  subgrupoRaw,
+  onAddVariante,
+}) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [fkConflict, setFkConflict] = useState(false);
 
   const [editing, setEditing] = useState(false);
-  const [editNombre, setEditNombre] = useState(producto.name);
-  const [editDetalle, setEditDetalle] = useState(producto.detail || "");
+  const [editNombreBase, setEditNombreBase] = useState(producto.baseName || producto.name);
+  const [editVariante, setEditVariante] = useState(producto.variant || "");
+  const [editPresentacion, setEditPresentacion] = useState(producto.presentation || "");
+  const [editColor, setEditColor] = useState(producto.color || null);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+
+  const [addingVariante, setAddingVariante] = useState(false);
+  const [varianteSabor, setVarianteSabor] = useState("");
+  const [variantePresentacion, setVariantePresentacion] = useState("");
+  const [varianteColor, setVarianteColor] = useState(null);
+  const [varianteSaving, setVarianteSaving] = useState(false);
+  const [varianteError, setVarianteError] = useState("");
 
   const handleDeleteClick = async () => {
     setBusy(true);
@@ -67,23 +87,27 @@ function ProductoRow({ producto, onToggleVisibility, onDelete, onSoftDelete, onE
   };
 
   const startEdit = () => {
-    setEditNombre(producto.name);
-    setEditDetalle(producto.detail || "");
+    setEditNombreBase(producto.baseName || producto.name);
+    setEditVariante(producto.variant || "");
+    setEditPresentacion(producto.presentation || "");
+    setEditColor(producto.color || null);
     setEditError("");
     setEditing(true);
   };
 
   const saveEdit = async () => {
-    const nombre = editNombre.trim();
-    if (!nombre) {
-      setEditError("El nombre no puede quedar vacío.");
+    const nombreBase = editNombreBase.trim();
+    if (!nombreBase) {
+      setEditError("El nombre base no puede quedar vacío.");
       return;
     }
     setEditSaving(true);
     setEditError("");
     const { error: saveError } = await onEditProducto(producto, {
-      nombre,
-      detalle: editDetalle.trim(),
+      nombreBase,
+      variante: editVariante.trim(),
+      presentacion: editPresentacion.trim(),
+      color: editColor,
     });
     setEditSaving(false);
     if (saveError) {
@@ -94,6 +118,97 @@ function ProductoRow({ producto, onToggleVisibility, onDelete, onSoftDelete, onE
     }
     setEditing(false);
   };
+
+  /* ---- + Añadir Variante: crea un producto NUEVO (con su propia
+     clave de stock — es mercadería físicamente distinta, no debe
+     compartir inventario con "producto") duplicando nombre base,
+     categoría, subgrupo y precio base — solo pide el sabor/variedad
+     nuevo (+ presentación y color opcionales). Reusa crearProducto()
+     vía onAddVariante, la MISMA función que ya usa el alta rápida al
+     escanear un código no encontrado. ---- */
+  const startAddVariante = () => {
+    setVarianteSabor("");
+    setVariantePresentacion("");
+    setVarianteColor(null);
+    setVarianteError("");
+    setAddingVariante(true);
+  };
+
+  const saveVariante = async () => {
+    const sabor = varianteSabor.trim();
+    if (!sabor) {
+      setVarianteError("Escribe el sabor o variedad nuevo.");
+      return;
+    }
+    setVarianteSaving(true);
+    setVarianteError("");
+    const { error: varError } = await onAddVariante(producto, categoriaLabel, subgrupoRaw, {
+      variante: sabor,
+      presentacion: variantePresentacion.trim(),
+      color: varianteColor,
+    });
+    setVarianteSaving(false);
+    if (varError) {
+      setVarianteError(
+        varError.message ? `No se pudo crear: ${varError.message}` : "No se pudo crear la variante."
+      );
+      return;
+    }
+    setAddingVariante(false);
+    setVarianteSabor("");
+    setVariantePresentacion("");
+    setVarianteColor(null);
+  };
+
+  if (addingVariante) {
+    return (
+      <div className="tz-vis-confirm-delete">
+        <p>
+          Nueva variante de <strong>{producto.baseName || producto.name}</strong> — mismo precio y
+          categoría, clave de stock propia.
+        </p>
+        <input
+          type="text"
+          className="tz-text-input"
+          placeholder='Sabor / variedad (ej. "Fresa")'
+          value={varianteSabor}
+          onChange={(e) => setVarianteSabor(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") saveVariante();
+          }}
+          autoFocus
+        />
+        <input
+          type="text"
+          className="tz-text-input"
+          placeholder="Presentación / medida (opcional)"
+          value={variantePresentacion}
+          onChange={(e) => setVariantePresentacion(e.target.value)}
+        />
+        <ColorPicker value={varianteColor} onChange={setVarianteColor} />
+        {varianteError && <p className="tz-error">{varianteError}</p>}
+        <div className="tz-vis-confirm-actions">
+          <button
+            type="button"
+            className="tz-cliente-action-btn tz-cliente-action-pago"
+            onClick={saveVariante}
+            disabled={varianteSaving}
+          >
+            {varianteSaving ? <Loader2 size={13} className="tz-spin" /> : <Check size={13} />}
+            Crear variante
+          </button>
+          <button
+            type="button"
+            className="tz-cliente-action-btn"
+            onClick={() => setAddingVariante(false)}
+            disabled={varianteSaving}
+          >
+            <X size={13} /> Cancelar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (confirming) {
     return (
@@ -150,23 +265,31 @@ function ProductoRow({ producto, onToggleVisibility, onDelete, onSoftDelete, onE
   if (editing) {
     return (
       <div className="tz-vis-confirm-delete">
+        <input
+          type="text"
+          className="tz-text-input"
+          placeholder="Nombre Base"
+          value={editNombreBase}
+          onChange={(e) => setEditNombreBase(e.target.value)}
+          autoFocus
+        />
         <div className="tz-nombre-detalle-row">
           <input
             type="text"
             className="tz-text-input"
-            placeholder="Nombre"
-            value={editNombre}
-            onChange={(e) => setEditNombre(e.target.value)}
-            autoFocus
+            placeholder="Sabor / Variedad (opcional)"
+            value={editVariante}
+            onChange={(e) => setEditVariante(e.target.value)}
           />
           <input
             type="text"
             className="tz-text-input"
-            placeholder="Detalle"
-            value={editDetalle}
-            onChange={(e) => setEditDetalle(e.target.value)}
+            placeholder="Presentación (opcional)"
+            value={editPresentacion}
+            onChange={(e) => setEditPresentacion(e.target.value)}
           />
         </div>
+        <ColorPicker value={editColor} onChange={setEditColor} />
         {editError && <p className="tz-error">{editError}</p>}
         <div className="tz-vis-confirm-actions">
           <button
@@ -194,7 +317,12 @@ function ProductoRow({ producto, onToggleVisibility, onDelete, onSoftDelete, onE
   return (
     <div className="tz-stock-row">
       <div className="tz-stock-row-info">
-        <span className="tz-stock-row-name">{producto.name}</span>
+        <span className="tz-stock-row-name">
+          {producto.color && (
+            <span className="tz-variant-dot tz-variant-dot-inline" style={{ background: producto.color }} />
+          )}
+          {producto.name}
+        </span>
         {producto.detail && <span className="tz-vis-row-detail">{producto.detail}</span>}
       </div>
       <div className="tz-vis-row-actions">
@@ -217,6 +345,15 @@ function ProductoRow({ producto, onToggleVisibility, onDelete, onSoftDelete, onE
         </button>
         <button
           type="button"
+          className="tz-vis-edit-btn"
+          onClick={startAddVariante}
+          aria-label={`Añadir variante de ${producto.name}`}
+          title="+ Añadir Variante"
+        >
+          <Copy size={14} />
+        </button>
+        <button
+          type="button"
           className="tz-vis-delete-btn"
           onClick={() => setConfirming(true)}
           aria-label={`Eliminar ${producto.name}`}
@@ -233,7 +370,16 @@ function ProductoRow({ producto, onToggleVisibility, onDelete, onSoftDelete, onE
    (los productos de la categoría o subgrupo donde vive esta sección),
    nunca en el catálogo completo. Si el código escaneado pertenece a
    otro producto fuera de esta sección, se avisa en vez de mostrarlo. */
-function SearchableProductList({ items, onToggleVisibility, onDelete, onSoftDelete, onEditProducto }) {
+function SearchableProductList({
+  items,
+  onToggleVisibility,
+  onDelete,
+  onSoftDelete,
+  onEditProducto,
+  categoriaLabel,
+  subgrupoRaw,
+  onAddVariante,
+}) {
   const [searchTerm, setSearchTerm] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
@@ -305,6 +451,9 @@ function SearchableProductList({ items, onToggleVisibility, onDelete, onSoftDele
               onDelete={onDelete}
               onSoftDelete={onSoftDelete}
               onEditProducto={onEditProducto}
+              categoriaLabel={categoriaLabel}
+              subgrupoRaw={subgrupoRaw}
+              onAddVariante={onAddVariante}
             />
           ))}
         </div>
@@ -336,6 +485,7 @@ function CategoriaAccordion({
   onDeleteSubgrupo,
   onForceHideCategoria,
   onForceHideSubgrupo,
+  onAddVariante,
 }) {
   const [open, setOpen] = useState(false);
   const [openSubgrupos, setOpenSubgrupos] = useState(() => new Set());
@@ -534,6 +684,9 @@ function CategoriaAccordion({
               onDelete={onDelete}
               onSoftDelete={onSoftDelete}
               onEditProducto={onEditProducto}
+              categoriaLabel={section.label}
+              subgrupoRaw={null}
+              onAddVariante={onAddVariante}
             />
           ) : (
             section.groups.map((group, gi) => {
@@ -631,6 +784,9 @@ function CategoriaAccordion({
                         onDelete={onDelete}
                         onSoftDelete={onSoftDelete}
                         onEditProducto={onEditProducto}
+                        categoriaLabel={section.label}
+                        subgrupoRaw={rawSubgrupo(group)}
+                        onAddVariante={onAddVariante}
                       />
                     </div>
                   )}
@@ -660,6 +816,7 @@ export default function CatalogVisibilityAccordion({
   onDeleteCategoria,
   onDeleteSubgrupo,
   onCreateCategoria,
+  onAddVariante,
 }) {
   // Blindaje del lado del cliente: si Supabase deja pasar un delete o
   // update sin afectar ninguna fila (RLS bloqueando en silencio, o la
@@ -782,6 +939,7 @@ export default function CatalogVisibilityAccordion({
           onDeleteSubgrupo={onDeleteSubgrupo}
           onForceHideCategoria={forceHideCategoria}
           onForceHideSubgrupo={forceHideSubgrupo}
+          onAddVariante={onAddVariante}
         />
       ))}
     </div>

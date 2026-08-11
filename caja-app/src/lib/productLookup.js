@@ -116,6 +116,32 @@ export function safeOrdenValue() {
   return Math.floor((Date.now() - EPOCH_BASE) / 1000);
 }
 
+/* Arma el 'nombre' completo (el string que sigue usándose en boletas,
+   WhatsApp, historial, búsqueda, etc.) a partir de los 3 campos
+   separados del alta/edición de producto: "Hey FIT" + "600ml" + "Fresa"
+   -> "Hey FIT 600ml - Fresa". Sin variante, es simplemente
+   "Hey FIT 600ml" (mismo comportamiento de siempre para productos sin
+   sabor/color). */
+export function composeProductoNombre({ nombreBase, variante, presentacion }) {
+  const base = (nombreBase || "").trim();
+  const pres = (presentacion || "").trim();
+  const varn = (variante || "").trim();
+  const conPresentacion = [base, pres].filter(Boolean).join(" ");
+  return varn ? `${conPresentacion} - ${varn}` : conPresentacion;
+}
+
+/* 'descripcion' pasa a ser solo el subtítulo visual de la tarjeta
+   (variante + presentación, ej. "Fresa · 600ml") — ya no hay que
+   escribirla a mano por separado, sale de los mismos 2 campos. */
+export function composeProductoDescripcion({ variante, presentacion }) {
+  return (
+    [variante, presentacion]
+      .map((s) => (s || "").trim())
+      .filter(Boolean)
+      .join(" · ") || null
+  );
+}
+
 /* Crea un producto "al vuelo" desde el flujo de escaneo de Editar
    Stock cuando el código no existe todavía en 'productos'. Un
    producto creado así representa mercadería física simple (no un
@@ -126,15 +152,28 @@ export function safeOrdenValue() {
    'categorias', se crea también (si no, el producto quedaría
    "huérfano": buildSectionsFromRows arma las secciones recorriendo
    'categorias', no 'productos', así que un producto con una categoría
-   sin fila propia nunca aparecería en el catálogo). */
+   sin fila propia nunca aparecería en el catálogo).
+
+   nombreBase/variante/presentacion/color son los campos separados del
+   formulario (Fase "Inventario Inteligente" v2) — nombre/descripcion
+   se COMPONEN a partir de ellos, nunca se piden sueltos. */
 export async function crearProducto({
   codigoBarras,
-  nombre,
-  detalle,
+  nombreBase,
+  variante,
+  presentacion,
+  color,
   precio,
   categoria,
   subgrupo,
   stockExistente,
+  // Stock inicial + costo (unificación "Crear Producto" + "Agregar
+  // Unidades al Stock" — ver App.jsx:saveNewProducto). Opcionales: si
+  // no vienen (ej. agregarVariante / alta rápida al escanear), el
+  // producto se crea igual que antes, con stock en 0 sin costo, listo
+  // para cargarlo después desde Agregar Unidades.
+  unidadesIniciales,
+  costoTotalInicial,
 }) {
   const categoriaNombre = (categoria || "").trim();
   const { data: catExistente, error: catLookupError } = await supabase
@@ -151,7 +190,15 @@ export async function crearProducto({
     if (catInsertError) throw catInsertError;
   }
 
-  const stockKey = generateStockKey(nombre, stockExistente);
+  const nombreBaseTrim = (nombreBase || "").trim();
+  const varianteTrim = (variante || "").trim();
+  const presentacionTrim = (presentacion || "").trim();
+  const nombreCompleto = composeProductoNombre({
+    nombreBase: nombreBaseTrim,
+    variante: varianteTrim,
+    presentacion: presentacionTrim,
+  });
+  const stockKey = generateStockKey(nombreCompleto, stockExistente);
 
   // Precio SIEMPRE numérico real (parseFloat), nunca el string crudo
   // del input — y el código de barras SOLO va a 'codigo_barras' (texto),
@@ -162,8 +209,12 @@ export async function crearProducto({
   // que dos productos con "" sí violarían esa restricción.
   const codigoBarrasTrim = String(codigoBarras || "").trim();
   const productoPayload = {
-    nombre: nombre.trim(),
-    descripcion: (detalle || "").trim() || null,
+    nombre: nombreCompleto,
+    descripcion: composeProductoDescripcion({ variante: varianteTrim, presentacion: presentacionTrim }),
+    nombre_base: nombreBaseTrim,
+    variante: varianteTrim || null,
+    presentacion: presentacionTrim || null,
+    color_variante: color || null,
     precio: parseFloat(precio),
     categoria: categoriaNombre,
     subgrupo: (subgrupo || "").trim() || null,
@@ -186,11 +237,38 @@ export async function crearProducto({
     .single();
   if (prodError) throw prodError;
 
+  // Costo inicial: como el producto (y su clave de stock) recién nace
+  // acá, no hay stock previo que promediar — es sencillamente
+  // costoTotal / unidades. Se reusa calcularCostoPromedioPonderado con
+  // stockActual/costoActualUnitario en 0 (misma fórmula, mismo caso
+  // especial "primer ingreso real" que ya cubre) para no duplicar el
+  // criterio en dos lugares.
+  const unidadesNum = Number(unidadesIniciales) || 0;
+  const costoUnitarioInicial =
+    unidadesNum > 0
+      ? calcularCostoPromedioPonderado({
+          stockActual: 0,
+          costoActualUnitario: 0,
+          unidadesIngresan: unidadesNum,
+          costoTotalCompra: costoTotalInicial,
+        })
+      : null;
+
   const { error: stockError } = await supabase
     .from("stock")
-    .upsert([{ nombre: stockKey, cantidad: 0, etiqueta: nombre.trim() }], {
-      onConflict: "nombre",
-    });
+    .upsert(
+      [
+        {
+          nombre: stockKey,
+          cantidad: unidadesNum,
+          etiqueta: nombreCompleto,
+          ...(costoUnitarioInicial != null
+            ? { precio_costo: costoUnitarioInicial, ultimo_costo_compra: costoUnitarioInicial }
+            : {}),
+        },
+      ],
+      { onConflict: "nombre" }
+    );
   if (stockError) throw stockError;
 
   return { producto: insertedProducto, stockKey };

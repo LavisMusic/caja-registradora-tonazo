@@ -65,6 +65,17 @@ function buildSectionsFromRows(categoriaRows, productoRows) {
           combo: p.etiqueta || undefined,
           name: p.nombre,
           detail: p.descripcion || "",
+          // Campos separados del refactor de variantes: 'baseName' es
+          // la clave ESTRICTA de agrupación en el POS (ya no se adivina
+          // por un separador en 'name'). Los productos cargados antes
+          // de este refactor tienen baseName = su nombre completo
+          // (backfill en la migración), así que quedan solos en su
+          // propio grupo hasta que alguien los edite.
+          baseName: p.nombre_base || p.nombre,
+          variant: p.variante || "",
+          presentation: p.presentacion || "",
+          color: p.color_variante || null,
+          subgrupoRaw: p.subgrupo || null,
           price: Number(p.precio),
           cost: p.costo != null ? Number(p.costo) : null,
           consumes: Array.isArray(p.consumos) ? p.consumos : JSON.parse(p.consumos || "[]"),
@@ -98,6 +109,7 @@ export function useCatalog() {
   const [stock, setStock] = useState({});
   const [stockLabels, setStockLabels] = useState({});
   const [stockCostos, setStockCostos] = useState({});
+  const [stockUltimoCosto, setStockUltimoCosto] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -138,7 +150,7 @@ export function useCatalog() {
 
     const { data: stockRows, error: stockError } = await supabase
       .from("stock")
-      .select("nombre, cantidad, etiqueta, precio_costo");
+      .select("nombre, cantidad, etiqueta, precio_costo, ultimo_costo_compra");
 
     if (stockError) {
       console.error("Error cargando stock desde Supabase:", stockError);
@@ -147,10 +159,13 @@ export function useCatalog() {
     const loadedStock = {};
     const loadedStockLabels = {};
     const loadedStockCostos = {};
+    const loadedStockUltimoCosto = {};
     (stockRows || []).forEach((row) => {
       loadedStock[row.nombre] = row.cantidad;
       loadedStockLabels[row.nombre] = row.etiqueta || row.nombre;
       loadedStockCostos[row.nombre] = row.precio_costo != null ? Number(row.precio_costo) : null;
+      loadedStockUltimoCosto[row.nombre] =
+        row.ultimo_costo_compra != null ? Number(row.ultimo_costo_compra) : null;
     });
 
     Object.values(builtProductsById).forEach((product) => {
@@ -162,6 +177,7 @@ export function useCatalog() {
           loadedStock[key] = 0;
           loadedStockLabels[key] = key;
           loadedStockCostos[key] = null;
+          loadedStockUltimoCosto[key] = null;
         }
       });
     });
@@ -171,6 +187,7 @@ export function useCatalog() {
     setStock(loadedStock);
     setStockLabels(loadedStockLabels);
     setStockCostos(loadedStockCostos);
+    setStockUltimoCosto(loadedStockUltimoCosto);
     setLoading(false);
   }, []);
 
@@ -236,6 +253,8 @@ export function useCatalog() {
     stockLabels,
     stockCostos,
     setStockCostos,
+    stockUltimoCosto,
+    setStockUltimoCosto,
     loading,
     error,
     setProductVisibility,

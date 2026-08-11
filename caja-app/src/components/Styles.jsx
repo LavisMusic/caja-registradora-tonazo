@@ -51,6 +51,61 @@ export default function Styles() {
       .tz-spin { animation: tz-spin 1s linear infinite; color: var(--cyan); }
       @keyframes tz-spin { to { transform: rotate(360deg); } }
 
+      /* ---------- FASE 1: BLOQUEO DE CAJA (cajero) ---------- */
+      .tz-caja-blocked {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        min-height: 100vh;
+        padding: 24px;
+        text-align: center;
+        color: var(--danger);
+      }
+      .tz-caja-blocked-logo { width: 90px; height: auto; margin-bottom: 8px; opacity: 0.9; }
+      .tz-caja-blocked h1 {
+        margin: 4px 0 0;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 24px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .tz-caja-blocked p {
+        margin: 0;
+        color: var(--text-dim);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 15px;
+        font-weight: 600;
+      }
+      .tz-caja-fondo-readonly {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        margin: 10px 0;
+        padding: 14px 24px;
+        background: var(--panel-solid);
+        border: 1px solid var(--border-soft);
+        border-radius: 14px;
+      }
+      .tz-caja-fondo-readonly span {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+        font-weight: 700;
+      }
+      .tz-caja-fondo-readonly strong {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 28px;
+        color: var(--green);
+        text-shadow: 0 0 16px rgba(57,255,176,0.5);
+      }
+      .tz-caja-blocked-logout { margin-top: 14px; }
+      .tz-caja-apertura-backdrop { cursor: default; }
+      .tz-caja-blocked .tz-submit-btn { width: auto; min-width: 240px; }
+
       /* ---------- HEADER ---------- */
       /* El logo y el texto ya NO son una barra fija/flotante: viven en el
          flujo normal del documento, al principio de la página, como
@@ -488,6 +543,30 @@ export default function Styles() {
       .tz-card-star.tz-card-checked {
         box-shadow: 0 0 0 1.5px var(--yellow), 0 0 8px var(--cyan) inset, 0 0 30px rgba(215,255,59,0.45);
       }
+      /* Lápiz de precio: solo admin, vive EN EL FLUJO normal junto al
+         checkbox de selección (mismo wrapper .tz-card-top-actions),
+         no flotando encima — position:absolute lo hacía superponerse
+         con el checkbox porque los dos "querían" la misma esquina. */
+      .tz-card-top-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .tz-card-edit-price-btn {
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.08);
+        color: var(--cyan);
+        cursor: pointer;
+      }
+      .tz-card-edit-price-btn:hover { background: rgba(43,232,255,0.2); }
       .tz-star-ribbon {
         position: absolute;
         top: -13px;
@@ -561,6 +640,9 @@ export default function Styles() {
       }
       .tz-card-stockrow { display: flex; }
       .tz-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
         font-size: 11px;
         font-weight: 700;
         letter-spacing: 0.04em;
@@ -571,6 +653,156 @@ export default function Styles() {
       .tz-tag-ok { color: var(--cyan); background: rgba(43,232,255,0.12); }
       .tz-tag-warn { color: var(--yellow); background: rgba(215,255,59,0.12); }
       .tz-tag-danger { color: var(--danger); background: rgba(255,84,112,0.14); }
+
+      /* ---- Fase 2 "Inventario Inteligente": tarjeta maestra agrupada
+         + modal de selección de variante ---- */
+      .tz-card-group { border-style: dashed; }
+      .tz-variant-modal { max-width: 420px; text-align: center; }
+      .tz-variant-modal h2 { margin: 0 0 2px; }
+      .tz-variant-modal-subtitle {
+        color: var(--text-dim);
+        font-size: 13px;
+        margin: 0 0 16px;
+      }
+      .tz-variant-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      .tz-variant-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 16px 10px;
+        border-radius: 14px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.04);
+        color: var(--text);
+        cursor: pointer;
+        font-family: 'Rajdhani', sans-serif;
+        transition: border-color 0.15s, background 0.15s, transform 0.1s;
+      }
+      .tz-variant-btn:hover:not(:disabled) {
+        border-color: var(--cyan);
+        background: rgba(43,232,255,0.08);
+        transform: translateY(-1px);
+      }
+      .tz-variant-btn-disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+        filter: grayscale(0.4);
+      }
+      .tz-variant-btn-label {
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .tz-variant-btn-price {
+        font-size: 13px;
+        color: var(--text-dim);
+      }
+
+      /* ---- Refactor de variantes v2: dots de color, chips de
+         variedad y el selector de color reutilizable (ColorPicker) ---- */
+      .tz-variant-dots {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        flex-wrap: wrap;
+      }
+      .tz-variant-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 1px solid rgba(255,255,255,0.35);
+        display: inline-block;
+        flex-shrink: 0;
+      }
+      /* Variante puntual en 0 dentro de una tarjeta maestra: borde rojo
+         + parpadeo — visible aun si el color de la variante es
+         parecido al del resto (ej. dos verdes distintos). */
+      .tz-variant-dot-soldout {
+        border: 2px solid var(--danger);
+        animation: tz-dot-pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes tz-dot-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(255,84,112,0.55); }
+        50% { box-shadow: 0 0 0 4px rgba(255,84,112,0); }
+      }
+      .tz-variant-dot-inline {
+        width: 9px;
+        height: 9px;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+
+      .tz-variedades-quickadd {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px dashed var(--border-soft);
+      }
+      .tz-variant-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 8px 0 12px;
+      }
+      .tz-variant-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.04);
+        color: var(--text);
+        font-size: 12.5px;
+        font-family: 'Rajdhani', sans-serif;
+        cursor: pointer;
+      }
+      .tz-variant-chip:hover { background: rgba(255,255,255,0.09); }
+
+      .tz-color-picker { margin: 8px 0; }
+      .tz-color-swatches {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 6px;
+      }
+      .tz-color-swatch {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        border: 2px solid transparent;
+        cursor: pointer;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.1s, border-color 0.15s;
+      }
+      .tz-color-swatch:hover { transform: scale(1.1); }
+      .tz-color-swatch-active {
+        border-color: var(--text);
+        box-shadow: 0 0 0 2px rgba(255,255,255,0.15);
+      }
+      .tz-color-swatch-custom {
+        position: relative;
+        overflow: hidden;
+        background: rgba(255,255,255,0.06);
+        border: 2px dashed var(--border-soft);
+        color: var(--text-dim);
+      }
+      .tz-color-swatch-custom input[type="color"] {
+        position: absolute;
+        inset: -6px;
+        width: calc(100% + 12px);
+        height: calc(100% + 12px);
+        opacity: 0;
+        cursor: pointer;
+        border: none;
+        padding: 0;
+      }
 
       .tz-card-priceqty {
         display: flex;
@@ -729,6 +961,28 @@ export default function Styles() {
         color: var(--text);
         font-family: 'Rajdhani', sans-serif;
       }
+      .tz-usuario-row-actions {
+        display: flex;
+        gap: 8px;
+        padding: 0 10px 10px;
+        border-top: 1px dashed var(--border-soft);
+        margin-top: 2px;
+        padding-top: 8px;
+      }
+      .tz-usuario-action-btn {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 7px 10px;
+        font-size: 12px;
+      }
+      .tz-usuario-delete-btn {
+        border-color: rgba(255,84,112,0.35);
+        color: var(--danger);
+      }
+      .tz-usuario-delete-btn:hover { background: rgba(255,84,112,0.12); }
       .tz-history-row-method {
         font-size: 11px;
         font-weight: 800;
@@ -818,14 +1072,19 @@ export default function Styles() {
       }
       .tz-cart-row {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        padding: 7px 10px;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px 10px;
         border-radius: 8px;
         background: rgba(255,255,255,0.03);
         border: 1px solid var(--border-soft);
         font-size: 12.5px;
+      }
+      .tz-cart-row-info {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
       }
       .tz-cart-row-name {
         flex: 1 1 auto;
@@ -835,16 +1094,50 @@ export default function Styles() {
         font-weight: 600;
         overflow-wrap: anywhere;
       }
-      .tz-cart-row-qty {
-        flex: 0 0 auto;
-        color: var(--text-dim);
-        font-weight: 700;
-      }
       .tz-cart-row-amount {
         flex: 0 0 auto;
         color: var(--pink);
         font-weight: 700;
       }
+      .tz-cart-row-controls {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+      .tz-cart-qty-stepper { padding: 3px 6px; gap: 6px; }
+      .tz-cart-qty-stepper button { width: 20px; height: 20px; }
+      .tz-cart-qty-input {
+        width: 38px;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        text-align: center;
+        -moz-appearance: textfield;
+      }
+      .tz-cart-qty-input:focus { outline: none; }
+      .tz-cart-qty-input::-webkit-outer-spin-button,
+      .tz-cart-qty-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      .tz-cart-remove-btn {
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+        border-radius: 8px;
+        border: 1px solid rgba(255,84,112,0.35);
+        background: rgba(255,84,112,0.12);
+        color: var(--danger);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .tz-cart-remove-btn:hover { background: rgba(255,84,112,0.22); }
 
       .tz-submitbar-summary {
         margin: 0;
@@ -940,6 +1233,20 @@ export default function Styles() {
         border-radius: 14px;
         border: 1px solid var(--border-soft);
       }
+      .tz-history-toggle-btn {
+        display: block;
+        margin: 12px auto 0;
+        padding: 8px 18px;
+        border-radius: 999px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.04);
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .tz-history-toggle-btn:hover { background: rgba(255,255,255,0.09); }
       .tz-table {
         width: 100%;
         border-collapse: collapse;
@@ -1785,6 +2092,12 @@ export default function Styles() {
         white-space: nowrap;
       }
       .tz-csv-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+      .tz-export-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .tz-export-buttons .tz-csv-btn { flex: 1 1 auto; justify-content: center; }
 
       .tz-arqueo-ok,
       .tz-arqueo-faltante,
@@ -1905,17 +2218,6 @@ export default function Styles() {
         align-items: center;
         color: var(--cyan);
       }
-      .tz-gasto-item-qty { flex: 1 1 64px; text-align: center; padding-left: 4px; padding-right: 4px; }
-      .tz-gasto-item-price { flex: 1 1 76px; text-align: center; padding-left: 4px; padding-right: 4px; }
-      .tz-gasto-item-subtotal {
-        flex: 1 1 auto;
-        min-width: 60px;
-        font-size: 11.5px;
-        font-weight: 700;
-        color: var(--text-dim);
-        white-space: nowrap;
-        text-align: right;
-      }
       .tz-gasto-item-remove {
         flex-shrink: 0;
         width: 28px;
@@ -1930,6 +2232,12 @@ export default function Styles() {
         cursor: pointer;
       }
       .tz-gasto-item-remove:hover { background: rgba(255,84,112,0.18); }
+      /* Dentro de '.tz-stock-cost-inputs' (ítems de Gastos, mismo layout
+         que "Agregar Unidades al Stock") el botón de eliminar es un
+         hermano flex de los dos '.tz-stock-cost-field' (label + input,
+         ~54px de alto) — sin esto quedaba pegado arriba, a la altura
+         del label, en vez de a la altura del input. */
+      .tz-stock-cost-inputs .tz-gasto-item-remove { align-self: flex-end; margin-bottom: 1px; }
 
       .tz-gasto-add-item {
         align-self: flex-start;
@@ -2163,6 +2471,40 @@ export default function Styles() {
         display: flex;
         flex-direction: column;
         gap: 8px;
+      }
+      .tz-vuelto-quick-buttons {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .tz-vuelto-quick-btn {
+        flex: 1 1 70px;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        padding: 8px 6px;
+        color: var(--text);
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 700;
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+      .tz-vuelto-quick-btn:hover { border-color: var(--green); color: var(--green); }
+      .tz-vuelto-display {
+        margin: 0;
+        text-align: center;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text-dim);
+        letter-spacing: 0.05em;
+      }
+      .tz-vuelto-display strong {
+        display: block;
+        margin-top: 2px;
+        font-size: 26px;
+        color: var(--green);
+        text-shadow: 0 0 16px rgba(57,255,176,0.5);
       }
       .tz-checkout-fiado-selected {
         display: flex;
@@ -2415,6 +2757,274 @@ export default function Styles() {
         /* Tarjetas panorámicas: 3+ columnas, cada tarjeta más ancha que alta */
         .tz-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
         .tz-card { min-height: 168px; }
+      }
+
+      /* ==================== EASTER EGG: TONAZO ARCADE ==================== */
+      .tz-eg-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: #050310;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        font-family: 'Rajdhani', sans-serif;
+      }
+      .tz-eg-close {
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        z-index: 20;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        border: 1px solid rgba(255,84,112,0.4);
+        background: rgba(255,84,112,0.12);
+        color: #ff5470;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .tz-eg-close:hover { background: rgba(255,84,112,0.24); }
+
+      /* ---- selección de personaje / menú ---- */
+      .tz-eg-select {
+        width: 100%;
+        max-width: 720px;
+        max-height: 100%;
+        overflow-y: auto;
+        padding: 40px 24px;
+        text-align: center;
+        color: #e8f6ff;
+      }
+      .tz-eg-title {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 26px;
+        font-weight: 800;
+        color: #2be8ff;
+        text-shadow: 0 0 18px rgba(43,232,255,0.6);
+        margin: 0 0 8px;
+        letter-spacing: 0.04em;
+      }
+      .tz-eg-gold {
+        margin: 0 0 24px;
+        color: #ffd43b;
+        font-weight: 700;
+        font-size: 15px;
+      }
+      .tz-eg-char-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 14px;
+        margin-bottom: 28px;
+      }
+      .tz-eg-char-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 10px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,255,255,0.1);
+        background: rgba(255,255,255,0.03);
+      }
+      .tz-eg-char-card-selected {
+        border-color: #2be8ff;
+        background: rgba(43,232,255,0.08);
+      }
+      .tz-eg-char-avatar {
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        border: 2px solid;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0,0,0,0.4);
+      }
+      .tz-eg-char-avatar-dot {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+      }
+      .tz-eg-char-name {
+        font-size: 12.5px;
+        font-weight: 700;
+        color: #e8f6ff;
+      }
+      .tz-eg-char-btn {
+        width: 100%;
+        padding: 6px 8px;
+        border-radius: 8px;
+        border: 1px solid rgba(255,255,255,0.15);
+        background: rgba(255,255,255,0.06);
+        color: #e8f6ff;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .tz-eg-char-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .tz-eg-char-btn-locked { color: #ffd43b; border-color: rgba(255,212,59,0.35); }
+      .tz-eg-play-btn {
+        padding: 14px 32px;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(135deg, #2be8ff, #b98bff);
+        color: #06131a;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 15px;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+        box-shadow: 0 0 24px rgba(43,232,255,0.4);
+      }
+      .tz-eg-controls-hint {
+        margin-top: 18px;
+        font-size: 12px;
+        color: #8fa3c8;
+        line-height: 1.6;
+      }
+
+      /* ---- área de juego ---- */
+      .tz-eg-game-area {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tz-eg-canvas {
+        max-width: 100%;
+        max-height: 100%;
+        aspect-ratio: 960 / 540;
+        image-rendering: crisp-edges;
+        border: 1px solid rgba(43,232,255,0.15);
+      }
+
+      .tz-eg-overlay-msg {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: rgba(5,3,16,0.82);
+        color: #e8f6ff;
+        text-align: center;
+        padding: 20px;
+      }
+      .tz-eg-overlay-msg h2 {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 22px;
+        color: #b98bff;
+        text-shadow: 0 0 16px rgba(185,139,255,0.6);
+        margin: 0;
+      }
+      .tz-eg-continue-btn {
+        padding: 12px 28px;
+        border-radius: 999px;
+        border: none;
+        background: linear-gradient(135deg, #2be8ff, #b98bff);
+        color: #06131a;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      /* ---- controles táctiles: solo en pantallas táctiles (pointer
+         grueso) — en desktop con mouse/teclado quedan ocultos, ya que
+         el teclado cubre ese caso. ---- */
+      .tz-eg-joystick {
+        position: absolute;
+        left: 24px;
+        bottom: 24px;
+        width: 96px;
+        height: 96px;
+        border-radius: 50%;
+        border: 2px solid rgba(43,232,255,0.4);
+        background: rgba(43,232,255,0.06);
+        touch-action: none;
+        z-index: 15;
+      }
+      .tz-eg-joystick-nub {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 40px;
+        height: 40px;
+        margin-left: -20px;
+        margin-top: -20px;
+        border-radius: 50%;
+        background: rgba(43,232,255,0.35);
+        border: 2px solid #2be8ff;
+        box-shadow: 0 0 14px rgba(43,232,255,0.5);
+        pointer-events: none;
+      }
+      .tz-eg-btn {
+        position: absolute;
+        bottom: 30px;
+        width: 74px;
+        height: 74px;
+        border-radius: 50%;
+        border: 2px solid rgba(255,255,255,0.3);
+        background: rgba(255,255,255,0.08);
+        color: #e8f6ff;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 11px;
+        letter-spacing: 0.02em;
+        touch-action: none;
+        z-index: 15;
+        cursor: pointer;
+      }
+      .tz-eg-btn-jump {
+        right: 116px;
+        border-color: rgba(215,255,59,0.5);
+        background: rgba(215,255,59,0.1);
+        color: #d7ff3b;
+      }
+      .tz-eg-btn-action {
+        right: 24px;
+        border-color: rgba(255,47,158,0.5);
+        background: rgba(255,47,158,0.1);
+        color: #ff2f9e;
+      }
+
+      @media (pointer: fine) {
+        .tz-eg-joystick, .tz-eg-btn { display: none; }
+      }
+
+      /* ---- aviso de "gira tu dispositivo": el juego es 960x540
+         (horizontal) — en pantallas táctiles angostas en vertical se
+         cubre todo con este aviso en vez de mostrar el canvas
+         aplastado. screen.orientation.lock('landscape') ya se intenta
+         desde JS, pero iOS Safari no lo soporta, así que este overlay
+         de CSS es el fallback real que sí funciona siempre. ---- */
+      .tz-eg-rotate-hint {
+        display: none;
+      }
+      @media (orientation: portrait) and (max-width: 900px) {
+        .tz-eg-rotate-hint {
+          display: flex;
+          position: fixed;
+          inset: 0;
+          z-index: 30;
+          align-items: center;
+          justify-content: center;
+          background: #050310;
+          color: #2be8ff;
+          font-family: 'Orbitron', sans-serif;
+          font-size: 16px;
+          text-align: center;
+          padding: 24px;
+        }
       }
     `}</style>
   );
