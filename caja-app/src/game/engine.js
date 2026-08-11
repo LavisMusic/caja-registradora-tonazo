@@ -1,4 +1,4 @@
-import { BIRD, BOSS, CANVAS_W, COLORS, COMBAT, PHYSICS } from "./constants";
+import { BIRD, BOSS, CANVAS_W, COLORS, COMBAT, CRUMBLE, PHYSICS } from "./constants";
 
 const COLLECT_SIZE = 26;
 
@@ -21,6 +21,7 @@ export function createWorldFromLevel(level) {
       onGround: false,
       facing: 1,
       hasWeapon: false,
+      weaponPower: 1, // 1 = arma normal, 2 = arma pesada (solo niveles con jefe)
       attackCooldown: 0,
       attackAnim: 0,
       invulnerable: 0,
@@ -41,7 +42,7 @@ export function createWorldFromLevel(level) {
     // en vivo", no de generación de nivel.
     birds: [],
     bombs: [],
-    birdTimer: randRangeRuntime(BIRD.intervalRange[0], BIRD.intervalRange[1]),
+    birdTimer: randRangeRuntime(...BIRD.intervalRangeByTier[level.tier]),
     portal: { ...level.portal },
     projectiles: [],
     particles: [],
@@ -129,6 +130,41 @@ function updateMovingPlatforms(world) {
   });
 }
 
+// idle -> (el jugador se para encima) -> shaking (avisa, pero SIGUE
+// sólida durante CRUMBLE.shakeDuration segundos — tiempo de sobra
+// para saltar a la siguiente plataforma) -> gone (deja de colisionar).
+// Se detecta "el jugador se paró encima" vía ridingPlatformId, que
+// resolvePlayerVsPlatforms ya deja actualizado ANTES de que esta
+// función corra (ver orden en stepPhysics) — por eso una 'crumbling'
+// NO se excluye de esa asignación (solo 'booster' se excluye).
+function updateCrumblingPlatforms(world, dt) {
+  world.platforms.forEach((p) => {
+    if (p.type !== "crumbling") return;
+    if (p.state === "idle") {
+      if (world.player.ridingPlatformId === p.id) {
+        p.state = "shaking";
+        p.timer = CRUMBLE.shakeDuration;
+      }
+      return;
+    }
+    if (p.state === "shaking") {
+      p.timer -= dt;
+      if (p.timer <= 0) {
+        p.state = "gone";
+        spawnBurst(world, p.x + p.w / 2, p.y + p.h / 2, COLORS.crumbling, 20, [40, 160]);
+      }
+    }
+  });
+}
+
+// Una plataforma 'crumbling' que ya terminó de derrumbarse ('gone')
+// deja de existir para toda colisión (jugador Y proyectiles) — sigue
+// en el array (mismo 'id', para que cualquier cosa que la referencie
+// no rompa), simplemente ya no bloquea nada.
+function isSolid(p) {
+  return !(p.type === "crumbling" && p.state === "gone");
+}
+
 function resolvePlayerVsPlatforms(world, dt) {
   const player = world.player;
 
@@ -145,7 +181,7 @@ function resolvePlayerVsPlatforms(world, dt) {
   // Eje X
   player.x += player.vx * dt;
   for (const p of world.platforms) {
-    if (!aabb(player, p)) continue;
+    if (!isSolid(p) || !aabb(player, p)) continue;
     if (player.vx > 0) player.x = p.x - player.w;
     else if (player.vx < 0) player.x = p.x + p.w;
     player.vx = 0;
@@ -159,7 +195,7 @@ function resolvePlayerVsPlatforms(world, dt) {
   player.onGround = false;
   player.ridingPlatformId = null;
   for (const p of world.platforms) {
-    if (!aabb(player, p)) continue;
+    if (!isSolid(p) || !aabb(player, p)) continue;
     if (player.vy > 0 && prevBottom <= p.y + 1) {
       // Cayendo, aterriza encima.
       player.y = p.y - player.h;
@@ -191,15 +227,21 @@ function updatePlayerCombat(world, dt, input) {
 
   player.attackAnim = 0.18;
   if (player.hasWeapon) {
-    player.attackCooldown = COMBAT.projectileCooldown;
+    const heavy = player.weaponPower === 2;
+    const speed = heavy ? COMBAT.heavyProjectileSpeed : COMBAT.projectileSpeed;
+    const w = heavy ? 22 : 14;
+    const h = heavy ? 10 : 6;
+    player.attackCooldown = heavy ? COMBAT.heavyProjectileCooldown : COMBAT.projectileCooldown;
     world.projectiles.push({
-      x: player.facing > 0 ? player.x + player.w : player.x - 10,
-      y: player.y + player.h / 2 - 3,
-      w: 14,
-      h: 6,
-      vx: player.facing * COMBAT.projectileSpeed,
+      x: player.facing > 0 ? player.x + player.w : player.x - w,
+      y: player.y + player.h / 2 - h / 2,
+      w,
+      h,
+      vx: player.facing * speed,
       owner: "player",
-      life: COMBAT.projectileLifetime,
+      heavy,
+      damage: heavy ? COMBAT.heavyProjectileDamage : COMBAT.projectileDamage,
+      life: heavy ? COMBAT.heavyProjectileLifetime : COMBAT.projectileLifetime,
     });
   } else {
     player.attackCooldown = COMBAT.meleeCooldown;
@@ -260,10 +302,11 @@ function spawnBird(world) {
 // final, para no repetir la lógica de "reiniciar + partículas" cuatro
 // veces.
 function updateBirdsAndBombs(world, dt) {
+  const tier = world.level.tier;
   world.birdTimer -= dt;
   if (world.birdTimer <= 0) {
-    world.birdTimer = randRangeRuntime(BIRD.intervalRange[0], BIRD.intervalRange[1]);
-    if (Math.random() < BIRD.spawnChance) spawnBird(world);
+    world.birdTimer = randRangeRuntime(...BIRD.intervalRangeByTier[tier]);
+    if (Math.random() < BIRD.spawnChanceByTier[tier]) spawnBird(world);
   }
 
   world.birds.forEach((bird) => {
@@ -296,7 +339,7 @@ function updateBirdsAndBombs(world, dt) {
       }
     }
     for (const p of world.platforms) {
-      if (aabb(bombBox, p)) {
+      if (isSolid(p) && aabb(bombBox, p)) {
         spawnBurst(world, bomb.x, bomb.y, COLORS.bomb, 14, [50, 160]);
         return false;
       }
@@ -384,14 +427,15 @@ function updateProjectiles(world, dt) {
     if (proj.life <= 0) return false;
 
     if (proj.owner === "player") {
+      const damage = proj.damage ?? COMBAT.projectileDamage;
       for (const enemy of world.enemies) {
         if (enemy.alive && aabb(proj, enemy)) {
-          damageEnemy(world, enemy, COMBAT.projectileDamage);
+          damageEnemy(world, enemy, damage);
           return false;
         }
       }
       if (world.boss && world.boss.alive && aabb(proj, world.boss)) {
-        damageBoss(world, COMBAT.projectileDamage);
+        damageBoss(world, damage);
         return false;
       }
     } else if (proj.owner === "boss") {
@@ -412,7 +456,7 @@ function updateProjectiles(world, dt) {
       }
     }
     for (const p of world.platforms) {
-      if (aabb(proj, p)) {
+      if (isSolid(p) && aabb(proj, p)) {
         spawnBurst(
           world,
           proj.x,
@@ -466,7 +510,13 @@ function updateCollectibles(world, events) {
     else if (c.type === "zaphito-rojo") world.zaphitos.rojo = true;
     else if (c.type === "zaphito-verde") world.zaphitos.verde = true;
     else if (c.type === "zaphito-dorado") events.goldGained += 1;
-    else if (c.type === "weapon") player.hasWeapon = true;
+    else if (c.type === "weapon") {
+      player.hasWeapon = true;
+      player.weaponPower = 1;
+    } else if (c.type === "weapon-heavy") {
+      player.hasWeapon = true;
+      player.weaponPower = 2;
+    }
 
     const color =
       c.type === "zaphito-azul"
@@ -477,8 +527,17 @@ function updateCollectibles(world, events) {
             ? COLORS.zaphitoVerde
             : c.type === "zaphito-dorado"
               ? COLORS.zaphitoDorado
-              : COLORS.weapon;
-    spawnBurst(world, pos.x + COLLECT_SIZE / 2, pos.y + COLLECT_SIZE / 2, color, 14, [40, 140]);
+              : c.type === "weapon-heavy"
+                ? COLORS.weaponHeavy
+                : COLORS.weapon;
+    spawnBurst(
+      world,
+      pos.x + COLLECT_SIZE / 2,
+      pos.y + COLLECT_SIZE / 2,
+      color,
+      c.type === "weapon-heavy" ? 22 : 14,
+      [40, 140]
+    );
   });
 
   world.portalActive = world.zaphitos.azul && world.zaphitos.rojo && world.zaphitos.verde;
@@ -516,6 +575,7 @@ export function stepPhysics(world, dt, input) {
   updateMovingPlatforms(world);
   updateSaws(world);
   resolvePlayerVsPlatforms(world, dt);
+  updateCrumblingPlatforms(world, dt);
   updatePlayerCombat(world, dt, input);
   updateEnemies(world, dt);
   updateBoss(world, dt);

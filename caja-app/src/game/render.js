@@ -1,4 +1,4 @@
-import { CANVAS_H, CANVAS_W, COLORS } from "./constants";
+import { CANVAS_H, CANVAS_W, COLORS, CRUMBLE } from "./constants";
 import { collectiblePosition } from "./engine";
 
 /* Todo el "arte" del juego son trazos de canvas con resplandor
@@ -33,15 +33,37 @@ function drawBackground(ctx, world) {
   }
 }
 
-function drawPlatform(ctx, p, camX) {
+function drawPlatform(ctx, p, camX, t) {
+  if (p.type === "crumbling" && p.state === "gone") return;
   const x = p.x - camX;
   if (x + p.w < 0 || x > CANVAS_W) return;
-  const color = p.type === "moving" ? COLORS.moving : p.type === "booster" ? COLORS.booster : COLORS.platform;
+
+  const color =
+    p.type === "moving"
+      ? COLORS.moving
+      : p.type === "booster"
+        ? COLORS.booster
+        : p.type === "crumbling"
+          ? COLORS.crumbling
+          : COLORS.platform;
+
+  // 'shaking': tiembla y se va desvaneciendo a medida que se acerca a
+  // 'gone' — la vibración avisa "esto se va a caer", el desvanecido da
+  // una pista visual de cuánto tiempo queda para saltar.
+  let drawX = x;
+  let alpha = 1;
+  if (p.type === "crumbling" && p.state === "shaking") {
+    const urgency = 1 - p.timer / CRUMBLE.shakeDuration;
+    drawX = x + Math.sin(t * 45) * (2 + urgency * 4);
+    alpha = Math.max(0.3, p.timer / CRUMBLE.shakeDuration);
+  }
+
   setNeon(ctx, color, p.type === "booster" ? 22 : 12);
+  ctx.globalAlpha = alpha;
   ctx.lineWidth = 3;
-  ctx.strokeRect(x, p.y, p.w, p.h);
-  ctx.globalAlpha = 0.12;
-  ctx.fillRect(x, p.y, p.w, p.h);
+  ctx.strokeRect(drawX, p.y, p.w, p.h);
+  ctx.globalAlpha = 0.12 * alpha;
+  ctx.fillRect(drawX, p.y, p.w, p.h);
   ctx.globalAlpha = 1;
   if (p.type === "booster") {
     ctx.beginPath();
@@ -63,6 +85,8 @@ function collectibleColor(type) {
       return COLORS.zaphitoVerde;
     case "zaphito-dorado":
       return COLORS.zaphitoDorado;
+    case "weapon-heavy":
+      return COLORS.weaponHeavy;
     default:
       return COLORS.weapon;
   }
@@ -79,11 +103,17 @@ function drawCollectible(ctx, c, pos, camX, t) {
   setNeon(ctx, color, 16);
   ctx.lineWidth = 2.5;
 
-  if (c.type === "weapon") {
+  if (c.type === "weapon" || c.type === "weapon-heavy") {
+    const heavy = c.type === "weapon-heavy";
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(-0.3);
-    ctx.strokeRect(-16, -4, 32, 8);
+    ctx.strokeRect(heavy ? -20 : -16, heavy ? -6 : -4, heavy ? 40 : 32, heavy ? 12 : 8);
+    if (heavy) {
+      // "cañón doble" para que se lea claramente distinta al arma
+      // normal, no solo por color.
+      ctx.strokeRect(-20, -12, 40, 4);
+    }
     ctx.restore();
     return;
   }
@@ -168,7 +198,9 @@ function drawPlayer(ctx, player, character, camX) {
   ctx.stroke();
 
   if (player.hasWeapon) {
-    ctx.strokeRect(x + player.w / 2 + dir * reach - (dir > 0 ? 2 : 16), armY - 3, 18, 6);
+    const heavy = player.weaponPower === 2;
+    ctx.strokeStyle = heavy ? COLORS.weaponHeavy : character.color;
+    ctx.strokeRect(x + player.w / 2 + dir * reach - (dir > 0 ? 2 : heavy ? 22 : 16), armY - (heavy ? 4 : 3), heavy ? 24 : 18, heavy ? 8 : 6);
   }
 }
 
@@ -176,11 +208,13 @@ function drawProjectile(ctx, p, camX) {
   const x = p.x - camX;
   const color =
     p.owner === "player"
-      ? COLORS.projectilePlayer
+      ? p.heavy
+        ? COLORS.projectileHeavy
+        : COLORS.projectilePlayer
       : p.owner === "boss"
         ? COLORS.bossRay
         : COLORS.projectileEnemy;
-  setNeon(ctx, color, p.owner === "boss" ? 20 : 14);
+  setNeon(ctx, color, p.owner === "boss" || p.heavy ? 20 : 14);
   ctx.save();
   ctx.translate(x + p.w / 2, p.y + p.h / 2);
   if (p.owner === "boss") ctx.rotate(Math.atan2(p.vy || 0, p.vx));
@@ -320,12 +354,13 @@ function drawHud(ctx, world, hudInfo) {
   drawZaphitoIcon(ctx, 62, 46, COLORS.zaphitoVerde, world.zaphitos.verde);
 
   if (world.player.hasWeapon) {
-    setNeon(ctx, COLORS.weapon, 10);
+    const heavy = world.player.weaponPower === 2;
+    setNeon(ctx, heavy ? COLORS.weaponHeavy : COLORS.weapon, heavy ? 14 : 10);
     ctx.save();
     ctx.translate(90, 46);
     ctx.rotate(-0.3);
     ctx.lineWidth = 2;
-    ctx.strokeRect(-12, -3, 24, 6);
+    ctx.strokeRect(heavy ? -15 : -12, heavy ? -4 : -3, heavy ? 30 : 24, heavy ? 8 : 6);
     ctx.restore();
   }
 
@@ -341,7 +376,7 @@ function drawHud(ctx, world, hudInfo) {
 export function renderWorld(ctx, world, character, t, hudInfo) {
   const camX = world.cameraX;
   drawBackground(ctx, world);
-  world.platforms.forEach((p) => drawPlatform(ctx, p, camX));
+  world.platforms.forEach((p) => drawPlatform(ctx, p, camX, t));
   drawPortal(ctx, world.portal, world.portalActive, camX, t);
   world.saws.forEach((s) => drawSaw(ctx, s, camX, t));
   world.collectibles.forEach((c) => drawCollectible(ctx, c, collectiblePosition(world, c), camX, t));

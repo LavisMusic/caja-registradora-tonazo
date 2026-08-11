@@ -137,13 +137,13 @@ export default function EasterEggGame({ onClose }) {
   const [screen, setScreen] = useState("select"); // 'select' | 'playing' | 'cleared' | 'victory'
   const [levelIndex, setLevelIndex] = useState(0);
   const [levelMsg, setLevelMsg] = useState("");
-  const [hasWeaponUI, setHasWeaponUI] = useState(false);
+  const [weaponPowerUI, setWeaponPowerUI] = useState(0); // 0 = sin arma, 1 = normal, 2 = pesada
 
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const worldRef = useRef(null);
   const levelIndexRef = useRef(0);
-  const hasWeaponRef = useRef(false);
+  const weaponPowerRef = useRef(0);
   const rafRef = useRef(null);
   const accumulatorRef = useRef(0);
   const lastTimeRef = useRef(0);
@@ -214,8 +214,8 @@ export default function EasterEggGame({ onClose }) {
     levelIndexRef.current = idx;
     setLevelIndex(idx);
     worldRef.current = createWorldFromLevel(generateLevel(idx));
-    hasWeaponRef.current = false;
-    setHasWeaponUI(false);
+    weaponPowerRef.current = 0;
+    setWeaponPowerUI(0);
     lastTimeRef.current = 0;
     accumulatorRef.current = 0;
     setScreen("playing");
@@ -262,9 +262,10 @@ export default function EasterEggGame({ onClose }) {
     if (goldGained > 0) {
       setSave((prev) => ({ ...prev, gold: prev.gold + goldGained }));
     }
-    if (world.player.hasWeapon !== hasWeaponRef.current) {
-      hasWeaponRef.current = world.player.hasWeapon;
-      setHasWeaponUI(hasWeaponRef.current);
+    const currentPower = world.player.hasWeapon ? world.player.weaponPower : 0;
+    if (currentPower !== weaponPowerRef.current) {
+      weaponPowerRef.current = currentPower;
+      setWeaponPowerUI(currentPower);
     }
 
     const ctx = canvasRef.current?.getContext("2d");
@@ -291,8 +292,8 @@ export default function EasterEggGame({ onClose }) {
       // MISMO nivel (misma semilla) y se sigue jugando sin salir de
       // 'playing', sin interrumpir con una pantalla intermedia.
       worldRef.current = createWorldFromLevel(generateLevel(levelIndexRef.current));
-      hasWeaponRef.current = false;
-      setHasWeaponUI(false);
+      weaponPowerRef.current = 0;
+      setWeaponPowerUI(0);
     }
   }, []);
 
@@ -363,7 +364,7 @@ export default function EasterEggGame({ onClose }) {
                   inputRef.current.wantAttack = true;
                 }}
               >
-                {hasWeaponUI ? "DISPARAR" : "GOLPE"}
+                {weaponPowerUI === 2 ? "CAÑÓN" : weaponPowerUI === 1 ? "DISPARAR" : "GOLPE"}
               </button>
             </>
           )}

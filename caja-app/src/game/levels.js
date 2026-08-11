@@ -1,4 +1,4 @@
-import { BOSS, PHYSICS, SAW, SAW_SAFE_JUMP_RADIUS, TOTAL_LEVELS, tierForLevel } from "./constants";
+import { BOSS, CRUMBLE, PHYSICS, SAW, SAW_SAFE_JUMP_RADIUS, TOTAL_LEVELS, tierForLevel } from "./constants";
 
 /* 25 niveles hechos A MANO uno por uno no es viable ni verificable acá
    (no hay forma de jugar/ajustar cada mapa visualmente en esta sesión)
@@ -50,7 +50,10 @@ const TIER_PARAMS = {
     gap: [50, Math.min(140, MAX_JUMP_GAP)],
     dy: 60,
     platformW: [150, 230],
-    movingChance: 0.12,
+    // Subido de 0.12 a 0.22 (casi el doble) — a pedido: más variedad
+    // de plataformas móviles desde el principio, no solo a partir de
+    // Intermedio.
+    movingChance: 0.22,
     boosterChance: 0.05,
     enemyCount: [1, 2],
     enemySpeed: [45, 75],
@@ -61,7 +64,7 @@ const TIER_PARAMS = {
     gap: [80, Math.min(190, MAX_JUMP_GAP)],
     dy: 90,
     platformW: [120, 200],
-    movingChance: 0.28,
+    movingChance: 0.32,
     boosterChance: 0.12,
     enemyCount: [2, 4],
     enemySpeed: [80, 120],
@@ -90,6 +93,10 @@ export function generateLevel(levelIndex) {
   const tier = tierForLevel(levelIndex);
   const params = TIER_PARAMS[tier];
   const rng = mulberry32(1000 + levelIndex * 7919 + 17);
+  // Se usa tanto para elegir qué arma dar (ver 'weapon-heavy' más
+  // abajo) como para decidir si el nivel trae jefe — un solo cálculo,
+  // reusado, en vez de repetir la misma comparación dos veces.
+  const isBossLevel = levelIndex >= TOTAL_LEVELS - BOSS.levelsFromEnd;
 
   const platforms = [];
   let x = 0;
@@ -106,15 +113,36 @@ export function generateLevel(levelIndex) {
     const newY = Math.min(MAX_Y, Math.max(MIN_Y, y + dy));
 
     let type = "static";
-    const roll = rng();
-    if (roll < params.boosterChance) {
-      type = "booster";
-    } else if (roll < params.boosterChance + params.movingChance) {
-      type = "moving";
+    if (i === segments) {
+      // La plataforma donde se apoya el portal (ver 'last' más abajo)
+      // SIEMPRE es estática — pisar la meta y que encima se mueva bajo
+      // los pies mientras terminás de juntar zaphitos es injusto, no
+      // desafiante.
+      type = "static";
+    } else if (i === segments - 1) {
+      // La plataforma INMEDIATAMENTE ANTES del portal nunca es
+      // 'moving': saltar contra un blanco que se corre justo en el
+      // tramo final (reportado en el Nivel 3 — la plataforma rosa
+      // "dejaba pasar al vacío" o empujaba de vuelta) es frustración
+      // de timing de física, no de habilidad. Acá es estática o
+      // 'crumbling' (se derrumba con aviso de sobra para saltar) —
+      // cruzarla es cuestión de reflejos, no de acertarle a un blanco
+      // móvil.
+      type = rng() < CRUMBLE.chance ? "crumbling" : "static";
+    } else {
+      const roll = rng();
+      if (roll < params.boosterChance) {
+        type = "booster";
+      } else if (roll < params.boosterChance + params.movingChance) {
+        type = "moving";
+      }
     }
 
     const platform = { id: i, x: newX, y: newY, w: newW, h: PLATFORM_H, type };
-    if (type === "moving") {
+    if (type === "crumbling") {
+      platform.state = "idle";
+      platform.timer = 0;
+    } else if (type === "moving") {
       platform.axis = rng() < 0.5 ? "x" : "y";
       platform.amplitude = randRange(rng, 40, 90);
       platform.speed = randRange(rng, 0.6, 1.3);
@@ -171,10 +199,22 @@ export function generateLevel(levelIndex) {
   });
 
   // El arma es SIEMPRE del nivel actual, no persiste entre niveles —
-  // cada mapa tiene la suya propia en algún punto de la primera mitad.
-  const weaponPlatform = candidates[mandatory.length % candidates.length];
+  // cada mapa tiene la suya propia. En los niveles con jefe se entrega
+  // el arma PESADA (weapon-heavy) en vez de la normal, y a propósito
+  // en una plataforma temprana (no en el orden aleatorio de
+  // 'candidates') — así siempre llegás a la pelea final ya armado con
+  // algo capaz de bajarle la vida rápido, en vez de encontrarla recién
+  // cerca del jefe o no encontrarla del todo.
+  const weaponPlatform = isBossLevel
+    ? platforms[Math.min(2, Math.max(1, platforms.length - 2))]
+    : candidates[mandatory.length % candidates.length];
   const weaponPos = pickAt(weaponPlatform, 30);
-  collectibles.push({ id: "weapon-0", type: "weapon", collected: false, ...weaponPos });
+  collectibles.push({
+    id: "weapon-0",
+    type: isBossLevel ? "weapon-heavy" : "weapon",
+    collected: false,
+    ...weaponPos,
+  });
 
   for (let g = 0; g < params.goldCount; g++) {
     const platform = candidates[(mandatory.length + 1 + g) % candidates.length];
@@ -269,7 +309,7 @@ export function generateLevel(levelIndex) {
   // en una plataforma normal se sentiría raro) cerca del portal, con
   // un rango corto de patrullaje horizontal.
   let boss = null;
-  if (levelIndex >= TOTAL_LEVELS - BOSS.levelsFromEnd) {
+  if (isBossLevel) {
     const centerX = Math.max(240, portal.x - 220);
     boss = {
       x: centerX - BOSS.w / 2,

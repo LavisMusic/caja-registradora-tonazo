@@ -32,6 +32,16 @@ export const COMBAT = {
   projectileLifetime: 1.4,
   enemyHealth: 2,
   enemyTouchInvulnerability: 0.2,
+  // Arma pesada: aparece SOLO en los niveles con jefe (ver
+  // BOSS.levelsFromEnd), temprano en el mapa — para que llegues a la
+  // pelea final ya armado con algo capaz de bajarle la vida rápido y
+  // "despejar el paso" al portal en vez de tener que esquivarlo 14
+  // golpes de la pistola normal. Más daño por disparo, un poco más
+  // lenta entre tiro y tiro (no es gratis, sigue habiendo timing).
+  heavyProjectileSpeed: 560,
+  heavyProjectileDamage: 4,
+  heavyProjectileCooldown: 0.45,
+  heavyProjectileLifetime: 1.4,
 };
 
 // Altura máxima del arco de salto normal (v0^2 / 2g) — se usa para
@@ -62,10 +72,22 @@ export const SAW = {
 // Aves: cruzan la pantalla de tanto en tanto y sueltan UNA bomba
 // apuntando a donde estaba el jugador al momento de aparecer (no lo
 // persiguen después — es una "mirada previa" esquivable, no un
-// misil teledirigido). "5 de 10" = spawnChance 0.5.
+// misil teledirigido). "5 de 10" = spawnChance 0.5 (el valor base,
+// Intermedio) — escala por dificultad: en Fácil aparecen menos
+// seguido y con menos probabilidad, en Extremo mucho más de ambas
+// cosas. updateBirdsAndBombs (engine.js) lee 'world.level.tier' para
+// elegir el set correcto en cada intento de aparición.
 export const BIRD = {
-  intervalRange: [4.5, 8], // segundos entre intentos de aparición
-  spawnChance: 0.5,
+  intervalRangeByTier: {
+    facil: [6, 10],
+    intermedio: [4.5, 7],
+    extremo: [3, 5.5],
+  },
+  spawnChanceByTier: {
+    facil: 0.35,
+    intermedio: 0.5,
+    extremo: 0.65,
+  },
   speed: 230,
   bombRadius: 9,
   bombGravity: 1400,
@@ -91,19 +113,35 @@ export const BOSS = {
   meleeContactIsHazard: true,
 };
 
+// Plataforma "quebradiza": sólida hasta que el jugador se para en
+// ella, entonces empieza a temblar/desvanecerse y desaparece del todo
+// pasados 'shakeDuration' segundos — deliberadamente NUNCA se mueve
+// (a diferencia de 'moving'), para que cruzarla sea cuestión de
+// reflejos/tiempo, no de acertarle a un blanco móvil. Se usa sobre
+// todo en la plataforma justo antes del portal (ver levels.js), que
+// ahora nunca es 'moving' — reemplaza el diseño anterior que hacía
+// que la última plataforma antes de la meta "se corriera" del salto.
+export const CRUMBLE = {
+  chance: 0.5, // probabilidad de que esa plataforma sea crumbling en vez de simplemente estática
+  shakeDuration: 1.3, // segundos de aviso, de sobra para saltar a la plataforma del portal
+};
+
 export const COLORS = {
   bg: "#050310",
   bgGrid: "rgba(43,232,255,0.05)",
   platform: "#2be8ff",
   moving: "#ff2f9e",
   booster: "#ffe066",
+  crumbling: "#ffb454",
   enemy: "#ff3b4d",
   zaphitoAzul: "#3b82ff",
   zaphitoRojo: "#ff3b4d",
   zaphitoVerde: "#3bff7a",
   zaphitoDorado: "#ffd43b",
   weapon: "#d7ff3b",
+  weaponHeavy: "#ff5e2c",
   projectilePlayer: "#2be8ff",
+  projectileHeavy: "#ff5e2c",
   projectileEnemy: "#ff3b4d",
   portalLocked: "#4b3b6b",
   portalActive: "#b98bff",
