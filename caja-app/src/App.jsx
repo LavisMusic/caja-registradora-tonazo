@@ -433,6 +433,10 @@ function formatMesEs(yearMonthKey) {
 
 export default function App() {
   const { signOut, session, isAdmin, isCajero, nombre: cajeroNombre } = useAuth();
+  // Nombre a mostrar para "quién está operando" (p.ej. Cierre de Caja):
+  // el nombre real del perfil autenticado si existe, y solo si no hay
+  // uno cargado cae al rol genérico.
+  const currentUserLabel = cajeroNombre || (isAdmin ? "Admin" : "Cajero");
 
   /* ---- catálogo dinámico: cargado por el hook compartido useCatalog ---- */
   const {
@@ -3814,7 +3818,6 @@ export default function App() {
     // nuevas — dinero recuperado, tratado como ganancia al momento del
     // cobro.
     const gananciaFiados = fiadoPagosHoy;
-    const netProfit = gananciaVentas + gananciaFiados;
     const recaudadoTotal = cashRevenue + manualToday + fiadoPagosHoy;
 
     // Ganancia Neta Esperada: margen de TODO lo vendido hoy (contado +
@@ -3824,15 +3827,15 @@ export default function App() {
     const gananciaEsperada = total - cost;
 
     // GANANCIA NETA DEL TURNO (sección Cierre de Caja, solo admin):
-    // fórmula estricta única — Total Vendido (todo lo entregado este
-    // turno, fiado incluido) menos su Costo Total (cost, ya calculado
-    // arriba con el costo real de 'productos.costo' cuando existe, o
-    // el estimado del 55% si el producto no tiene costo cargado) menos
-    // el Total de Gastos del turno (gastosHoyCaja ya es exactamente
-    // Efectivo + Digital combinados). Es la ÚNICA cifra de ganancia
-    // que se muestra ahí — antes convivían "Esperada" y "Real" con
-    // criterios distintos, lo que generaba confusión contable.
-    const gananciaNetaTurno = total - cost - gastosHoyCaja;
+    // Total Vendido (valor comercial de todo lo entregado este turno,
+    // fiado incluido) menos el Total de Gastos del turno (gastosHoyCaja
+    // = gastosEfectivoHoy + gastosDigitalHoy). NO se resta 'cost' acá:
+    // cuando el stock se repone se registra como un Gasto (ver
+    // saveGasto, que además actualiza 'stock' con el costo promedio
+    // ponderado), así que restar 'cost' de nuevo aquí duplicaba el
+    // costo de mercadería (una vez como compra en Gastos, otra vez como
+    // costo de venta) y por eso el resultado se iba a negativo.
+    const gananciaNetaTurno = total - gastosHoyCaja;
 
     // Ticket General: monto promedio por venta registrada hoy.
     const avgTicket = purchaseCount > 0 ? total / purchaseCount : 0;
@@ -3855,7 +3858,6 @@ export default function App() {
       gananciaFiados,
       gananciaEsperada,
       gananciaNetaTurno,
-      netProfit,
       recaudadoTotal,
       avgTicket,
     };
@@ -4652,7 +4654,7 @@ export default function App() {
               <span className="tz-stat-label">
                 <TrendingUp size={13} /> Ganancia Neta (hoy)
               </span>
-              <span className="tz-stat-value tz-green">{formatSoles(todayStats.netProfit)}</span>
+              <span className="tz-stat-value tz-green">{formatSoles(todayStats.gananciaNetaTurno)}</span>
               <span className="tz-stat-sub">
                 {todayStats.gastosHoyCaja > 0
                   ? `− ${formatSoles(todayStats.gastosHoyCaja)} gastos`
@@ -7609,6 +7611,10 @@ export default function App() {
                   <span className="tz-receipt-date">
                     Desde {formatDate(turnoCutoff)} · {formatTime(turnoCutoff)}
                   </span>
+                </div>
+                <div className="tz-receipt-row">
+                  <span>Cajero</span>
+                  <strong>{currentUserLabel}</strong>
                 </div>
                 <div className="tz-receipt-divider" />
                 {isAdmin ? (

@@ -168,20 +168,41 @@ function isSolid(p) {
 function resolvePlayerVsPlatforms(world, dt) {
   const player = world.player;
 
-  // Si el jugador venía parado sobre una plataforma que se mueve
-  // horizontalmente, lo arrastra ANTES de aplicar su propio
-  // movimiento — así no "resbala" al quedarse quieto sobre ella.
-  if (player.ridingPlatformId != null) {
-    const riding = world.platforms.find((p) => p.id === player.ridingPlatformId);
-    if (riding && riding.type === "moving" && riding.axis === "x") {
-      player.x += riding.dx;
-    }
+  const riding =
+    player.ridingPlatformId != null
+      ? world.platforms.find((p) => p.id === player.ridingPlatformId)
+      : null;
+
+  // Si el jugador venía parado/montado sobre una plataforma móvil, lo
+  // arrastra con ella ANTES de aplicar su propio movimiento — en X
+  // para que no "resbale" al quedarse quieto, y en Y para que el
+  // aterrizaje (más abajo) compare posiciones RELATIVAS, no absolutas.
+  //
+  // El arrastre en Y tiene que resolverse ACÁ, antes del bloque de
+  // colisión en X, no después: 'updateMovingPlatforms' ya movió la
+  // plataforma este frame, así que si el jugador no se ha movido con
+  // ella todavía y la plataforma subió, sus AABB quedan superpuestos
+  // en Y un instante antes de que el bloque de X corra. Ese bloque
+  // solo mira si hay overlap y en qué dirección viene 'vx' — no sabe
+  // que el solape es por movimiento vertical de la plataforma — así
+  // que lo trataba como si hubiera chocado contra una pared lateral y
+  // lo expulsaba del borde ("Edge Ejection"). Arrastrando primero, el
+  // jugador ya queda alineado con la nueva posición de la plataforma
+  // antes de que el chequeo de X exista, y el falso solape desaparece.
+  if (riding && riding.type === "moving") {
+    if (riding.axis === "x") player.x += riding.dx;
+    else if (riding.axis === "y") player.y += riding.dy;
   }
 
-  // Eje X
+  // Eje X — nunca se resuelve colisión lateral contra la plataforma en
+  // la que el jugador está parado/montado: pisar la parte de arriba
+  // tiene prioridad absoluta sobre cualquier empuje en X, sin importar
+  // qué tan al borde esté o si el arrastre de arriba dejó algún resto
+  // de superposición por redondeo. Cualquier OTRA plataforma (paredes,
+  // otras plataformas) sigue resolviendo colisión lateral normal.
   player.x += player.vx * dt;
   for (const p of world.platforms) {
-    if (!isSolid(p) || !aabb(player, p)) continue;
+    if (!isSolid(p) || p === riding || !aabb(player, p)) continue;
     if (player.vx > 0) player.x = p.x - player.w;
     else if (player.vx < 0) player.x = p.x + p.w;
     player.vx = 0;
@@ -565,7 +586,22 @@ export function stepPhysics(world, dt, input) {
   }
 
   if (input.wantJump && player.onGround) {
-    player.vy = PHYSICS.jumpVelocity;
+    // Si el elevador donde está parado sube, ese impulso se suma al
+    // salto (se siente como saltar desde un ascensor en movimiento).
+    // 'riding.dy' es el desplazamiento vertical del frame anterior
+    // (updateMovingPlatforms todavía no corrió este frame) — con
+    // movimiento senoidal suave es una aproximación de sobra buena de
+    // su velocidad instantánea. Solo se suma cuando sube (dy < 0,
+    // arriba en pantalla); si bajara no se resta nada, para no
+    // castigar el salto con un piso descendente.
+    let liftVelocity = 0;
+    if (player.ridingPlatformId != null) {
+      const riding = world.platforms.find((p) => p.id === player.ridingPlatformId);
+      if (riding && riding.type === "moving" && riding.axis === "y" && riding.dy < 0) {
+        liftVelocity = riding.dy / dt;
+      }
+    }
+    player.vy = PHYSICS.jumpVelocity + liftVelocity;
     player.onGround = false;
     player.ridingPlatformId = null;
   }
