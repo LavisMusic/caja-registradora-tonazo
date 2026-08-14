@@ -123,8 +123,14 @@ export default function Styles() {
         background: rgba(10, 7, 22, 0.85);
         border-bottom: 1px solid rgba(43,232,255,0.15);
       }
-      /* Distribución en 3 zonas: izquierda (Fiados) / centro (logo) /
-         derecha (Métodos de pago). */
+      /* Distribución en 3 zonas: columna izquierda (Fiados / Top
+         Clientes) / centro (logo) / columna derecha (Salir / Pagos /
+         Usuarios). Las dos columnas laterales usan el MISMO flex-grow
+         (1) entre sí — así, sin importar que el cajero vea solo 1
+         botón a la derecha y el admin vea 3, ambas columnas siempre
+         ocupan el mismo ancho y el logo queda perfectamente centrado.
+         El centro usa un flex-grow mayor para quedarse con más
+         espacio (no necesita ser exactamente 1/3). */
       .tz-header-row {
         width: 100%;
         max-width: 100%;
@@ -132,12 +138,21 @@ export default function Styles() {
         box-sizing: border-box;
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: center;
         gap: 8px;
         overflow: visible;
       }
+      .tz-header-side {
+        flex: 1 1 0;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .tz-header-side-left { align-items: flex-start; }
+      .tz-header-side-right { align-items: flex-end; }
       .tz-header-center {
-        flex: 1 1 auto;
+        flex: 1.6 1 0;
         min-width: 0;
         display: flex;
         flex-direction: column;
@@ -567,6 +582,29 @@ export default function Styles() {
         cursor: pointer;
       }
       .tz-card-edit-price-btn:hover { background: rgba(43,232,255,0.2); }
+      /* Botón de Descuento: mismo tamaño/posición que el lápiz de
+         precio (vive justo a su izquierda), en rosa neón para
+         distinguirlo a simple vista. Estado "activo" (ya tiene un
+         descuento aplicado) queda relleno en vez de solo el borde. */
+      .tz-card-discount-btn {
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.08);
+        color: var(--pink);
+        cursor: pointer;
+      }
+      .tz-card-discount-btn:hover { background: rgba(255,47,158,0.2); }
+      .tz-card-discount-btn-active {
+        background: rgba(255,47,158,0.28);
+        border-color: var(--pink);
+        box-shadow: 0 0 10px rgba(255,47,158,0.4);
+      }
       .tz-star-ribbon {
         position: absolute;
         top: -13px;
@@ -631,7 +669,13 @@ export default function Styles() {
       }
 
       .tz-card-bottom {
-        margin-top: auto;
+        /* Antes 'margin-top: auto' empujaba este bloque hasta el
+           fondo de la tarjeta (para alinear precios entre tarjetas de
+           distinta altura), pero dejaba un hueco vacío enorme cuando
+           el bloque de arriba (nombre + detalle) era corto — ej. las
+           tarjetas maestras agrupadas ("Hey FIT" + "X variantes").
+           Sin 'auto', queda pegado justo debajo, usando el mismo gap
+           que ya separa al resto de los hijos de .tz-card. */
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -665,41 +709,96 @@ export default function Styles() {
         margin: 0 0 16px;
       }
       .tz-variant-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 10px;
-      }
-      .tz-variant-btn {
         display: flex;
         flex-direction: column;
+        gap: 10px;
+        max-height: 60vh;
+        overflow-y: auto;
+        padding-right: 2px;
+      }
+      /* Cada variante ahora es un contenedor NO clicable (antes era un
+         <button> entero que agregaba y cerraba el modal de una): a la
+         izquierda la info, a la derecha una columna vertical de 3
+         botones (Descuento / Editar precio / Agregar) — así el cajero
+         puede seleccionar varias variantes distintas sin que el modal
+         se cierre en cada click. */
+      .tz-variant-card {
+        display: flex;
         align-items: center;
-        gap: 6px;
-        padding: 16px 10px;
+        gap: 10px;
+        padding: 10px 12px;
         border-radius: 14px;
         border: 1px solid var(--border-soft);
         background: rgba(255,255,255,0.04);
         color: var(--text);
-        cursor: pointer;
         font-family: 'Rajdhani', sans-serif;
-        transition: border-color 0.15s, background 0.15s, transform 0.1s;
+        text-align: left;
+        transition: border-color 0.15s, background 0.15s;
       }
-      .tz-variant-btn:hover:not(:disabled) {
+      .tz-variant-card-selected {
         border-color: var(--cyan);
         background: rgba(43,232,255,0.08);
-        transform: translateY(-1px);
+        box-shadow: 0 0 0 1.5px var(--cyan);
       }
       .tz-variant-btn-disabled {
         cursor: not-allowed;
         opacity: 0.45;
         filter: grayscale(0.4);
       }
+      .tz-variant-card-info {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
       .tz-variant-btn-label {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 700;
+        overflow-wrap: anywhere;
       }
       .tz-variant-btn-price {
         font-size: 13px;
         color: var(--text-dim);
+      }
+      .tz-variant-card-actions {
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .tz-variant-add-btn {
+        position: relative;
+        flex-shrink: 0;
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid var(--cyan);
+        background: rgba(43,232,255,0.12);
+        color: var(--cyan);
+        cursor: pointer;
+      }
+      .tz-variant-add-btn:hover:not(:disabled) { background: rgba(43,232,255,0.28); }
+      .tz-variant-add-btn:disabled { cursor: not-allowed; opacity: 0.4; }
+      .tz-variant-add-qty {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        min-width: 15px;
+        height: 15px;
+        padding: 0 3px;
+        border-radius: 999px;
+        background: var(--pink);
+        color: #16041a;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 9px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
       }
 
       /* ---- Refactor de variantes v2: dots de color, chips de
@@ -825,6 +924,29 @@ export default function Styles() {
         text-shadow: 0 0 16px rgba(255,47,158,0.5);
       }
 
+      /* ---- Motor de descuentos: precio tachado + precio final +
+         badge -X%, tanto en la tarjeta de producto como en el carrito
+         (CartRow reusa .tz-discount-badge con un modificador inline). */
+      .tz-price-original {
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--text-dim);
+        text-decoration: line-through;
+      }
+      .tz-price-discounted { color: var(--green); text-shadow: 0 0 16px rgba(57,255,176,0.5); }
+      .tz-discount-badge {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 10px;
+        font-weight: 800;
+        color: #16190a;
+        background: var(--green);
+        padding: 2px 6px;
+        border-radius: 6px;
+        box-shadow: 0 0 10px rgba(57,255,176,0.5);
+      }
+      .tz-discount-badge-inline { margin-left: 6px; vertical-align: middle; }
+
       .tz-qty-stepper {
         display: flex;
         align-items: center;
@@ -858,6 +980,20 @@ export default function Styles() {
         from { opacity: 0; transform: translateY(-6px); }
         to { opacity: 1; transform: translateY(0); }
       }
+
+      /* ---------- MODAL DE DESCUENTO ---------- */
+      .tz-discount-type-toggle {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .tz-discount-type-toggle .tz-tab { flex: 1 1 50%; }
+      .tz-discount-preview {
+        margin: 10px 0 0;
+        font-size: 13px;
+        color: var(--text-dim);
+      }
+      .tz-discount-preview strong { color: var(--green); font-size: 16px; }
 
       /* ---------- MODAL GLOBAL DE MÉTODOS DE PAGO ---------- */
       .tz-method-totals {
@@ -1093,6 +1229,18 @@ export default function Styles() {
         color: var(--text);
         font-weight: 600;
         overflow-wrap: anywhere;
+      }
+      .tz-cart-row-amount-group {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+      }
+      .tz-cart-row-original {
+        color: var(--text-dim);
+        text-decoration: line-through;
+        font-size: 11px;
+        font-weight: 600;
       }
       .tz-cart-row-amount {
         flex: 0 0 auto;
@@ -2344,6 +2492,108 @@ export default function Styles() {
         max-height: 320px;
         overflow-y: auto;
         padding-right: 2px;
+      }
+
+      /* ---------- MODAL TOP CLIENTES ---------- */
+      .tz-top-clientes-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 420px;
+        overflow-y: auto;
+        padding-right: 2px;
+      }
+      .tz-top-cliente-row {
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-soft);
+      }
+      .tz-top-cliente-row:nth-child(1) { border-color: rgba(215,255,59,0.5); box-shadow: 0 0 14px rgba(215,255,59,0.2); }
+      .tz-top-cliente-row:nth-child(2) { border-color: rgba(43,232,255,0.4); }
+      .tz-top-cliente-row:nth-child(3) { border-color: rgba(255,149,0,0.4); }
+      .tz-top-cliente-main {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .tz-top-cliente-rank {
+        flex-shrink: 0;
+        width: 26px;
+        text-align: center;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        color: var(--text-dim);
+      }
+      .tz-top-cliente-row:nth-child(1) .tz-top-cliente-rank { color: var(--yellow); }
+      .tz-top-cliente-info {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 3px;
+      }
+      .tz-top-cliente-nombre {
+        font-weight: 700;
+        color: var(--text);
+        overflow-wrap: anywhere;
+      }
+      .tz-top-cliente-sub {
+        font-size: 11px;
+        color: var(--text-dim);
+      }
+      .tz-top-cliente-deuda { font-size: 10px; padding: 2px 8px; }
+      .tz-top-cliente-monto {
+        flex-shrink: 0;
+        font-family: 'Orbitron', sans-serif;
+        color: var(--green);
+        font-size: 15px;
+      }
+      .tz-top-cliente-actions {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .tz-top-cliente-wa-btn,
+      .tz-top-cliente-expand-btn {
+        flex-shrink: 0;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.06);
+        color: var(--text-dim);
+        cursor: pointer;
+        text-decoration: none;
+      }
+      .tz-top-cliente-wa-btn {
+        border-color: rgba(57,255,176,0.4);
+        color: var(--green);
+      }
+      .tz-top-cliente-wa-btn:hover { background: rgba(57,255,176,0.15); }
+      .tz-top-cliente-expand-btn:hover { background: rgba(43,232,255,0.15); color: var(--cyan); }
+      .tz-top-cliente-favoritos {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px dashed rgba(255,255,255,0.12);
+      }
+      .tz-top-favoritos-list {
+        margin: 0;
+        padding: 0 0 0 4px;
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 12.5px;
+        color: var(--text-dim);
       }
       .tz-cierre-warning {
         display: flex;

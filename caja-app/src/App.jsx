@@ -29,6 +29,8 @@ import {
   ScanLine,
   Lock,
   DollarSign,
+  Trophy,
+  Percent,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
@@ -250,8 +252,10 @@ function StockTag({ avail }) {
    un render raro. Se compromete a 'selection' (vía onQtyChange) recién
    al perder foco o presionar Enter; un valor inválido revierte al
    último válido en vez de dejar el carrito en un estado roto. */
-function CartRow({ product, qty, avail, onQtyChange, onRemove }) {
+function CartRow({ product, qty, avail, unitPrice, discountPercent, onQtyChange, onRemove }) {
   const [localQty, setLocalQty] = useState(String(qty));
+  const hasDiscount = discountPercent > 0;
+  const effectiveUnitPrice = unitPrice ?? product.price;
 
   useEffect(() => {
     setLocalQty(String(qty));
@@ -274,8 +278,16 @@ function CartRow({ product, qty, avail, onQtyChange, onRemove }) {
         <span className="tz-cart-row-name">
           {product.name}
           {product.detail ? ` · ${product.detail}` : ""}
+          {hasDiscount && (
+            <span className="tz-discount-badge tz-discount-badge-inline">-{discountPercent}%</span>
+          )}
         </span>
-        <span className="tz-cart-row-amount">{formatSoles(product.price * qty)}</span>
+        <span className="tz-cart-row-amount-group">
+          {hasDiscount && (
+            <span className="tz-cart-row-original">{formatSoles(product.price * qty)}</span>
+          )}
+          <span className="tz-cart-row-amount">{formatSoles(effectiveUnitPrice * qty)}</span>
+        </span>
       </div>
       <div className="tz-cart-row-controls">
         <div className="tz-qty-stepper tz-cart-qty-stepper">
@@ -461,6 +473,70 @@ export default function App() {
   const [sales, setSales] = useState([]);
   const [activeTab, setActiveTab] = useState(""); // se define al cargar 'sections'
   const [selection, setSelection] = useState({}); // { productId: qty }
+
+  /* ---- Motor de descuentos: SOLO vive acá, en memoria de la sesión de
+     venta actual — nunca toca 'productos.price' (el catálogo). Es la
+     "Blindaje Contable" pedida: 'historial'/'fiado_items' ya guardan el
+     precio de cada línea al momento de vender (mismo patrón que el
+     costo congelado), así que aplicar el descuento acá, antes de armar
+     esas filas, alcanza para que Cierre de Caja/todayStats — que solo
+     leen esas filas, nunca 'productos.price' — cuadren solos sin
+     ningún cambio adicional en sus fórmulas. Se reinicia junto con
+     'selection' después de cada venta (ver submitVenta). ---- */
+  const [discounts, setDiscounts] = useState({}); // { productId: { type: 'percent'|'monto', value: number } }
+  const [discountModalProduct, setDiscountModalProduct] = useState(null);
+  const [discountModalType, setDiscountModalType] = useState("percent");
+  const [discountModalValue, setDiscountModalValue] = useState("");
+
+  const discountedUnitPrice = (product) => {
+    const d = discounts[product.id];
+    if (!d || !(d.value > 0)) return product.price;
+    const raw =
+      d.type === "percent" ? product.price * (1 - d.value / 100) : product.price - d.value;
+    return Math.max(0, Math.round(raw * 100) / 100);
+  };
+
+  const discountPercentOf = (product) => {
+    const finalPrice = discountedUnitPrice(product);
+    if (finalPrice >= product.price || product.price <= 0) return 0;
+    return Math.round((1 - finalPrice / product.price) * 100);
+  };
+
+  const openDiscountModal = (product) => {
+    const existing = discounts[product.id];
+    setDiscountModalType(existing?.type ?? "percent");
+    setDiscountModalValue(existing ? String(existing.value) : "");
+    setDiscountModalProduct(product);
+  };
+
+  const closeDiscountModal = () => {
+    setDiscountModalProduct(null);
+    setDiscountModalValue("");
+  };
+
+  const saveDiscountModal = () => {
+    const value = parseFloat(discountModalValue);
+    if (!discountModalProduct || isNaN(value) || value <= 0) {
+      closeDiscountModal();
+      return;
+    }
+    const clamped =
+      discountModalType === "percent" ? Math.min(value, 100) : Math.min(value, discountModalProduct.price);
+    setDiscounts((prev) => ({
+      ...prev,
+      [discountModalProduct.id]: { type: discountModalType, value: clamped },
+    }));
+    closeDiscountModal();
+  };
+
+  const removeDiscount = (productId) => {
+    setDiscounts((prev) => {
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+  };
+
   const [submitError, setSubmitError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [ventaSubmitting, setVentaSubmitting] = useState(false);
@@ -708,6 +784,11 @@ export default function App() {
   /* ---- vista de Pagos: historial de cobros de fiado (solo lectura) ---- */
   const [fiadosViewOpen, setFiadosViewOpen] = useState(false);
   const [expandedFiadoPagoId, setExpandedFiadoPagoId] = useState(null);
+
+  /* ---- Top Clientes (ranking de fidelidad) ---- */
+  const [topClientesOpen, setTopClientesOpen] = useState(false);
+  const [expandedTopClienteId, setExpandedTopClienteId] = useState(null);
+  const [vipExportMsg, setVipExportMsg] = useState("");
 
   const paymentMenuRef = useRef(null);
   const globalSearchRef = useRef(null);
@@ -966,6 +1047,11 @@ export default function App() {
         id: row.id,
         nombre: row.nombre,
         whatsapp: row.whatsapp || "",
+        // Solo las filas con auth_user_id tienen una cuenta REAL de
+        // Cliente (PIN + login, creada vía la Edge Function) — las
+        // usa el ranking de Top Clientes para excluir fiados viejos
+        // cargados a mano sin cuenta asociada.
+        authUserId: row.auth_user_id || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -1231,7 +1317,7 @@ export default function App() {
   const selectedCount = selectedIds.length;
   const totalItems = selectedIds.reduce((sum, id) => sum + selection[id], 0);
   const totalPrice = selectedIds.reduce(
-    (sum, id) => sum + productsById[id].price * selection[id],
+    (sum, id) => sum + discountedUnitPrice(productsById[id]) * selection[id],
     0
   );
 
@@ -1368,13 +1454,18 @@ export default function App() {
       // vuelve a preguntarle a 'stock' cuál es el costo, así que un
       // ingreso de mercadería mañana no altera las ventas de hoy.
       const costoUnitario = unitCostFor(product, stockCostos);
+      // Precio ya con el descuento aplicado (si lo hay) — esto es lo
+      // único que hace falta para que el descuento quede "congelado"
+      // en la venta, igual que el costo: 'price'/'total' de acá son
+      // los que terminan en 'historial'/'fiado_items'.
+      const unitPrice = discountedUnitPrice(product);
       return {
         productId: id,
         name: product.name,
         detail: product.detail,
         qty,
-        price: product.price,
-        total: product.price * qty,
+        price: unitPrice,
+        total: unitPrice * qty,
         costoUnitario,
         costoTotal: costoUnitario * qty,
       };
@@ -1540,6 +1631,7 @@ export default function App() {
     setStock(newStock);
     setSales((prev) => [...localEntries, ...prev]);
     setSelection({});
+    setDiscounts({});
     if (!stockError) setSubmitError("");
     setSuccessMsg(`Venta registrada — ID ${purchaseId}`);
 
@@ -4053,6 +4145,45 @@ export default function App() {
     ]);
   };
 
+  /* ---- Enviar Resumen a WhatsApp (modal Cierre de Caja): abre wa.me
+     SIN número (deja elegir el contacto/grupo destino) con un texto
+     PLANO — sin emojis, sin branding — armado a mano, nada de
+     imágenes/PDF. El contenido está segmentado por rol EXACTAMENTE
+     como se pidió: Admin ve 9 campos (incluye Gastos, Fiados,
+     Ganancia Neta), Cajero ve solo 6 (nunca una cifra que su propia
+     pantalla de Cierre ya le oculta). ---- */
+  const buildCierreResumenTexto = () => {
+    const fecha = `${formatDate(Date.now())} ${formatTime(Date.now())}`;
+    const lineas = [
+      "RESUMEN",
+      `Fecha/Hora: ${fecha}`,
+      `Vendedor: ${currentUserLabel}`,
+      `Total Ventas: ${formatSoles(todayStats.total)}`,
+    ];
+
+    if (isAdmin) {
+      lineas.push(
+        `Total Gastos: ${formatSoles(todayStats.gastosHoyCaja)}`,
+        `Efectivo: ${formatSoles(todayStats.ingresoEfectivo)}`,
+        `Digital: ${formatSoles(todayStats.ingresoDigital)}`,
+        `Fiados: ${formatSoles(todayStats.fiadoHoy)}`,
+        `Ganancia Neta: ${formatSoles(todayStats.gananciaNetaTurno)}`
+      );
+    } else {
+      lineas.push(
+        `Efectivo: ${formatSoles(todayStats.ingresoEfectivo)}`,
+        `Digital: ${formatSoles(todayStats.ingresoDigital)}`
+      );
+    }
+
+    return lineas.join("\n");
+  };
+
+  const enviarResumenCierrePorWhatsApp = () => {
+    const texto = buildCierreResumenTexto();
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank");
+  };
+
   /* ---- Apertura de Caja (solo admin — el botón que dispara esto ya
      está gateado por isAdmin en el render): carga el fondo inicial
      contado a mano y abre la caja para que el POS quede disponible
@@ -4275,6 +4406,101 @@ export default function App() {
 
     return map;
   }, [clientes, fiadoItems, movimientos]);
+
+  /* ---- Top Clientes (ranking de fidelidad): SOLO cuentas reales de
+     Cliente (authUserId != null — con PIN, nombre y teléfono, creadas
+     vía la Edge Function), nunca cajeros/admin. La única actividad que
+     este sistema puede atribuir HOY a un cliente puntual es lo que
+     pasa por la Libreta — compras fiadas (fiado_items) y sus pagos
+     (movimientos_fiado, tipo !== 'DEUDA'). Una venta al CONTADO no
+     queda ligada a ningún cliente en el esquema actual (el WhatsApp
+     que se tipea en el checkout es efímero, solo vive para el envío
+     de esa boleta puntual — no se guarda en 'historial'), así que no
+     entra en el consumo total; lo dejamos así en vez de fingir un
+     vínculo que la base de datos no tiene. "Monto total consumido" =
+     compras fiadas + pagos hechos; "frecuencia" = número de compras
+     (purchase_id distintos) + número de pagos. También arma, por
+     cliente, el Top 5 de productos favoritos (por veces comprado en
+     fiado_items) y el saldo pendiente (mismo criterio que
+     clienteSaldos) para el semáforo de deuda. ---- */
+  const topClientesRanking = useMemo(() => {
+    const map = {};
+    clientes
+      .filter((c) => c.authUserId)
+      .forEach((c) => {
+        map[c.id] = {
+          cliente: c,
+          totalCompras: 0,
+          totalPagos: 0,
+          pagosCount: 0,
+          purchaseIds: new Set(),
+          saldo: 0,
+          productos: {}, // "nombre · detalle" -> veces comprado
+        };
+      });
+
+    fiadoItems.forEach((fi) => {
+      const entry = map[fi.clienteId];
+      if (!entry) return;
+      entry.totalCompras += fi.monto;
+      entry.saldo += fi.saldoRestante;
+      if (fi.purchaseId) entry.purchaseIds.add(fi.purchaseId);
+      const label = fi.detalle ? `${fi.productoNombre} · ${fi.detalle}` : fi.productoNombre;
+      entry.productos[label] = (entry.productos[label] || 0) + 1;
+    });
+
+    movimientos.forEach((m) => {
+      const entry = map[m.clienteId];
+      if (!entry) return;
+      if (m.tipo === "DEUDA") {
+        entry.saldo += m.monto;
+        return;
+      }
+      entry.totalPagos += m.monto;
+      entry.pagosCount += 1;
+    });
+
+    return Object.values(map)
+      .map((e) => ({
+        cliente: e.cliente,
+        totalConsumido: e.totalCompras + e.totalPagos,
+        frecuencia: e.purchaseIds.size + e.pagosCount,
+        saldo: e.saldo,
+        favoritos: Object.entries(e.productos)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([label, veces]) => ({ label, veces })),
+      }))
+      .filter((e) => e.totalConsumido > 0 || e.frecuencia > 0)
+      .sort((a, b) => b.totalConsumido - a.totalConsumido || b.frecuencia - a.frecuencia);
+  }, [clientes, fiadoItems, movimientos]);
+
+  /* ---- WhatsApp 1-click para un cliente del ranking: mensaje fijo,
+     sobrio, sin nombre de empresa/branding. ---- */
+  const buildTopClienteWhatsappLink = (cliente) => {
+    const numero = toPeruWhatsappNumber(cliente.whatsapp);
+    if (!numero) return null;
+    const mensaje = `Hola ${cliente.nombre}, eres uno de nuestros clientes preferidos. Pasa hoy y aprovecha nuestros descuentos del dia.`;
+    return `https://wa.me/${numero}?text=${encodeURIComponent(mensaje)}`;
+  };
+
+  /* ---- Exportar Lista VIP: copia al portapapeles nombre + teléfono de
+     cada cliente del ranking actual, uno por línea — sin montos ni
+     datos de deuda (es una lista de contacto, no un reporte). ---- */
+  const exportarListaVIP = async () => {
+    const lineas = topClientesRanking.map(
+      (row) => `${row.cliente.nombre} - ${row.cliente.whatsapp || "sin teléfono"}`
+    );
+    const texto = lineas.join("\n");
+    try {
+      await navigator.clipboard.writeText(texto);
+      setVipExportMsg("Lista copiada al portapapeles.");
+    } catch (err) {
+      console.error("Error copiando la lista VIP:", err);
+      setVipExportMsg("No se pudo copiar. Copia manual desde la consola.");
+    }
+    setTimeout(() => setVipExportMsg(""), 3000);
+  };
 
   const totalPorCobrar = useMemo(
     () =>
@@ -4537,95 +4763,107 @@ export default function App() {
       {/* ---------------- HEADER ---------------- */}
       <header className="tz-header">
         <div className="tz-header-row">
-          <button
-            className="tz-header-btn"
-            onClick={() => setLibretaOpen(true)}
-            aria-label="Libreta (Fiados)"
-          >
-            <BookOpen size={19} />
-            <span className="tz-header-btn-label">Fiados</span>
-          </button>
+          <div className="tz-header-side tz-header-side-left">
+            <button
+              className="tz-header-btn"
+              onClick={() => setLibretaOpen(true)}
+              aria-label="Libreta (Fiados)"
+            >
+              <BookOpen size={19} />
+              <span className="tz-header-btn-label">Fiados</span>
+            </button>
+            <button
+              className="tz-header-btn"
+              onClick={() => setTopClientesOpen(true)}
+              aria-label="Top Clientes"
+            >
+              <Trophy size={19} />
+              <span className="tz-header-btn-label">Top Clientes</span>
+            </button>
+          </div>
 
           <div className="tz-header-center">
             <LogoEasterEgg src={logo} alt="TONAZO!" className="tz-logo" />
             <p className="tz-subtitle">Caja Registradora</p>
           </div>
 
-          {/* "Pagos" muestra totales de recaudación por método — es
-             información financiera, se oculta para el cajero. */}
-          {isAdmin && (
-            <div className="tz-header-payment-wrap" ref={paymentMenuRef}>
-              <button
-                className="tz-header-btn"
-                onClick={() => setPaymentMenuOpen((o) => !o)}
-                aria-label="Métodos de pago"
-              >
-                <Wallet size={19} />
-                <span className="tz-header-btn-label">Pagos</span>
-              </button>
+          <div className="tz-header-side tz-header-side-right">
+            <button
+              className="tz-header-btn"
+              onClick={signOut}
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+            >
+              <LogOut size={19} />
+              <span className="tz-header-btn-label">Salir</span>
+            </button>
 
-              {paymentMenuOpen && (
-                <div className="tz-payment-menu">
-                  {PAYMENT_METHODS.map((m) => (
+            {/* "Pagos" muestra totales de recaudación por método — es
+               información financiera, se oculta para el cajero. */}
+            {isAdmin && (
+              <div className="tz-header-payment-wrap" ref={paymentMenuRef}>
+                <button
+                  className="tz-header-btn"
+                  onClick={() => setPaymentMenuOpen((o) => !o)}
+                  aria-label="Métodos de pago"
+                >
+                  <Wallet size={19} />
+                  <span className="tz-header-btn-label">Pagos</span>
+                </button>
+
+                {paymentMenuOpen && (
+                  <div className="tz-payment-menu">
+                    {PAYMENT_METHODS.map((m) => (
+                      <button
+                        key={m.key}
+                        className="tz-payment-menu-item"
+                        onClick={() => openMethodModal(m.key)}
+                      >
+                        <CreditCard size={14} />
+                        {m.label}
+                        {methodStats[m.key].todayTotal > 0 && (
+                          <span className="tz-payment-menu-amount">
+                            {formatSoles(methodStats[m.key].todayTotal)}
+                          </span>
+                        )}
+                      </button>
+                    ))}
                     <button
-                      key={m.key}
                       className="tz-payment-menu-item"
-                      onClick={() => openMethodModal(m.key)}
+                      onClick={() => {
+                        setPaymentMenuOpen(false);
+                        setFiadosViewOpen(true);
+                      }}
                     >
-                      <CreditCard size={14} />
-                      {m.label}
-                      {methodStats[m.key].todayTotal > 0 && (
+                      <BookOpen size={14} />
+                      Fiados
+                      {todayStats.fiadoPagosHoy > 0 && (
                         <span className="tz-payment-menu-amount">
-                          {formatSoles(methodStats[m.key].todayTotal)}
+                          {formatSoles(todayStats.fiadoPagosHoy)}
                         </span>
                       )}
                     </button>
-                  ))}
-                  <button
-                    className="tz-payment-menu-item"
-                    onClick={() => {
-                      setPaymentMenuOpen(false);
-                      setFiadosViewOpen(true);
-                    }}
-                  >
-                    <BookOpen size={14} />
-                    Fiados
-                    {todayStats.fiadoPagosHoy > 0 && (
-                      <span className="tz-payment-menu-amount">
-                        {formatSoles(todayStats.fiadoPagosHoy)}
-                      </span>
-                    )}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
+                  </div>
+                )}
+              </div>
+            )}
 
-          {/* Gestión de personal: exclusivo del admin, un cajero no puede
-             crear otros cajeros. */}
-          {isAdmin && (
-            <button
-              className="tz-header-btn"
-              onClick={() => {
-                setUsuarioActionError("");
-                setCajerosOpen(true);
-              }}
-              aria-label="Usuarios"
-            >
-              <Users size={19} />
-              <span className="tz-header-btn-label">Usuarios</span>
-            </button>
-          )}
-
-          <button
-            className="tz-header-btn"
-            onClick={signOut}
-            aria-label="Cerrar sesión"
-            title="Cerrar sesión"
-          >
-            <LogOut size={19} />
-            <span className="tz-header-btn-label">Salir</span>
-          </button>
+            {/* Gestión de personal: exclusivo del admin, un cajero no
+               puede crear otros cajeros. */}
+            {isAdmin && (
+              <button
+                className="tz-header-btn"
+                onClick={() => {
+                  setUsuarioActionError("");
+                  setCajerosOpen(true);
+                }}
+                aria-label="Usuarios"
+              >
+                <Users size={19} />
+                <span className="tz-header-btn-label">Usuarios</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -4885,9 +5123,32 @@ export default function App() {
                               )
                             )}
                           </h3>
-                          {item.detail && <p className="tz-card-detail">{item.detail}</p>}
+                          {item.detail && (
+                            <p
+                              className="tz-card-detail"
+                              style={item.color ? { color: item.color } : undefined}
+                            >
+                              {item.detail}
+                            </p>
+                          )}
                         </div>
                         <div className="tz-card-top-actions">
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              className={`tz-card-discount-btn ${
+                                discounts[item.id] ? "tz-card-discount-btn-active" : ""
+                              }`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openDiscountModal(item);
+                              }}
+                              aria-label={`Descuento para ${item.name}`}
+                              title="Descuento"
+                            >
+                              <Percent size={13} />
+                            </button>
+                          )}
                           {isAdmin && (
                             <button
                               type="button"
@@ -4938,9 +5199,27 @@ export default function App() {
                           )}
                           <div className="tz-price-block">
                             <span className="tz-price-label">Precio</span>
-                            <span className="tz-price">
-                              {formatSoles(checked ? item.price * qty : item.price)}
-                            </span>
+                            {discounts[item.id] ? (
+                              <>
+                                <span className="tz-price-original">
+                                  {formatSoles(item.price)}
+                                </span>
+                                <span className="tz-price tz-price-discounted">
+                                  {formatSoles(
+                                    checked
+                                      ? discountedUnitPrice(item) * qty
+                                      : discountedUnitPrice(item)
+                                  )}
+                                </span>
+                                <span className="tz-discount-badge">
+                                  -{discountPercentOf(item)}%
+                                </span>
+                              </>
+                            ) : (
+                              <span className="tz-price">
+                                {formatSoles(checked ? item.price * qty : item.price)}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -4977,29 +5256,87 @@ export default function App() {
                 {variantModalGroup.variants.map((v) => {
                   const avail = availabilityFor(v, stock);
                   const soldOut = avail <= 0;
+                  const qtyInCart = selection[v.id] ?? 0;
+                  const vDiscount = discounts[v.id];
                   return (
-                    <button
+                    <div
                       key={v.id}
-                      type="button"
-                      className={`tz-variant-btn ${soldOut ? "tz-variant-btn-disabled" : ""}`}
-                      disabled={soldOut}
+                      className={`tz-variant-card ${soldOut ? "tz-variant-btn-disabled" : ""} ${
+                        qtyInCart > 0 ? "tz-variant-card-selected" : ""
+                      }`}
                       style={
                         v.color && !soldOut
                           ? {
                               borderColor: v.color,
                               boxShadow: `0 0 16px ${v.color}66, inset 0 0 0 1px ${v.color}55`,
-                              color: v.color,
                             }
                           : undefined
                       }
-                      onClick={() => {
-                        if (selectProductForSale(v)) setVariantModalGroup(null);
-                      }}
                     >
-                      <span className="tz-variant-btn-label">{v.variant || v.detail || v.name}</span>
-                      <span className="tz-variant-btn-price">{formatSoles(v.price)}</span>
-                      <StockTag avail={avail} />
-                    </button>
+                      <div className="tz-variant-card-info">
+                        <span
+                          className="tz-variant-btn-label"
+                          style={v.color && !soldOut ? { color: v.color } : undefined}
+                        >
+                          {v.variant || v.detail || v.name}
+                        </span>
+                        {vDiscount ? (
+                          <span className="tz-variant-btn-price">
+                            <span className="tz-price-original">{formatSoles(v.price)}</span>{" "}
+                            <span className="tz-price-discounted">
+                              {formatSoles(discountedUnitPrice(v))}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="tz-variant-btn-price">{formatSoles(v.price)}</span>
+                        )}
+                        <StockTag avail={avail} />
+                      </div>
+                      <div className="tz-variant-card-actions">
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className={`tz-card-discount-btn ${vDiscount ? "tz-card-discount-btn-active" : ""}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDiscountModal(v);
+                            }}
+                            aria-label={`Descuento para ${v.name}`}
+                            title="Descuento"
+                          >
+                            <Percent size={13} />
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            className="tz-card-edit-price-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openPriceEdit(v);
+                            }}
+                            aria-label={`Editar precio de ${v.name}`}
+                            title="Editar precio"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="tz-variant-add-btn"
+                          disabled={soldOut}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            selectProductForSale(v);
+                          }}
+                          aria-label={`Agregar ${v.name} al carrito`}
+                          title="Agregar al carrito"
+                        >
+                          <Plus size={15} />
+                          {qtyInCart > 0 && <span className="tz-variant-add-qty">{qtyInCart}</span>}
+                        </button>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
@@ -5093,6 +5430,8 @@ export default function App() {
                           product={product}
                           qty={qty}
                           avail={avail}
+                          unitPrice={discountedUnitPrice(product)}
+                          discountPercent={discountPercentOf(product)}
                           onQtyChange={(newQty) =>
                             setSelection((prev) => ({ ...prev, [id]: newQty }))
                           }
@@ -6072,34 +6411,42 @@ export default function App() {
                 </>
               )}
 
-              <h2 className="tz-stock-editor-section">Visibilidad en catálogo público</h2>
-              <p className="tz-stock-editor-sub">
-                Los productos desactivados siguen disponibles para vender acá en el POS, solo
-                se ocultan del catálogo público ("/").
-              </p>
-              {visibilityError && <p className="tz-error">{visibilityError}</p>}
+              {/* Visibilidad en Catálogo Público: exclusivo del admin —
+                 un cajero solo puede agregar unidades al stock, arriba.
+                 Nada de crear/renombrar/eliminar categorías ni tocar
+                 qué se ve en el catálogo público. */}
+              {isAdmin && (
+                <>
+                  <h2 className="tz-stock-editor-section">Visibilidad en catálogo público</h2>
+                  <p className="tz-stock-editor-sub">
+                    Los productos desactivados siguen disponibles para vender acá en el POS, solo
+                    se ocultan del catálogo público ("/").
+                  </p>
+                  {visibilityError && <p className="tz-error">{visibilityError}</p>}
 
-              <CatalogVisibilityAccordion
-                sections={sections}
-                onToggleVisibility={async (producto, checked) => {
-                  setVisibilityError("");
-                  const { error } = await setProductVisibility(producto.id, checked);
-                  if (error) {
-                    setVisibilityError(
-                      `No se pudo guardar "${producto.name}". Revisa la política RLS de UPDATE en 'productos'.`
-                    );
-                  }
-                }}
-                onDelete={eliminarProductoDefinitivo}
-                onSoftDelete={desactivarProductoCatalogo}
-                onEditProducto={editarProductoNombreDetalle}
-                onRenameCategoria={renombrarCategoria}
-                onRenameSubgrupo={renombrarSubgrupo}
-                onDeleteCategoria={eliminarCategoria}
-                onDeleteSubgrupo={eliminarSubgrupo}
-                onCreateCategoria={crearCategoria}
-                onAddVariante={agregarVariante}
-              />
+                  <CatalogVisibilityAccordion
+                    sections={sections}
+                    onToggleVisibility={async (producto, checked) => {
+                      setVisibilityError("");
+                      const { error } = await setProductVisibility(producto.id, checked);
+                      if (error) {
+                        setVisibilityError(
+                          `No se pudo guardar "${producto.name}". Revisa la política RLS de UPDATE en 'productos'.`
+                        );
+                      }
+                    }}
+                    onDelete={eliminarProductoDefinitivo}
+                    onSoftDelete={desactivarProductoCatalogo}
+                    onEditProducto={editarProductoNombreDetalle}
+                    onRenameCategoria={renombrarCategoria}
+                    onRenameSubgrupo={renombrarSubgrupo}
+                    onDeleteCategoria={eliminarCategoria}
+                    onDeleteSubgrupo={eliminarSubgrupo}
+                    onCreateCategoria={crearCategoria}
+                    onAddVariante={agregarVariante}
+                  />
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -6155,6 +6502,103 @@ export default function App() {
                     <Save size={16} />
                   )}
                   Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- MODAL: DESCUENTO (solo admin) ---------------- */}
+      {discountModalProduct && (
+        <div className="tz-modal-backdrop" onClick={closeDiscountModal}>
+          <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="tz-modal-close" onClick={closeDiscountModal} aria-label="Cerrar">
+              <X size={18} />
+            </button>
+            <div className="tz-add-entry">
+              <h2>
+                <Percent size={17} /> Descuento
+              </h2>
+              <p className="tz-stock-editor-sub">
+                {discountModalProduct.name}
+                {discountModalProduct.detail ? ` · ${discountModalProduct.detail}` : ""} — precio
+                de catálogo {formatSoles(discountModalProduct.price)}
+              </p>
+
+              <div className="tz-discount-type-toggle">
+                <button
+                  type="button"
+                  className={`tz-tab ${discountModalType === "percent" ? "tz-tab-active" : ""}`}
+                  onClick={() => setDiscountModalType("percent")}
+                >
+                  % Porcentaje
+                </button>
+                <button
+                  type="button"
+                  className={`tz-tab ${discountModalType === "monto" ? "tz-tab-active" : ""}`}
+                  onClick={() => setDiscountModalType("monto")}
+                >
+                  S/ Monto fijo
+                </button>
+              </div>
+
+              <label className="tz-field-label">
+                {discountModalType === "percent" ? "Porcentaje de descuento (%)" : "Monto a descontar (S/)"}
+              </label>
+              <input
+                type="number"
+                min="0"
+                max={discountModalType === "percent" ? 100 : discountModalProduct.price}
+                step={discountModalType === "percent" ? "1" : "0.10"}
+                autoFocus
+                className="tz-text-input"
+                value={discountModalValue}
+                onChange={(e) => setDiscountModalValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") saveDiscountModal();
+                }}
+              />
+
+              {discountModalValue && !isNaN(parseFloat(discountModalValue)) && (
+                <p className="tz-discount-preview">
+                  Precio final:{" "}
+                  <strong>
+                    {formatSoles(
+                      discountModalType === "percent"
+                        ? Math.max(
+                            0,
+                            discountModalProduct.price *
+                              (1 - Math.min(parseFloat(discountModalValue), 100) / 100)
+                          )
+                        : Math.max(
+                            0,
+                            discountModalProduct.price -
+                              Math.min(parseFloat(discountModalValue), discountModalProduct.price)
+                          )
+                    )}
+                  </strong>
+                </p>
+              )}
+
+              <div className="tz-add-entry-actions">
+                {discounts[discountModalProduct.id] && (
+                  <button
+                    className="tz-camera-cancel"
+                    onClick={() => {
+                      removeDiscount(discountModalProduct.id);
+                      closeDiscountModal();
+                    }}
+                  >
+                    Quitar descuento
+                  </button>
+                )}
+                <button className="tz-camera-cancel" onClick={closeDiscountModal}>
+                  Cancelar
+                </button>
+                <button className="tz-pw-submit tz-payment-save" onClick={saveDiscountModal}>
+                  <Save size={16} />
+                  Aplicar
                 </button>
               </div>
             </div>
@@ -6991,6 +7435,126 @@ export default function App() {
         </div>
       )}
 
+      {/* ---------------- MODAL: TOP CLIENTES (ranking de fidelidad) ---------------- */}
+      {topClientesOpen && (
+        <div
+          className="tz-modal-backdrop"
+          onClick={() => {
+            setTopClientesOpen(false);
+            setExpandedTopClienteId(null);
+          }}
+        >
+          <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="tz-modal-close"
+              onClick={() => {
+                setTopClientesOpen(false);
+                setExpandedTopClienteId(null);
+              }}
+              aria-label="Cerrar"
+            >
+              <X size={18} />
+            </button>
+            <div className="tz-payment-modal">
+              <h2>
+                <Trophy size={17} /> Top Clientes
+              </h2>
+              <p className="tz-stock-editor-sub">
+                Ranking por consumo total (compras fiadas + pagos) y frecuencia. Solo cuentas de
+                Cliente registradas con PIN — no incluye ventas al contado sin cuenta asociada.
+              </p>
+
+              {topClientesRanking.length > 0 && (
+                <div className="tz-export-buttons">
+                  <button type="button" className="tz-csv-btn" onClick={exportarListaVIP}>
+                    <Download size={13} /> Exportar Lista VIP
+                  </button>
+                </div>
+              )}
+              {vipExportMsg && <p className="tz-success">{vipExportMsg}</p>}
+
+              {topClientesRanking.length === 0 ? (
+                <p className="tz-method-history-empty">
+                  Todavía no hay actividad de cuentas de Cliente para rankear.
+                </p>
+              ) : (
+                <ol className="tz-top-clientes-list">
+                  {topClientesRanking.map((row, idx) => {
+                    const waLink = buildTopClienteWhatsappLink(row.cliente);
+                    const expanded = expandedTopClienteId === row.cliente.id;
+                    const alDia = row.saldo <= 0;
+                    return (
+                      <li key={row.cliente.id} className="tz-top-cliente-row">
+                        <div className="tz-top-cliente-main">
+                          <span className="tz-top-cliente-rank">#{idx + 1}</span>
+                          <div className="tz-top-cliente-info">
+                            <span className="tz-top-cliente-nombre">{row.cliente.nombre}</span>
+                            <span className="tz-top-cliente-sub">
+                              {row.frecuencia} compra{row.frecuencia === 1 ? "" : "s"}/pago
+                              {row.frecuencia === 1 ? "" : "s"}
+                            </span>
+                            <span
+                              className={`tz-tag ${alDia ? "tz-tag-ok" : "tz-tag-danger"} tz-top-cliente-deuda`}
+                            >
+                              {alDia ? "Al día" : `Deuda pendiente: ${formatSoles(row.saldo)}`}
+                            </span>
+                          </div>
+                          <strong className="tz-top-cliente-monto">
+                            {formatSoles(row.totalConsumido)}
+                          </strong>
+                          <div className="tz-top-cliente-actions">
+                            {waLink && (
+                              <a
+                                href={waLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="tz-top-cliente-wa-btn"
+                                aria-label={`Escribir a ${row.cliente.nombre} por WhatsApp`}
+                                title="Escribir por WhatsApp"
+                              >
+                                <MessageCircle size={15} />
+                              </a>
+                            )}
+                            <button
+                              type="button"
+                              className="tz-top-cliente-expand-btn"
+                              onClick={() =>
+                                setExpandedTopClienteId(expanded ? null : row.cliente.id)
+                              }
+                              aria-label="Ver productos favoritos"
+                              title="Productos favoritos"
+                            >
+                              {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            </button>
+                          </div>
+                        </div>
+                        {expanded && (
+                          <div className="tz-top-cliente-favoritos">
+                            {row.favoritos.length === 0 ? (
+                              <p className="tz-method-history-empty">
+                                Sin compras fiadas registradas todavía.
+                              </p>
+                            ) : (
+                              <ol className="tz-top-favoritos-list">
+                                {row.favoritos.map((f, i) => (
+                                  <li key={f.label}>
+                                    {i + 1}. {f.label} x{f.veces} veces
+                                  </li>
+                                ))}
+                              </ol>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ---------------- MODAL: FIADOS (historial de cobros, solo lectura) ---------------- */}
       {fiadosViewOpen && (
         <div className="tz-modal-backdrop" onClick={() => setFiadosViewOpen(false)}>
@@ -7780,6 +8344,15 @@ export default function App() {
                       </button>
                     </div>
                   )}
+                  <div className="tz-export-buttons">
+                    <button
+                      type="button"
+                      className="tz-csv-btn"
+                      onClick={enviarResumenCierrePorWhatsApp}
+                    >
+                      <MessageCircle size={13} /> 📲 Enviar Resumen a WhatsApp
+                    </button>
+                  </div>
                   <div className="tz-cierre-list">
                     {cierres.map((c) => (
                       <div key={c.id} className="tz-receipt tz-receipt-compact">
