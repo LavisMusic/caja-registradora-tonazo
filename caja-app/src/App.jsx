@@ -39,6 +39,7 @@ import * as XLSX from "xlsx";
 import { formatSoles, formatDate } from "./utils/format";
 import { useCatalog } from "./hooks/useCatalog";
 import Styles from "./components/Styles";
+import CardDetail from "./components/CardDetail";
 import FiadoDetalle from "./components/FiadoDetalle";
 import { useAuth } from "./contexts/AuthContext";
 import {
@@ -5039,7 +5040,7 @@ export default function App() {
                           </div>
                         )}
                         <div className="tz-card-top">
-                          <div>
+                          <div className="tz-card-info">
                             <h3 className="tz-card-name">{baseName}</h3>
                             <p className="tz-card-detail">{variants.length} variantes</p>
                           </div>
@@ -5110,7 +5111,7 @@ export default function App() {
                       )}
 
                       <div className="tz-card-top">
-                        <div>
+                        <div className="tz-card-info">
                           {item.combo && <span className="tz-combo">{item.combo}</span>}
                           <h3 className="tz-card-name">
                             {item.name.split(/(\+)/).map((part, i) =>
@@ -5123,14 +5124,7 @@ export default function App() {
                               )
                             )}
                           </h3>
-                          {item.detail && (
-                            <p
-                              className="tz-card-detail"
-                              style={item.color ? { color: item.color } : undefined}
-                            >
-                              {item.detail}
-                            </p>
-                          )}
+                          <CardDetail item={item} />
                         </div>
                         <div className="tz-card-top-actions">
                           {isAdmin && (

@@ -5,6 +5,7 @@ import { useCatalog } from "../hooks/useCatalog";
 import LoginModal from "../components/LoginModal";
 import ClienteFiadoView from "./ClienteFiadoView";
 import Styles from "../components/Styles";
+import CardDetail from "../components/CardDetail";
 import LogoEasterEgg from "../components/LogoEasterEgg";
 import { formatSoles } from "../utils/format";
 import logo from "../assets/logo.png";
@@ -167,7 +168,7 @@ export default function CatalogPage() {
                         }`}
                       >
                         <div className="tz-card-top">
-                          <div>
+                          <div className="tz-card-info">
                             {item.combo && <span className="tz-combo">{item.combo}</span>}
                             <h3 className="tz-card-name">
                               {item.name.split(/(\+)/).map((part, i) =>
@@ -180,7 +181,7 @@ export default function CatalogPage() {
                                 )
                               )}
                             </h3>
-                            {item.detail && <p className="tz-card-detail">{item.detail}</p>}
+                            <CardDetail item={item} />
                           </div>
                         </div>
 

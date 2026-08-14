@@ -532,6 +532,11 @@ export default function Styles() {
         flex-direction: column;
         gap: 14px;
         min-height: 148px;
+        /* #root (index.css, plantilla de Vite) hereda text-align:center a
+           todo el árbol; sin este reset, texto corto como la descripción
+           de variante ("600ml") queda centrado dentro de la tarjeta en
+           vez de pegado a la izquierda debajo del nombre. */
+        text-align: left;
       }
       .tz-card:hover { transform: translateY(-2px); }
       /* Mostrador público (CatalogPage): mismas tarjetas que el Admin,
@@ -624,6 +629,12 @@ export default function Styles() {
       }
 
       .tz-card-top { display: flex; justify-content: space-between; gap: 10px; }
+      /* Sin min-width:0 el bloque de nombre+detalle (flex item con texto
+         largo) se niega a encogerse por debajo de su ancho de contenido:
+         en pantallas angostas eso empuja tz-card-top-actions (%, lápiz,
+         checkbox) fuera del ancho de la tarjeta y los botones quedan
+         "invisibles" sin que exista ninguna regla hidden/display:none. */
+      .tz-card-info { min-width: 0; flex: 1 1 auto; }
       .tz-combo {
         display: block;
         font-family: 'Orbitron', sans-serif;
@@ -638,6 +649,7 @@ export default function Styles() {
         font-size: 18px;
         font-weight: 700;
         line-height: 1.25;
+        overflow-wrap: anywhere;
       }
       .tz-name-plus {
         color: var(--green);

@@ -123,11 +123,15 @@ Deno.serve(async (req) => {
 
   const newUserId = created.user.id;
 
-  // 4) profile row (rol según tipo; 'nombre' se guarda acá SOLO para
-  // cajero — el de cliente ya vive en clientes_fiado.nombre).
+  // 4) profile row (rol según tipo). 'nombre' se guarda siempre acá —
+  // aunque el de cliente TAMBIÉN vive en clientes_fiado.nombre (no se
+  // duplica por gusto: el panel de administración de usuarios lista
+  // cajeros Y clientes desde 'profiles' en una sola consulta, y
+  // necesita poder mostrar el nombre de ambos sin tener que hacer join
+  // con clientes_fiado).
   const { error: profInsertErr } = await admin
     .from("profiles")
-    .insert({ id: newUserId, role: tipo, nombre: tipo === "cajero" ? nombre : null });
+    .insert({ id: newUserId, role: tipo, nombre });
 
   if (profInsertErr) {
     await admin.auth.admin.deleteUser(newUserId);
