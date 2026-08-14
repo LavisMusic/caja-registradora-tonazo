@@ -80,6 +80,12 @@ function buildSectionsFromRows(categoriaRows, productoRows) {
           cost: p.costo != null ? Number(p.costo) : null,
           consumes: Array.isArray(p.consumos) ? p.consumos : JSON.parse(p.consumos || "[]"),
           visiblePublico: p.visible_publico ?? true,
+          esCombo: p.es_combo ?? false,
+          comboItems: Array.isArray(p.combo_items)
+            ? p.combo_items
+            : p.combo_items
+              ? JSON.parse(p.combo_items)
+              : null,
         })),
       };
     });

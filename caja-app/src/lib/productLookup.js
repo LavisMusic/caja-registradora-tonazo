@@ -273,3 +273,75 @@ export async function crearProducto({
 
   return { producto: insertedProducto, stockKey };
 }
+
+/* Crea un Combo: una fila de 'productos' SIN stock propio, cuya
+   disponibilidad y descuento de inventario al vender salen gratis de
+   la misma maquinaria genérica que ya usa cualquier producto con
+   'consumos' de más de una clave (availabilityFor/unitCostFor en
+   App.jsx, y el descuento de stock al confirmar una venta) — por eso
+   no hace falta ningún caso especial de venta para combos, solo armar
+   bien el 'consumos' combinado acá, una única vez, al crearlo.
+
+   'items' es la receta elegida en el modal: [{ productId, consumes,
+   qty }], donde 'consumes' es el array YA PARSEADO de ESE producto
+   (item.consumes de productsById) y 'qty' cuántas unidades de ese
+   producto entran en UN combo. Se combinan sumando, por cada clave de
+   stock real, (consumo unitario del ingrediente) * (cantidad en la
+   receta) — así un combo puede incluir a su vez otro combo como
+   ingrediente (su 'consumes' ya viene aplanado a claves reales) sin
+   ningún ajuste extra. */
+export async function crearCombo({ nombre, categoria, subgrupo, precio, items }) {
+  const categoriaNombre = (categoria || "").trim();
+  const { data: catExistente, error: catLookupError } = await supabase
+    .from("categorias")
+    .select("id")
+    .eq("nombre", categoriaNombre)
+    .maybeSingle();
+  if (catLookupError) throw catLookupError;
+
+  if (!catExistente) {
+    const { error: catInsertError } = await supabase
+      .from("categorias")
+      .insert([{ nombre: categoriaNombre, activo: true, orden: safeOrdenValue() }]);
+    if (catInsertError) throw catInsertError;
+  }
+
+  const consumosMap = {};
+  items.forEach(({ consumes, qty }) => {
+    (consumes || []).forEach((c) => {
+      consumosMap[c.key] = (consumosMap[c.key] || 0) + c.qty * qty;
+    });
+  });
+  const consumos = Object.entries(consumosMap).map(([key, qty]) => ({ key, qty }));
+
+  const nombreTrim = (nombre || "").trim();
+  const productoPayload = {
+    nombre: nombreTrim,
+    descripcion: null,
+    nombre_base: nombreTrim,
+    variante: null,
+    presentacion: null,
+    color_variante: null,
+    precio: parseFloat(precio),
+    categoria: categoriaNombre,
+    subgrupo: (subgrupo || "").trim() || null,
+    codigo_barras: null,
+    consumos: JSON.stringify(consumos),
+    es_combo: true,
+    combo_items: JSON.stringify(
+      items.map(({ productId, qty }) => ({ productoId: productId, cantidad: qty }))
+    ),
+    activo: true,
+    visible_publico: true,
+    orden: safeOrdenValue(),
+  };
+
+  const { data: insertedProducto, error: prodError } = await supabase
+    .from("productos")
+    .insert([productoPayload])
+    .select()
+    .single();
+  if (prodError) throw prodError;
+
+  return { producto: insertedProducto };
+}

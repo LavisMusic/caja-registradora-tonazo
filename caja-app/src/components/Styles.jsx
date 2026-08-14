@@ -2032,6 +2032,99 @@ export default function Styles() {
       }
       .tz-stock-save:disabled { opacity: 0.6; cursor: not-allowed; }
 
+      /* ---------- "+ Nuevo Combo" (Editar Stock, solo admin) ---------- */
+      .tz-new-combo-btn {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 16px;
+        background: linear-gradient(135deg, rgba(255,47,158,0.9), rgba(43,232,255,0.75));
+        color: #0a0714;
+        border: none;
+        border-radius: 10px;
+        padding: 12px;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 12.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 0 20px rgba(255,47,158,0.35);
+      }
+      .tz-new-combo-btn:hover { transform: translateY(-1px); }
+      .tz-combo-search-results {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin: 6px 0 12px;
+        max-height: 160px;
+        overflow-y: auto;
+      }
+      .tz-combo-search-result {
+        display: flex;
+        align-items: center;
+        text-align: left;
+        gap: 6px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.04);
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 13.5px;
+        cursor: pointer;
+      }
+      .tz-combo-search-result:hover { background: rgba(43,232,255,0.12); }
+      .tz-combo-items {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 4px 0 12px;
+      }
+      .tz-combo-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.03);
+      }
+      .tz-combo-item-name {
+        flex: 1 1 0%;
+        min-width: 0;
+        font-size: 13.5px;
+        overflow-wrap: anywhere;
+      }
+      .tz-combo-item-qty {
+        width: 52px;
+        flex-shrink: 0;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid var(--border-soft);
+        border-radius: 6px;
+        color: var(--text);
+        padding: 5px 6px;
+        text-align: center;
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 13px;
+      }
+      .tz-combo-item-remove {
+        flex-shrink: 0;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid rgba(255,84,112,0.35);
+        background: rgba(255,84,112,0.1);
+        color: var(--danger);
+        cursor: pointer;
+      }
+      .tz-combo-item-remove:hover { background: rgba(255,84,112,0.22); }
+
       /* ---------- MODAL: PAGO / ESCANEO ---------- */
       .tz-payment-modal {
         display: flex;

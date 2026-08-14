@@ -46,6 +46,7 @@ import {
   buscarProductoPorCodigo,
   resolveStockKey,
   crearProducto,
+  crearCombo,
   safeOrdenValue,
   calcularCostoPromedioPonderado,
   composeProductoNombre,
@@ -614,6 +615,20 @@ export default function App() {
   const [nuevaVariedadColor, setNuevaVariedadColor] = useState(null);
   const [nuevaVariedadSaving, setNuevaVariedadSaving] = useState(false);
   const [nuevaVariedadError, setNuevaVariedadError] = useState("");
+
+  /* ---- "+ Nuevo Combo" (Editar Stock, solo admin): arma un producto
+     sin stock propio a partir de N ingredientes existentes + cantidad
+     cada uno — ver crearCombo() en productLookup.js. 'comboItems' es
+     la receta en construcción: [{ productId, name, qty }]. */
+  const [comboModalOpen, setComboModalOpen] = useState(false);
+  const [comboNombre, setComboNombre] = useState("");
+  const [comboCategoria, setComboCategoria] = useState("Combos");
+  const [comboSubgrupo, setComboSubgrupo] = useState("");
+  const [comboPrecio, setComboPrecio] = useState("");
+  const [comboItems, setComboItems] = useState([]);
+  const [comboSearchTerm, setComboSearchTerm] = useState("");
+  const [comboSaving, setComboSaving] = useState(false);
+  const [comboError, setComboError] = useState("");
 
   /* ---- módulo global de "Métodos de Pago" (header) ---- */
   const [comprobantes, setComprobantes] = useState([]);
@@ -2389,6 +2404,92 @@ export default function App() {
       return;
     }
     resetNuevaVariedadForm();
+  };
+
+  /* ---- "+ Nuevo Combo": arma un producto sin stock propio a partir de
+     N ingredientes ya existentes (productos o variantes puntuales) más
+     la cantidad de cada uno — ver crearCombo() en productLookup.js. La
+     disponibilidad y el descuento de stock al vender salen gratis:
+     'consumos' del combo ya queda aplanado a claves de stock reales,
+     así que availabilityFor()/la resta de stock al confirmar una venta
+     lo tratan exactamente igual que cualquier producto normal. ---- */
+  const resetComboForm = () => {
+    setComboNombre("");
+    setComboCategoria("Combos");
+    setComboSubgrupo("");
+    setComboPrecio("");
+    setComboItems([]);
+    setComboSearchTerm("");
+    setComboError("");
+  };
+
+  const openComboModal = () => {
+    resetComboForm();
+    setComboModalOpen(true);
+  };
+
+  const addComboItem = (product) => {
+    setComboItems((prev) =>
+      prev.some((it) => it.productId === product.id)
+        ? prev
+        : [...prev, { productId: product.id, name: product.name, qty: 1 }]
+    );
+    setComboSearchTerm("");
+  };
+
+  const removeComboItem = (productId) => {
+    setComboItems((prev) => prev.filter((it) => it.productId !== productId));
+  };
+
+  const setComboItemQty = (productId, qty) => {
+    setComboItems((prev) => prev.map((it) => (it.productId === productId ? { ...it, qty } : it)));
+  };
+
+  const saveCombo = async () => {
+    const nombre = comboNombre.trim();
+    const categoria = comboCategoria.trim();
+    const precio = parseFloat(comboPrecio);
+
+    if (!nombre) {
+      setComboError("Ponle un nombre al combo.");
+      return;
+    }
+    if (!categoria) {
+      setComboError("Elige o escribe una categoría.");
+      return;
+    }
+    if (isNaN(precio) || precio <= 0) {
+      setComboError("Ingresa un precio de venta válido.");
+      return;
+    }
+    if (comboItems.length === 0) {
+      setComboError("Agrega al menos un producto al combo.");
+      return;
+    }
+    if (comboItems.some((it) => !(Number(it.qty) > 0))) {
+      setComboError("Todas las cantidades deben ser mayores a 0.");
+      return;
+    }
+
+    setComboSaving(true);
+    setComboError("");
+
+    try {
+      const items = comboItems.map((it) => ({
+        productId: it.productId,
+        qty: Number(it.qty),
+        consumes: productsById[it.productId]?.consumes || [],
+      }));
+      await crearCombo({ nombre, categoria, subgrupo: comboSubgrupo, precio, items });
+      await refetchCatalog();
+      setComboModalOpen(false);
+      resetComboForm();
+    } catch (err) {
+      console.error("Error creando combo:", err);
+      setComboError(err.message ? `No se pudo crear el combo: ${err.message}` : "No se pudo crear el combo.");
+    } finally {
+      setComboSaving(false);
+    }
   };
 
   /* ---- guardar unidades extra: UPDATE/upsert a 'stock' ---- */
@@ -5952,6 +6053,16 @@ export default function App() {
             <div className="tz-stock-editor">
               <h2>Agregar unidades al stock</h2>
 
+              {isAdmin && !newProductoOpen && (
+                <button
+                  type="button"
+                  className="tz-new-combo-btn"
+                  onClick={openComboModal}
+                >
+                  <Plus size={16} /> Nuevo Combo
+                </button>
+              )}
+
               {newProductoOpen ? (
                 <div className="tz-add-entry">
                   <p className="tz-stock-editor-sub">
@@ -6443,6 +6554,159 @@ export default function App() {
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- MODAL: NUEVO COMBO ----------------
+         Un combo es un producto normal con 'consumos' combinado de sus
+         ingredientes — no tiene stock propio, así que no pide unidades
+         ni costo inicial (ver crearCombo en productLookup.js). */}
+      {comboModalOpen && (
+        <div className="tz-modal-backdrop" onClick={() => setComboModalOpen(false)}>
+          <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="tz-modal-close"
+              onClick={() => setComboModalOpen(false)}
+              aria-label="Cerrar"
+            >
+              <X size={18} />
+            </button>
+
+            <h2>Nuevo Combo</h2>
+            <p className="tz-stock-editor-sub">
+              Elige los productos (o variantes puntuales) que forman el combo y cuántas unidades
+              de cada uno lleva. Al vender el combo se descuenta el stock de cada ingrediente
+              automáticamente — el combo no tiene stock propio.
+            </p>
+
+            <label className="tz-field-label">Nombre del combo</label>
+            <input
+              type="text"
+              autoFocus
+              className="tz-text-input"
+              placeholder="Ej. Combo Fiesta"
+              value={comboNombre}
+              onChange={(e) => setComboNombre(e.target.value)}
+            />
+
+            <label className="tz-field-label">Precio de venta (S/)</label>
+            <input
+              type="number"
+              min="0"
+              step="0.10"
+              className="tz-text-input"
+              placeholder="0.00"
+              value={comboPrecio}
+              onChange={(e) => setComboPrecio(e.target.value)}
+            />
+
+            <label className="tz-field-label">Categoría</label>
+            <input
+              type="text"
+              list="tz-combo-categoria-options"
+              className="tz-text-input"
+              placeholder='Ej. "Combos"'
+              value={comboCategoria}
+              onChange={(e) => setComboCategoria(e.target.value)}
+            />
+            <datalist id="tz-combo-categoria-options">
+              {sections.map((s) => (
+                <option key={s.key} value={s.label} />
+              ))}
+            </datalist>
+
+            <label className="tz-field-label">Subgrupo (opcional)</label>
+            <input
+              type="text"
+              className="tz-text-input"
+              placeholder="Opcional"
+              value={comboSubgrupo}
+              onChange={(e) => setComboSubgrupo(e.target.value)}
+            />
+
+            <label className="tz-field-label" style={{ marginTop: 8 }}>
+              Ingredientes del combo
+            </label>
+            <input
+              type="text"
+              className="tz-text-input"
+              placeholder="Buscar producto para agregar…"
+              value={comboSearchTerm}
+              onChange={(e) => setComboSearchTerm(e.target.value)}
+            />
+
+            {comboSearchTerm.trim() &&
+              (() => {
+                const q = comboSearchTerm.trim().toLowerCase();
+                const results = Object.values(productsById)
+                  .filter((p) => p.name.toLowerCase().includes(q))
+                  .filter((p) => !comboItems.some((it) => it.productId === p.id))
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .slice(0, 8);
+
+                return (
+                  <div className="tz-combo-search-results">
+                    {results.length === 0 ? (
+                      <p className="tz-method-history-empty">Ningún producto coincide.</p>
+                    ) : (
+                      results.map((p) => (
+                        <button
+                          type="button"
+                          key={p.id}
+                          className="tz-combo-search-result"
+                          onClick={() => addComboItem(p)}
+                        >
+                          {p.color && (
+                            <span
+                              className="tz-variant-dot tz-variant-dot-inline"
+                              style={{ background: p.color }}
+                            />
+                          )}
+                          {p.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                );
+              })()}
+
+            {comboItems.length > 0 && (
+              <div className="tz-combo-items">
+                {comboItems.map((it) => (
+                  <div className="tz-combo-item" key={it.productId}>
+                    <span className="tz-combo-item-name">{it.name}</span>
+                    <input
+                      type="number"
+                      min="1"
+                      className="tz-combo-item-qty"
+                      value={it.qty}
+                      onChange={(e) => setComboItemQty(it.productId, e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="tz-combo-item-remove"
+                      onClick={() => removeComboItem(it.productId)}
+                      aria-label={`Quitar ${it.name}`}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {comboError && <p className="tz-error">{comboError}</p>}
+
+            <button
+              className="tz-stock-save"
+              onClick={saveCombo}
+              disabled={comboSaving}
+              style={{ marginTop: 14 }}
+            >
+              {comboSaving ? <Loader2 size={16} className="tz-spin" /> : <Save size={16} />}
+              Crear Combo
+            </button>
           </div>
         </div>
       )}
