@@ -2345,8 +2345,8 @@ export default function Styles() {
       }
       /* Botón mágico ("Mejorar con IA"): gradiente violeta/rosa
          reusando --yape (el único morado ya definido en la paleta) en
-         vez de inventar un color nuevo — la API real (Photoroom) queda
-         pendiente, esto solo deja lista la UI/UX del estado de carga. */
+         vez de inventar un color nuevo. Dispara @imgly/background-
+         removal en el navegador del admin (ver handleAiEnhance). */
       .tz-ai-magic-btn {
         width: 100%;
         display: flex;
@@ -2368,6 +2368,30 @@ export default function Styles() {
       }
       .tz-ai-magic-btn:hover:not(:disabled) { transform: translateY(-1px); }
       .tz-ai-magic-btn:disabled { opacity: 0.75; cursor: not-allowed; }
+
+      /* Resultado de la IA (PNG con fondo transparente): el recuadro
+         de previsualización es BLANCO a propósito (nuestra app es
+         oscura/neón) para simular al toque el "efecto estudio" de una
+         foto de catálogo — es la única superficie clara de todo el
+         tema, adrede. */
+      .tz-ai-result { margin-top: 6px; }
+      .tz-ai-result-preview {
+        width: 100%;
+        height: 160px;
+        border-radius: 14px;
+        overflow: hidden;
+        background: #ffffff;
+        border: 1px solid var(--border-soft);
+        margin: 8px 0 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tz-ai-result-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
 
       /* ---------- MODAL: PAGO / ESCANEO ---------- */
       .tz-payment-modal {

@@ -638,12 +638,23 @@ export default function App() {
   /* ---- Módulo de Imágenes (solo admin): 'imageManagerProduct' es el
      producto cuyo modal está abierto (null = cerrado). Subir/Tomar
      Foto van al bucket 'productos-imagenes' (Supabase Storage) y
-     actualizan 'productos.imagen_url'. "Mejorar con IA" queda EN
-     PAUSA a pedido (sin backend real conectado todavía) — el botón
-     vive deshabilitado en el JSX hasta que se retome. */
+     actualizan 'productos.imagen_url'.
+
+     "Mejorar con IA" (@imgly/background-removal, 100% en el navegador
+     del admin — no hay backend propio de por medio) quita el fondo de
+     'lastUploadedImage' (el File/Blob de la última foto elegida en
+     ESTA sesión del modal, o si no hay uno, se descarga 'imagen_url')
+     y deja el resultado en 'aiPreviewBlob' como una previsualización
+     PENDIENTE — recién se sube/reemplaza en Storage cuando el admin
+     confirma con "Guardar recorte", nunca antes. ---- */
   const [imageManagerProduct, setImageManagerProduct] = useState(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadError, setImageUploadError] = useState("");
+  const [lastUploadedImage, setLastUploadedImage] = useState(null);
+  const [aiProcessing, setAiProcessing] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiPreviewBlob, setAiPreviewBlob] = useState(null);
+  const [aiPreviewUrl, setAiPreviewUrl] = useState("");
 
   /* ---- módulo global de "Métodos de Pago" (header) ---- */
   const [comprobantes, setComprobantes] = useState([]);
@@ -2508,26 +2519,45 @@ export default function App() {
   };
 
   /* ---- Módulo de Imágenes (solo admin) ---- */
+  const discardAiPreview = () => {
+    if (aiPreviewUrl) URL.revokeObjectURL(aiPreviewUrl);
+    setAiPreviewBlob(null);
+    setAiPreviewUrl("");
+    setAiError("");
+  };
+
   const openImageManager = (product) => {
     setImageManagerProduct(product);
     setImageUploadError("");
+    setLastUploadedImage(null);
+    setAiError("");
+    discardAiPreview();
   };
 
   const closeImageManager = () => {
     setImageManagerProduct(null);
     setImageUploadError("");
+    setLastUploadedImage(null);
+    discardAiPreview();
   };
 
-  const uploadProductImage = async (file) => {
+  // 'forcedExt'/'forcedType' existen porque el resultado de la IA es un
+  // Blob puro (sin '.name', a diferencia de un File elegido en el
+  // input) — sin esto, 'file.name.split(".")' explotaría al guardar el
+  // recorte con fondo removido.
+  const uploadProductImage = async (file, forcedExt, forcedType) => {
     if (!imageManagerProduct || !file) return;
     setImageUploading(true);
     setImageUploadError("");
     try {
-      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const ext = forcedExt || (file.name ? (file.name.split(".").pop() || "jpg").toLowerCase() : "jpg");
       const fileName = `${imageManagerProduct.id}-${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage
         .from("productos-imagenes")
-        .upload(fileName, file, { contentType: file.type || "image/jpeg", upsert: false });
+        .upload(fileName, file, {
+          contentType: forcedType || file.type || "image/jpeg",
+          upsert: false,
+        });
       if (uploadError) throw uploadError;
 
       const { data } = supabase.storage.from("productos-imagenes").getPublicUrl(fileName);
@@ -2565,14 +2595,58 @@ export default function App() {
     }
   };
 
-  // "Mejorar con IA": en pausa por ahora (sin backend real conectado
-  // todavía — Photoroom queda pendiente). El botón se deja deshabilitado
-  // en el JSX para no confundir mientras la subida básica no esté 100%
-  // estable; esta función queda sin usar hasta que se retome.
-  // const handleAiEnhance = () => {
-  //   setAiEnhanceLoading(true);
-  //   setTimeout(() => setAiEnhanceLoading(false), 1800);
-  // };
+  const handleUploadFromInput = (file) => {
+    if (!file) return;
+    setLastUploadedImage(file);
+    discardAiPreview();
+    uploadProductImage(file);
+  };
+
+  /* ---- "Mejorar con IA": quita el fondo 100% en el navegador del
+     admin con @imgly/background-removal (import dinámico — el modelo
+     ONNX/WASM pesa varios MB y NO tiene sentido bajarlo para Cliente o
+     Cajero, que nunca ven este botón). Fuente: la foto recién elegida
+     en esta sesión del modal si existe, si no se descarga la ya
+     guardada ('imagen_url') para poder reprocesar una foto vieja.
+     Nunca pisa nada solo — deja el resultado en 'aiPreviewBlob' para
+     que el admin decida "Guardar recorte" o "Descartar". ---- */
+  const handleAiEnhance = async () => {
+    if (!imageManagerProduct) return;
+    setAiProcessing(true);
+    setAiError("");
+    try {
+      let source = lastUploadedImage;
+      if (!source) {
+        if (!imageManagerProduct.imagenUrl) {
+          throw new Error("Primero sube o toma una foto para poder mejorarla.");
+        }
+        const res = await fetch(imageManagerProduct.imagenUrl);
+        if (!res.ok) throw new Error("No se pudo cargar la imagen actual para procesarla.");
+        source = await res.blob();
+      }
+
+      const { removeBackground } = await import("@imgly/background-removal");
+      const resultBlob = await removeBackground(source);
+
+      setAiPreviewBlob(resultBlob);
+      setAiPreviewUrl(URL.createObjectURL(resultBlob));
+    } catch (err) {
+      console.error("Error quitando el fondo con IA:", err);
+      setAiError(
+        err.message
+          ? `No se pudo procesar la imagen: ${err.message}`
+          : "No se pudo procesar la imagen con IA."
+      );
+    } finally {
+      setAiProcessing(false);
+    }
+  };
+
+  const confirmAiResult = async () => {
+    if (!aiPreviewBlob) return;
+    await uploadProductImage(aiPreviewBlob, "png", "image/png");
+    discardAiPreview();
+  };
 
   /* ---- guardar unidades extra: UPDATE/upsert a 'stock' ---- */
   const saveStockEdits = async () => {
@@ -6811,9 +6885,11 @@ export default function App() {
 
       {/* ---------------- MODAL: GESTIÓN DE IMAGEN (solo admin) ----------------
          Se abre al tocar el espacio de imagen de una tarjeta. "Subir
-         Foto"/"Tomar Foto" van directo a Storage + productos.imagen_url;
-         "Mejorar con IA" todavía no llama a Photoroom, solo simula el
-         estado de carga (ver handleAiEnhance). */}
+         Foto"/"Tomar Foto" van directo a Storage + productos.imagen_url.
+         "Mejorar con IA" quita el fondo en el navegador (@imgly/
+         background-removal) y muestra el resultado en un recuadro
+         BLANCO ("efecto estudio", ya que el resto de la app es oscura)
+         antes de guardarlo — ver handleAiEnhance/confirmAiResult. */}
       {imageManagerProduct && (
         <div className="tz-modal-backdrop" onClick={closeImageManager}>
           <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
@@ -6841,45 +6917,99 @@ export default function App() {
               </p>
             )}
 
-            <div className="tz-image-manager-actions">
-              <label className="tz-camera-cancel tz-image-manager-btn">
-                <Upload size={15} /> Subir Foto
-                <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  disabled={imageUploading}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) uploadProductImage(file);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-              <label className="tz-camera-cancel tz-image-manager-btn">
-                <Camera size={15} /> Tomar Foto
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  hidden
-                  disabled={imageUploading}
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) uploadProductImage(file);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </div>
+            {/* Mientras haya un recorte de IA pendiente de confirmar,
+               se ocultan Subir/Tomar Foto — obliga a resolver esa
+               decisión primero en vez de perder el resultado en
+               silencio si el admin sube otra foto encima. */}
+            {!aiPreviewBlob && (
+              <div className="tz-image-manager-actions">
+                <label className="tz-camera-cancel tz-image-manager-btn">
+                  <Upload size={15} /> Subir Foto
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    disabled={imageUploading || aiProcessing}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      handleUploadFromInput(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                <label className="tz-camera-cancel tz-image-manager-btn">
+                  <Camera size={15} /> Tomar Foto
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    hidden
+                    disabled={imageUploading || aiProcessing}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      handleUploadFromInput(file);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+            )}
 
-            {/* "Mejorar con IA" en pausa a pedido: sin backend real
-               conectado (Photoroom pendiente), se deja deshabilitado
-               para no confundir mientras la subida básica no esté
-               100% estable — ver handleAiEnhance comentado arriba. */}
-            <button type="button" className="tz-ai-magic-btn" disabled title="Próximamente">
-              <Wand2 size={16} /> Mejorar con IA (próximamente)
-            </button>
+            {!aiPreviewBlob && (
+              <button
+                type="button"
+                className="tz-ai-magic-btn"
+                onClick={handleAiEnhance}
+                disabled={
+                  aiProcessing ||
+                  imageUploading ||
+                  !(lastUploadedImage || imageManagerProduct.imagenUrl)
+                }
+              >
+                {aiProcessing ? (
+                  <>
+                    <Loader2 size={16} className="tz-spin" /> Procesando recorte con IA…
+                  </>
+                ) : (
+                  <>
+                    <Wand2 size={16} /> Mejorar con IA
+                  </>
+                )}
+              </button>
+            )}
+            {aiError && <p className="tz-error">{aiError}</p>}
+
+            {aiPreviewUrl && (
+              <div className="tz-ai-result">
+                <p className="tz-field-label">Vista previa — fondo removido</p>
+                <div className="tz-ai-result-preview">
+                  <img src={aiPreviewUrl} alt={`${imageManagerProduct.name} sin fondo`} />
+                </div>
+                <div className="tz-image-manager-actions">
+                  <button
+                    type="button"
+                    className="tz-camera-cancel tz-image-manager-btn"
+                    onClick={discardAiPreview}
+                    disabled={imageUploading}
+                  >
+                    <X size={15} /> Descartar
+                  </button>
+                  <button
+                    type="button"
+                    className="tz-stock-save tz-image-manager-btn"
+                    onClick={confirmAiResult}
+                    disabled={imageUploading}
+                  >
+                    {imageUploading ? (
+                      <Loader2 size={15} className="tz-spin" />
+                    ) : (
+                      <Check size={15} />
+                    )}
+                    Guardar recorte
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
