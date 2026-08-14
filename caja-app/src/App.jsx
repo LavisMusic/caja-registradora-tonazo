@@ -735,11 +735,12 @@ export default function App() {
   const [aperturaError, setAperturaError] = useState("");
   // Confirmación de turno del cajero: NO vive en la base — es "ya vi
   // el fondo inicial de ESTE turno puntual" y se guarda en
-  // sessionStorage (sobrevive a un F5 en medio del turno, pero no a
-  // cerrar la pestaña, y una apertura nueva con otro 'abiertaEn'
-  // siempre vuelve a pedir confirmación).
+  // localStorage (sobrevive a un F5, a cerrar la pestaña y a volver a
+  // loguearse el mismo día; una apertura nueva con otro 'abiertaEn'
+  // siempre vuelve a pedir confirmación, y Cerrar Caja invalida el
+  // valor guardado al cambiar 'abiertaEn' en la próxima apertura).
   const [turnoConfirmadoEn, setTurnoConfirmadoEn] = useState(() =>
-    typeof window !== "undefined" ? sessionStorage.getItem("tz_turno_confirmado_en") : null
+    typeof window !== "undefined" ? localStorage.getItem("tz_turno_confirmado_en") : null
   );
 
   /* ---- módulo de Cierre de Caja (snapshot + recibo) ---- */
@@ -4235,12 +4236,12 @@ export default function App() {
 
   /* ---- Confirmación de turno (solo cajero): reconoce el fondo
      inicial de ESTA apertura puntual (abiertaEn) antes de dejarlo
-     entrar al POS — puramente local (sessionStorage), no hay nada que
+     entrar al POS — puramente local (localStorage), no hay nada que
      guardar en Supabase acá. ---- */
   const confirmarTurno = () => {
     if (!estadoCaja?.abiertaEn) return;
     const marca = String(estadoCaja.abiertaEn);
-    sessionStorage.setItem("tz_turno_confirmado_en", marca);
+    localStorage.setItem("tz_turno_confirmado_en", marca);
     setTurnoConfirmadoEn(marca);
   };
 
@@ -5127,7 +5128,7 @@ export default function App() {
                           <CardDetail item={item} />
                         </div>
                         <div className="tz-card-top-actions">
-                          {isAdmin && (
+                          {(isAdmin || isCajero) && (
                             <button
                               type="button"
                               className={`tz-card-discount-btn ${
@@ -5287,7 +5288,7 @@ export default function App() {
                         <StockTag avail={avail} />
                       </div>
                       <div className="tz-variant-card-actions">
-                        {isAdmin && (
+                        {(isAdmin || isCajero) && (
                           <button
                             type="button"
                             className={`tz-card-discount-btn ${vDiscount ? "tz-card-discount-btn-active" : ""}`}

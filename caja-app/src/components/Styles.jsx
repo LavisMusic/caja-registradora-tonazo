@@ -36,6 +36,15 @@ export default function Styles() {
         box-sizing: border-box;
       }
       .tz-root *, .tz-root *::before, .tz-root *::after { box-sizing: border-box; }
+      /* index.css (plantilla base de Vite) trae "h1, h2 { color:
+         var(--text-h) }" — negro cuando el SO está en modo claro. Esa
+         regla apunta directo al h1/h2, así que gana por sobre el
+         color:var(--text) heredado de .tz-root (la herencia solo
+         aplica si NINGUNA regla matchea el elemento directamente).
+         Sin este reset, todo título de modal ("¿Qué variante?",
+         "Descuento", "Usuarios", etc.) y cada encabezado de subgrupo
+         del catálogo se renderiza en negro sobre el fondo oscuro. */
+      .tz-root h1, .tz-root h2 { color: var(--text); }
 
       .tz-loading {
         display: flex;
@@ -629,12 +638,14 @@ export default function Styles() {
       }
 
       .tz-card-top { display: flex; justify-content: space-between; gap: 10px; }
-      /* Sin min-width:0 el bloque de nombre+detalle (flex item con texto
-         largo) se niega a encogerse por debajo de su ancho de contenido:
-         en pantallas angostas eso empuja tz-card-top-actions (%, lápiz,
-         checkbox) fuera del ancho de la tarjeta y los botones quedan
-         "invisibles" sin que exista ninguna regla hidden/display:none. */
-      .tz-card-info { min-width: 0; flex: 1 1 auto; }
+      /* flex-basis 0 (no 'auto'): el bloque de nombre+detalle arranca
+         en 0 y crece solo hasta el espacio que sobra, en vez de pedir
+         su ancho de contenido completo antes de repartir — así nunca
+         empuja a tz-card-top-actions (%, lápiz, checkbox) fuera del
+         ancho de la tarjeta en pantallas angostas. min-width:0 permite
+         que el texto se achique por debajo del "ancho de contenido"
+         normal y haga wrap en vez de forzar overflow. */
+      .tz-card-info { min-width: 0; flex: 1 1 0%; }
       .tz-combo {
         display: block;
         font-family: 'Orbitron', sans-serif;
@@ -758,7 +769,7 @@ export default function Styles() {
         filter: grayscale(0.4);
       }
       .tz-variant-card-info {
-        flex: 1 1 auto;
+        flex: 1 1 0%;
         min-width: 0;
         display: flex;
         flex-direction: column;
@@ -2940,6 +2951,27 @@ export default function Styles() {
         border-inline: none !important;
         padding: 0 !important;
         margin: 0 !important;
+      }
+
+      /* ---------- CELULARES ANGOSTOS (<= 380px) ---------- */
+      /* En equipos de gama baja (~360px de ancho) la fila del nombre
+         del producto + la botonera (%, lápiz, checkbox) puede quedar
+         muy apretada. flex-basis:0 en .tz-card-info ya evita que se
+         empujen fuera de la tarjeta, pero acá les damos además más
+         aire: menos padding en la tarjeta, botones más chicos y menor
+         gap entre ellos, para que los 3 siempre quepan cómodos. */
+      @media (max-width: 380px) {
+        .tz-card { padding: 14px; gap: 12px; }
+        .tz-card-name { font-size: 16px; }
+        .tz-card-top-actions { gap: 6px; }
+        .tz-variant-card-actions { gap: 5px; }
+        .tz-card-discount-btn,
+        .tz-card-edit-price-btn,
+        .tz-checkbox,
+        .tz-variant-add-btn {
+          width: 24px;
+          height: 24px;
+        }
       }
 
       /* ---------- TABLET (>= 768px) ---------- */
