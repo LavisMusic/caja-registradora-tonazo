@@ -493,6 +493,42 @@ export default function Styles() {
         box-shadow: 0 0 22px rgba(43,232,255,0.45);
       }
 
+      /* ---- Tab "COMBOS": tratamiento neón exclusivo (fondo amarillo +
+         pulsación + shimmer que recorre el borde) para invitar al
+         click — matchea por nombre de categoría en CatalogPage/App.jsx,
+         no por posición, así que sigue funcionando aunque se reordenen
+         las categorías (punto 3 del pedido). */
+      .tz-tab-combos {
+        position: relative;
+        overflow: hidden;
+        color: #241b00;
+        background: linear-gradient(135deg, #fff35c, #ffd60a);
+        border-color: #ffe066;
+        animation: tz-tab-combos-pulse 1.8s ease-in-out infinite;
+      }
+      .tz-tab-combos:hover { color: #241b00; border-color: #ffe066; }
+      .tz-tab-combos::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.7) 50%, transparent 70%);
+        transform: translateX(-120%);
+        animation: tz-tab-combos-shimmer 2.6s ease-in-out infinite;
+      }
+      .tz-tab-combos.tz-tab-active {
+        background: linear-gradient(135deg, #ffe066, #ffb400);
+        border-color: #fff35c;
+        box-shadow: 0 0 26px rgba(255,214,10,0.75);
+      }
+      @keyframes tz-tab-combos-pulse {
+        0%, 100% { box-shadow: 0 0 10px rgba(255,214,10,0.5); }
+        50% { box-shadow: 0 0 22px rgba(255,214,10,0.95); }
+      }
+      @keyframes tz-tab-combos-shimmer {
+        0% { transform: translateX(-120%); }
+        55%, 100% { transform: translateX(120%); }
+      }
+
       /* ---------- GROUPS / PRODUCTS ---------- */
       .tz-group { margin-bottom: 26px; }
       .tz-group-heading {
@@ -548,6 +584,79 @@ export default function Styles() {
         text-align: left;
       }
       .tz-card:hover { transform: translateY(-2px); }
+
+      /* ---- Módulo de Imágenes: CUADRADO perfecto de tamaño FIJO al
+         costado izquierdo de la tarjeta (ver .tz-card-row, que ahora
+         centra verticalmente con align-items:center) — nunca un
+         rectángulo ni 'width:100%' arriba (eso deformaba/achicaba mal).
+         Bordes redondeados suaves + fondo sutil para integrarse con el
+         tema oscuro/neón aunque el producto todavía no tenga foto. */
+      .tz-product-image {
+        width: 144px;
+        height: 144px;
+        flex-shrink: 0;
+        border-radius: 14px;
+        overflow: hidden;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-soft);
+      }
+      .tz-product-image-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .tz-product-image-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-dim);
+        opacity: 0.6;
+      }
+      .tz-product-image-editable {
+        position: relative;
+        cursor: pointer;
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      .tz-product-image-editable:hover {
+        border-color: var(--cyan);
+        box-shadow: 0 0 14px rgba(43,232,255,0.3);
+      }
+      .tz-product-image-edit-badge {
+        position: absolute;
+        bottom: 6px;
+        right: 6px;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: rgba(10,7,20,0.75);
+        border: 1px solid var(--cyan);
+        color: var(--cyan);
+      }
+      /* Versión compacta: mini imagen por variante dentro del modal
+         "¿Qué variante?" (tz-variant-card). Tamaño fijo pequeño +
+         flex-shrink:0 para que, sumada a tz-variant-card-info
+         (min-width:0; flex:1 1 0%) y tz-variant-card-actions
+         (flex-shrink:0), los 3 bloques (imagen | info | %,lápiz,+)
+         siempre quepan en una fila incluso en celulares angostos —
+         mismo criterio ya usado para no empujar botones fuera de la
+         tarjeta principal. */
+      .tz-product-image-sm {
+        width: 48px;
+        height: 48px;
+        border-radius: 10px;
+      }
+      .tz-product-image-edit-badge-sm {
+        width: 16px;
+        height: 16px;
+        bottom: 2px;
+        right: 2px;
+      }
       /* Mostrador público (CatalogPage): mismas tarjetas que el Admin,
          pero sin gesto de clic — nada de mano/pointer ni levante al
          pasar el mouse, para no insinuar una interacción que no existe. */
@@ -572,6 +681,43 @@ export default function Styles() {
       .tz-card-star.tz-card-checked {
         box-shadow: 0 0 0 1.5px var(--yellow), 0 0 8px var(--cyan) inset, 0 0 30px rgba(215,255,59,0.45);
       }
+
+      /* ---- Combos: glow amarillo "sensacionalista" para que resalten
+         como ofertas en la grilla, con una pulsación sutil (no un
+         parpadeo agresivo) que invite a mirarlos dos veces. Va DESPUÉS
+         de tz-card-star para ganarle el box-shadow/background si un
+         combo también fuera "Estrella" — dos glows a la vez ilegibles
+         no suman nada, se prioriza el del combo. ---- */
+      .tz-card-combo {
+        border-color: transparent;
+        background:
+          linear-gradient(var(--panel-solid), var(--panel-solid)) padding-box,
+          linear-gradient(135deg, rgba(255,225,0,0.95), rgba(255,153,0,0.55)) border-box;
+        animation: tz-card-combo-glow 2.4s ease-in-out infinite;
+      }
+      @keyframes tz-card-combo-glow {
+        0%, 100% { box-shadow: 0 0 14px rgba(255,225,0,0.45), 0 0 28px rgba(255,225,0,0.18); }
+        50% { box-shadow: 0 0 24px rgba(255,225,0,0.8), 0 0 42px rgba(255,225,0,0.35); }
+      }
+      /* Lista vertical (una fila por ingrediente) — mismo tamaño/peso
+         que .tz-card-detail (la descripción de cualquier producto
+         normal), no un tamaño reducido aparte, para que un combo no
+         se vea "más chico" que el resto de las tarjetas. */
+      .tz-combo-ingredients-list {
+        list-style: none;
+        margin: 4px 0 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .tz-combo-ingredient-row {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-dim);
+        overflow-wrap: anywhere;
+      }
+
       /* Lápiz de precio: solo admin, vive EN EL FLUJO normal junto al
          checkbox de selección (mismo wrapper .tz-card-top-actions),
          no flotando encima — position:absolute lo hacía superponerse
@@ -637,6 +783,24 @@ export default function Styles() {
         box-shadow: 0 0 16px rgba(215,255,59,0.55);
       }
 
+      /* Fila horizontal: imagen (cuadrado fijo, .tz-product-image) a la
+         izquierda + el resto del contenido de la tarjeta (título,
+         descripción, ingredientes, stock, precio, botones) en
+         .tz-card-main a la derecha — reemplaza el layout anterior
+         donde la imagen iba arriba ocupando todo el ancho. Todo lo que
+         antes vivía directo dentro de .tz-card (tz-card-top +
+         tz-card-bottom) ahora vive dentro de tz-card-main SIN tocar su
+         propia alineación interna (precio/acciones siguen a la
+         derecha exactamente igual que antes). */
+      .tz-card-row { display: flex; align-items: center; gap: 16px; }
+      .tz-card-main {
+        flex: 1 1 0%;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 14px;
+      }
       .tz-card-top { display: flex; justify-content: space-between; gap: 10px; }
       /* flex-basis 0 (no 'auto'): el bloque de nombre+detalle arranca
          en 0 y crece solo hasta el espacio que sobra, en vez de pedir
@@ -1793,6 +1957,27 @@ export default function Styles() {
         border-radius: 12px;
         overflow: hidden;
         background: rgba(255,255,255,0.02);
+        transition: border-color 0.12s, box-shadow 0.12s, opacity 0.12s;
+      }
+      /* Drag & Drop de categorías (nativo HTML5, sin librería): el
+         handle es el único elemento draggable; dragover/drop viven en
+         toda la tarjeta para que soltar en cualquier parte cuente. */
+      .tz-vis-drag-handle {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 30px;
+        color: var(--text-dim);
+        cursor: grab;
+        touch-action: none;
+      }
+      .tz-vis-drag-handle:active { cursor: grabbing; }
+      .tz-vis-category-dragging { opacity: 0.4; }
+      .tz-vis-category-drag-over {
+        border-color: var(--cyan);
+        box-shadow: 0 0 0 1.5px var(--cyan), 0 0 16px rgba(43,232,255,0.35);
       }
       .tz-vis-category-header,
       .tz-vis-subgroup-header {
@@ -2124,6 +2309,65 @@ export default function Styles() {
         cursor: pointer;
       }
       .tz-combo-item-remove:hover { background: rgba(255,84,112,0.22); }
+
+      /* ---------- Modal: Gestión de Imagen (solo admin) ---------- */
+      .tz-image-manager-preview {
+        width: 100%;
+        height: 160px;
+        border-radius: 14px;
+        overflow: hidden;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-soft);
+        margin: 10px 0 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tz-image-manager-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .tz-image-manager-actions {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .tz-image-manager-btn {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        cursor: pointer;
+        text-align: center;
+      }
+      /* Botón mágico ("Mejorar con IA"): gradiente violeta/rosa
+         reusando --yape (el único morado ya definido en la paleta) en
+         vez de inventar un color nuevo — la API real (Photoroom) queda
+         pendiente, esto solo deja lista la UI/UX del estado de carga. */
+      .tz-ai-magic-btn {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: linear-gradient(135deg, var(--yape), var(--pink));
+        color: #fff;
+        border: none;
+        border-radius: 10px;
+        padding: 13px;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 12.5px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 0 20px rgba(182,33,255,0.45);
+      }
+      .tz-ai-magic-btn:hover:not(:disabled) { transform: translateY(-1px); }
+      .tz-ai-magic-btn:disabled { opacity: 0.75; cursor: not-allowed; }
 
       /* ---------- MODAL: PAGO / ESCANEO ---------- */
       .tz-payment-modal {
@@ -3055,6 +3299,12 @@ export default function Styles() {
          gap entre ellos, para que los 3 siempre quepan cómodos. */
       @media (max-width: 380px) {
         .tz-card { padding: 14px; gap: 12px; }
+        .tz-card-row { gap: 10px; }
+        /* Más chico que en escritorio (144px) para no comerse toda la
+           fila en ~320-360px, pero sigue siendo un cuadrado grande y
+           protagonista — la info al lado usa flex-basis:0 y hace
+           wrap, nunca se rompe por esto. */
+        .tz-product-image { width: 112px; height: 112px; }
         .tz-card-name { font-size: 16px; }
         .tz-card-top-actions { gap: 6px; }
         .tz-variant-card-actions { gap: 5px; }
@@ -3065,6 +3315,12 @@ export default function Styles() {
           width: 24px;
           height: 24px;
         }
+        /* Mismo criterio que arriba, aplicado a la fila de cada
+           variante dentro del modal "¿Qué variante?": imagen + botonera
+           un poco más chicas para que nunca compitan por espacio con el
+           nombre en pantallas de gama baja (~320-360px). */
+        .tz-variant-card { padding: 8px 10px; gap: 8px; }
+        .tz-product-image-sm { width: 40px; height: 40px; }
       }
 
       /* ---------- TABLET (>= 768px) ---------- */

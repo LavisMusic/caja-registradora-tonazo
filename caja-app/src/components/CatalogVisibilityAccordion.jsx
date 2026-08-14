@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   Copy,
+  GripVertical,
 } from "lucide-react";
 import { buscarProductoPorCodigo } from "../lib/productLookup";
 import BarcodeScannerModal from "./BarcodeScannerModal";
@@ -486,6 +487,12 @@ function CategoriaAccordion({
   onForceHideCategoria,
   onForceHideSubgrupo,
   onAddVariante,
+  onDragHandleStart,
+  onDragOverCategoria,
+  onDropCategoria,
+  onDragEndCategoria,
+  isDragging,
+  isDragOver,
 }) {
   const [open, setOpen] = useState(false);
   const [openSubgrupos, setOpenSubgrupos] = useState(() => new Set());
@@ -601,7 +608,19 @@ function CategoriaAccordion({
   const totalItems = section.groups.reduce((sum, g) => sum + g.items.length, 0);
 
   return (
-    <div className="tz-vis-category">
+    <div
+      className={`tz-vis-category ${isDragging ? "tz-vis-category-dragging" : ""} ${
+        isDragOver ? "tz-vis-category-drag-over" : ""
+      }`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        onDragOverCategoria?.();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        onDropCategoria?.();
+      }}
+    >
       {editingCategoria ? (
         <div className="tz-vis-inline-edit-row">
           <input
@@ -635,6 +654,17 @@ function CategoriaAccordion({
         </div>
       ) : (
         <div className="tz-vis-header-row">
+          <span
+            className="tz-vis-drag-handle"
+            draggable
+            onDragStart={onDragHandleStart}
+            onDragEnd={onDragEndCategoria}
+            onClick={(e) => e.stopPropagation()}
+            aria-label={`Arrastrar para reordenar ${section.label}`}
+            title="Arrastrar para reordenar"
+          >
+            <GripVertical size={15} />
+          </span>
           <button
             type="button"
             className="tz-vis-category-header"
@@ -817,6 +847,7 @@ export default function CatalogVisibilityAccordion({
   onDeleteSubgrupo,
   onCreateCategoria,
   onAddVariante,
+  onReorderCategorias,
 }) {
   // Blindaje del lado del cliente: si Supabase deja pasar un delete o
   // update sin afectar ninguna fila (RLS bloqueando en silencio, o la
@@ -836,6 +867,30 @@ export default function CatalogVisibilityAccordion({
   const [newCategoriaValue, setNewCategoriaValue] = useState("");
   const [creatingSaving, setCreatingSaving] = useState(false);
   const [creatingError, setCreatingError] = useState("");
+
+  /* ---- Drag & Drop de categorías (HTML5 nativo, sin librería): el
+     handle (GripVertical) es el único elemento 'draggable' — dragover/
+     drop se escuchan en la tarjeta entera de CategoriaAccordion para
+     que soltar en cualquier parte de la categoría destino cuente. Al
+     soltar, se arma el array completo reordenado y se delega el
+     persistido (optimista + UPDATE a 'categorias.orden') a
+     reorderCategorias() en useCatalog.js. ---- */
+  const [dragIndex, setDragIndex] = useState(null);
+  const [dragOverIndex, setDragOverIndex] = useState(null);
+
+  const handleDrop = (targetIndex, currentVisibleSections) => {
+    if (dragIndex === null || dragIndex === targetIndex) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+    const reordered = [...currentVisibleSections];
+    const [moved] = reordered.splice(dragIndex, 1);
+    reordered.splice(targetIndex, 0, moved);
+    setDragIndex(null);
+    setDragOverIndex(null);
+    onReorderCategorias?.(reordered.map((s) => s.label));
+  };
 
   const handleCreateCategoria = async () => {
     const nombre = newCategoriaValue.trim();
@@ -925,7 +980,7 @@ export default function CatalogVisibilityAccordion({
         {creatingError && <p className="tz-error">{creatingError}</p>}
       </div>
 
-      {visibleSections.map((section) => (
+      {visibleSections.map((section, index) => (
         <CategoriaAccordion
           key={section.key}
           section={section}
@@ -940,6 +995,19 @@ export default function CatalogVisibilityAccordion({
           onForceHideCategoria={forceHideCategoria}
           onForceHideSubgrupo={forceHideSubgrupo}
           onAddVariante={onAddVariante}
+          onDragHandleStart={(e) => {
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setData("text/plain", String(index));
+            setDragIndex(index);
+          }}
+          onDragOverCategoria={() => setDragOverIndex(index)}
+          onDropCategoria={() => handleDrop(index, visibleSections)}
+          onDragEndCategoria={() => {
+            setDragIndex(null);
+            setDragOverIndex(null);
+          }}
+          isDragging={dragIndex === index}
+          isDragOver={dragOverIndex === index && dragIndex !== null && dragIndex !== index}
         />
       ))}
     </div>

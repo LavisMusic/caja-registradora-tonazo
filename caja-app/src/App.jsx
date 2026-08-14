@@ -31,6 +31,8 @@ import {
   DollarSign,
   Trophy,
   Percent,
+  Upload,
+  Wand2,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
@@ -40,6 +42,8 @@ import { formatSoles, formatDate } from "./utils/format";
 import { useCatalog } from "./hooks/useCatalog";
 import Styles from "./components/Styles";
 import CardDetail from "./components/CardDetail";
+import ComboIngredients from "./components/ComboIngredients";
+import ProductImage from "./components/ProductImage";
 import FiadoDetalle from "./components/FiadoDetalle";
 import { useAuth } from "./contexts/AuthContext";
 import {
@@ -466,6 +470,7 @@ export default function App() {
     loading: catalogLoading,
     error: catalogError,
     setProductVisibility,
+    reorderCategorias,
     refetch: refetchCatalog,
   } = useCatalog();
   const [restLoading, setRestLoading] = useState(true);
@@ -629,6 +634,16 @@ export default function App() {
   const [comboSearchTerm, setComboSearchTerm] = useState("");
   const [comboSaving, setComboSaving] = useState(false);
   const [comboError, setComboError] = useState("");
+
+  /* ---- Módulo de Imágenes (solo admin): 'imageManagerProduct' es el
+     producto cuyo modal está abierto (null = cerrado). Subir/Tomar
+     Foto van al bucket 'productos-imagenes' (Supabase Storage) y
+     actualizan 'productos.imagen_url'. "Mejorar con IA" queda EN
+     PAUSA a pedido (sin backend real conectado todavía) — el botón
+     vive deshabilitado en el JSX hasta que se retome. */
+  const [imageManagerProduct, setImageManagerProduct] = useState(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState("");
 
   /* ---- módulo global de "Métodos de Pago" (header) ---- */
   const [comprobantes, setComprobantes] = useState([]);
@@ -2491,6 +2506,73 @@ export default function App() {
       setComboSaving(false);
     }
   };
+
+  /* ---- Módulo de Imágenes (solo admin) ---- */
+  const openImageManager = (product) => {
+    setImageManagerProduct(product);
+    setImageUploadError("");
+  };
+
+  const closeImageManager = () => {
+    setImageManagerProduct(null);
+    setImageUploadError("");
+  };
+
+  const uploadProductImage = async (file) => {
+    if (!imageManagerProduct || !file) return;
+    setImageUploading(true);
+    setImageUploadError("");
+    try {
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const fileName = `${imageManagerProduct.id}-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage
+        .from("productos-imagenes")
+        .upload(fileName, file, { contentType: file.type || "image/jpeg", upsert: false });
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from("productos-imagenes").getPublicUrl(fileName);
+      const url = data?.publicUrl;
+      if (!url) throw new Error("No se pudo obtener la URL pública de la imagen.");
+
+      const { error: updateError } = await supabase
+        .from("productos")
+        .update({ imagen_url: url })
+        .eq("id", imageManagerProduct.id);
+      if (updateError) throw updateError;
+
+      await refetchCatalog();
+      // Refleja la nueva foto al toque en el modal ya abierto, sin
+      // esperar a que 'productsById' se reconstruya del refetch.
+      setImageManagerProduct((prev) => (prev ? { ...prev, imagenUrl: url } : prev));
+    } catch (err) {
+      console.error("Error subiendo imagen del producto:", err);
+      // "Bucket not found" es un error de CONFIGURACIÓN del backend
+      // (falta crear 'productos-imagenes' en Supabase Storage — ver
+      // migración 0035), no un bug del código: se distingue para no
+      // hacerle pensar al admin que algo se rompió, sino que falta un
+      // paso de setup puntual.
+      const rawMessage = err?.message || String(err || "");
+      const isBucketMissing = /bucket not found/i.test(rawMessage);
+      setImageUploadError(
+        isBucketMissing
+          ? "No se pudo subir la imagen: el bucket de almacenamiento \"productos-imagenes\" todavía no existe en Supabase. Créalo en Storage → New bucket (público) o corre la migración 0035_producto_imagenes.sql — ver instrucciones del equipo."
+          : rawMessage
+            ? `No se pudo subir la imagen: ${rawMessage}`
+            : "No se pudo subir la imagen. Intenta de nuevo."
+      );
+    } finally {
+      setImageUploading(false);
+    }
+  };
+
+  // "Mejorar con IA": en pausa por ahora (sin backend real conectado
+  // todavía — Photoroom queda pendiente). El botón se deja deshabilitado
+  // en el JSX para no confundir mientras la subida básica no esté 100%
+  // estable; esta función queda sin usar hasta que se retome.
+  // const handleAiEnhance = () => {
+  //   setAiEnhanceLoading(true);
+  //   setTimeout(() => setAiEnhanceLoading(false), 1800);
+  // };
 
   /* ---- guardar unidades extra: UPDATE/upsert a 'stock' ---- */
   const saveStockEdits = async () => {
@@ -5083,7 +5165,9 @@ export default function App() {
             {sections.map((s) => (
               <button
                 key={s.key}
-                className={`tz-tab ${activeTab === s.key ? "tz-tab-active" : ""}`}
+                className={`tz-tab ${activeTab === s.key ? "tz-tab-active" : ""} ${
+                  s.label.trim().toLowerCase() === "combos" ? "tz-tab-combos" : ""
+                }`}
                 onClick={() => setActiveTab(s.key)}
               >
                 {s.label}
@@ -5141,6 +5225,11 @@ export default function App() {
                             <Star size={11} strokeWidth={2.5} /> ESTRELLA
                           </div>
                         )}
+                        {/* Sin imagen acá a propósito: esta tarjeta representa
+                           VARIAS variantes con empaque/color distinto entre sí
+                           — una sola foto "representativa" confundiría más de
+                           lo que ayuda. Cada variante tiene su propia mini
+                           imagen dentro del modal "¿Qué variante?" de abajo. */}
                         <div className="tz-card-top">
                           <div className="tz-card-info">
                             <h3 className="tz-card-name">{baseName}</h3>
@@ -5203,7 +5292,7 @@ export default function App() {
                       key={item.id}
                       className={`tz-card ${checked ? "tz-card-checked" : ""} ${
                         soldOut ? "tz-card-disabled" : ""
-                      } ${isStar ? "tz-card-star" : ""}`}
+                      } ${isStar ? "tz-card-star" : ""} ${item.esCombo ? "tz-card-combo" : ""}`}
                       onClick={() => toggleProduct(item)}
                     >
                       {isStar && (
@@ -5212,110 +5301,117 @@ export default function App() {
                         </div>
                       )}
 
-                      <div className="tz-card-top">
-                        <div className="tz-card-info">
-                          {item.combo && <span className="tz-combo">{item.combo}</span>}
-                          <h3 className="tz-card-name">
-                            {item.name.split(/(\+)/).map((part, i) =>
-                              part === "+" ? (
-                                <span className="tz-name-plus" key={i}>
-                                  +
-                                </span>
-                              ) : (
-                                <span key={i}>{part}</span>
-                              )
-                            )}
-                          </h3>
-                          <CardDetail item={item} />
-                        </div>
-                        <div className="tz-card-top-actions">
-                          {(isAdmin || isCajero) && (
-                            <button
-                              type="button"
-                              className={`tz-card-discount-btn ${
-                                discounts[item.id] ? "tz-card-discount-btn-active" : ""
-                              }`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openDiscountModal(item);
-                              }}
-                              aria-label={`Descuento para ${item.name}`}
-                              title="Descuento"
-                            >
-                              <Percent size={13} />
-                            </button>
-                          )}
-                          {isAdmin && (
-                            <button
-                              type="button"
-                              className="tz-card-edit-price-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openPriceEdit(item);
-                              }}
-                              aria-label={`Editar precio de ${item.name}`}
-                              title="Editar precio"
-                            >
-                              <Pencil size={13} />
-                            </button>
-                          )}
-                          <div className={`tz-checkbox ${checked ? "tz-checkbox-on" : ""}`}>
-                            {checked && <Check size={16} strokeWidth={3} />}
-                          </div>
-                        </div>
-                      </div>
+                      <div className="tz-card-row">
+                        <ProductImage item={item} editable={isAdmin} onManage={openImageManager} />
 
-                      <div className="tz-card-bottom">
-                        <div className="tz-card-stockrow">
-                          <StockTag avail={avail} />
-                        </div>
-
-                        <div className="tz-card-priceqty">
-                          {checked && (
-                            <div
-                              className="tz-qty-stepper"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <button
-                                onClick={() => changeQty(item, -1)}
-                                disabled={qty <= 1}
-                                aria-label="Disminuir cantidad"
-                              >
-                                <Minus size={14} />
-                              </button>
-                              <span>{qty}</span>
-                              <button
-                                onClick={() => changeQty(item, 1)}
-                                disabled={qty >= avail}
-                                aria-label="Aumentar cantidad"
-                              >
-                                <Plus size={14} />
-                              </button>
+                        <div className="tz-card-main">
+                          <div className="tz-card-top">
+                            <div className="tz-card-info">
+                              {item.combo && <span className="tz-combo">{item.combo}</span>}
+                              <h3 className="tz-card-name">
+                                {item.name.split(/(\+)/).map((part, i) =>
+                                  part === "+" ? (
+                                    <span className="tz-name-plus" key={i}>
+                                      +
+                                    </span>
+                                  ) : (
+                                    <span key={i}>{part}</span>
+                                  )
+                                )}
+                              </h3>
+                              <CardDetail item={item} />
+                              <ComboIngredients item={item} productsById={productsById} />
                             </div>
-                          )}
-                          <div className="tz-price-block">
-                            <span className="tz-price-label">Precio</span>
-                            {discounts[item.id] ? (
-                              <>
-                                <span className="tz-price-original">
-                                  {formatSoles(item.price)}
-                                </span>
-                                <span className="tz-price tz-price-discounted">
-                                  {formatSoles(
-                                    checked
-                                      ? discountedUnitPrice(item) * qty
-                                      : discountedUnitPrice(item)
-                                  )}
-                                </span>
-                                <span className="tz-discount-badge">
-                                  -{discountPercentOf(item)}%
-                                </span>
-                              </>
-                            ) : (
-                              <span className="tz-price">
-                                {formatSoles(checked ? item.price * qty : item.price)}
-                              </span>
-                            )}
+                            <div className="tz-card-top-actions">
+                              {(isAdmin || isCajero) && (
+                                <button
+                                  type="button"
+                                  className={`tz-card-discount-btn ${
+                                    discounts[item.id] ? "tz-card-discount-btn-active" : ""
+                                  }`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openDiscountModal(item);
+                                  }}
+                                  aria-label={`Descuento para ${item.name}`}
+                                  title="Descuento"
+                                >
+                                  <Percent size={13} />
+                                </button>
+                              )}
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  className="tz-card-edit-price-btn"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openPriceEdit(item);
+                                  }}
+                                  aria-label={`Editar precio de ${item.name}`}
+                                  title="Editar precio"
+                                >
+                                  <Pencil size={13} />
+                                </button>
+                              )}
+                              <div className={`tz-checkbox ${checked ? "tz-checkbox-on" : ""}`}>
+                                {checked && <Check size={16} strokeWidth={3} />}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="tz-card-bottom">
+                            <div className="tz-card-stockrow">
+                              <StockTag avail={avail} />
+                            </div>
+
+                            <div className="tz-card-priceqty">
+                              {checked && (
+                                <div
+                                  className="tz-qty-stepper"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    onClick={() => changeQty(item, -1)}
+                                    disabled={qty <= 1}
+                                    aria-label="Disminuir cantidad"
+                                  >
+                                    <Minus size={14} />
+                                  </button>
+                                  <span>{qty}</span>
+                                  <button
+                                    onClick={() => changeQty(item, 1)}
+                                    disabled={qty >= avail}
+                                    aria-label="Aumentar cantidad"
+                                  >
+                                    <Plus size={14} />
+                                  </button>
+                                </div>
+                              )}
+                              <div className="tz-price-block">
+                                <span className="tz-price-label">Precio</span>
+                                {discounts[item.id] ? (
+                                  <>
+                                    <span className="tz-price-original">
+                                      {formatSoles(item.price)}
+                                    </span>
+                                    <span className="tz-price tz-price-discounted">
+                                      {formatSoles(
+                                        checked
+                                          ? discountedUnitPrice(item) * qty
+                                          : discountedUnitPrice(item)
+                                      )}
+                                    </span>
+                                    <span className="tz-discount-badge">
+                                      -{discountPercentOf(item)}%
+                                    </span>
+                                  </>
+                                ) : (
+                                  <span className="tz-price">
+                                    {formatSoles(checked ? item.price * qty : item.price)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -5369,6 +5465,7 @@ export default function App() {
                           : undefined
                       }
                     >
+                      <ProductImage item={v} editable={isAdmin} onManage={openImageManager} compact />
                       <div className="tz-variant-card-info">
                         <span
                           className="tz-variant-btn-label"
@@ -6550,6 +6647,7 @@ export default function App() {
                     onDeleteSubgrupo={eliminarSubgrupo}
                     onCreateCategoria={crearCategoria}
                     onAddVariante={agregarVariante}
+                    onReorderCategorias={reorderCategorias}
                   />
                 </>
               )}
@@ -6706,6 +6804,81 @@ export default function App() {
             >
               {comboSaving ? <Loader2 size={16} className="tz-spin" /> : <Save size={16} />}
               Crear Combo
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- MODAL: GESTIÓN DE IMAGEN (solo admin) ----------------
+         Se abre al tocar el espacio de imagen de una tarjeta. "Subir
+         Foto"/"Tomar Foto" van directo a Storage + productos.imagen_url;
+         "Mejorar con IA" todavía no llama a Photoroom, solo simula el
+         estado de carga (ver handleAiEnhance). */}
+      {imageManagerProduct && (
+        <div className="tz-modal-backdrop" onClick={closeImageManager}>
+          <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="tz-modal-close" onClick={closeImageManager} aria-label="Cerrar">
+              <X size={18} />
+            </button>
+
+            <h2>Gestión de Imagen</h2>
+            <p className="tz-stock-editor-sub">{imageManagerProduct.name}</p>
+
+            <div className="tz-image-manager-preview">
+              {imageManagerProduct.imagenUrl ? (
+                <img src={imageManagerProduct.imagenUrl} alt={imageManagerProduct.name} />
+              ) : (
+                <div className="tz-product-image-placeholder">
+                  <Package size={32} />
+                </div>
+              )}
+            </div>
+
+            {imageUploadError && <p className="tz-error">{imageUploadError}</p>}
+            {imageUploading && (
+              <p className="tz-stock-editor-sub">
+                <Loader2 size={14} className="tz-spin" /> Subiendo imagen…
+              </p>
+            )}
+
+            <div className="tz-image-manager-actions">
+              <label className="tz-camera-cancel tz-image-manager-btn">
+                <Upload size={15} /> Subir Foto
+                <input
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  disabled={imageUploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadProductImage(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              <label className="tz-camera-cancel tz-image-manager-btn">
+                <Camera size={15} /> Tomar Foto
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  hidden
+                  disabled={imageUploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) uploadProductImage(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+
+            {/* "Mejorar con IA" en pausa a pedido: sin backend real
+               conectado (Photoroom pendiente), se deja deshabilitado
+               para no confundir mientras la subida básica no esté
+               100% estable — ver handleAiEnhance comentado arriba. */}
+            <button type="button" className="tz-ai-magic-btn" disabled title="Próximamente">
+              <Wand2 size={16} /> Mejorar con IA (próximamente)
             </button>
           </div>
         </div>

@@ -86,6 +86,7 @@ function buildSectionsFromRows(categoriaRows, productoRows) {
             : p.combo_items
               ? JSON.parse(p.combo_items)
               : null,
+          imagenUrl: p.imagen_url || null,
         })),
       };
     });
@@ -251,6 +252,44 @@ export function useCatalog() {
     return { error: null };
   }
 
+  // Reordena las categorías (Drag & Drop en "Visibilidad en Catálogo
+  // Público"): 'newLabelOrder' es el array completo de nombres de
+  // categoría en el orden final deseado. Actualiza 'sections' al toque
+  // (optimista, para que el arrastre se sienta instantáneo) y persiste
+  // un 'orden' correlativo (0, 1, 2…) por categoría — mucho más chico
+  // que safeOrdenValue() (segundos desde 2024), así que una categoría
+  // nueva creada después siempre cae al final sin pisar este orden
+  // manual.
+  async function reorderCategorias(newLabelOrder) {
+    const previousSections = sections;
+    const byLabel = new Map(sections.map((s) => [s.label, s]));
+    const reordered = newLabelOrder.map((label) => byLabel.get(label)).filter(Boolean);
+    sections.forEach((s) => {
+      if (!newLabelOrder.includes(s.label)) reordered.push(s);
+    });
+    setSections(reordered);
+
+    const results = await Promise.all(
+      newLabelOrder.map((label, index) =>
+        supabase.from("categorias").update({ orden: index }).eq("nombre", label).select("id")
+      )
+    );
+
+    const failed = results.find((r) => r.error);
+    const zeroRows = results.find((r) => !r.error && (!r.data || r.data.length === 0));
+
+    if (failed || zeroRows) {
+      console.error(
+        "Error reordenando categorías:",
+        failed?.error || "0 filas afectadas (probable política RLS de UPDATE faltante en 'categorias')"
+      );
+      setSections(previousSections);
+      return { error: failed?.error || new Error("No se pudo guardar el nuevo orden.") };
+    }
+
+    return { error: null };
+  }
+
   return {
     sections,
     productsById,
@@ -264,6 +303,7 @@ export function useCatalog() {
     loading,
     error,
     setProductVisibility,
+    reorderCategorias,
     refetch: load,
   };
 }

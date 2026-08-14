@@ -6,6 +6,8 @@ import LoginModal from "../components/LoginModal";
 import ClienteFiadoView from "./ClienteFiadoView";
 import Styles from "../components/Styles";
 import CardDetail from "../components/CardDetail";
+import ComboIngredients from "../components/ComboIngredients";
+import ProductImage from "../components/ProductImage";
 import LogoEasterEgg from "../components/LogoEasterEgg";
 import { formatSoles } from "../utils/format";
 import logo from "../assets/logo.png";
@@ -27,7 +29,7 @@ function availabilityFor(product, stock) {
 // checkbox, sin selector de cantidad (ver .tz-card-readonly abajo).
 export default function CatalogPage() {
   const { session, loading: authLoading, signOut } = useAuth();
-  const { sections, stock, loading: catalogLoading, error } = useCatalog();
+  const { sections, productsById, stock, loading: catalogLoading, error } = useCatalog();
   const [activeTab, setActiveTab] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
   const [fiadoOpen, setFiadoOpen] = useState(false);
@@ -126,7 +128,9 @@ export default function CatalogPage() {
             {visibleSections.map((s) => (
               <button
                 key={s.key}
-                className={`tz-tab ${activeTab === s.key ? "tz-tab-active" : ""}`}
+                className={`tz-tab ${activeTab === s.key ? "tz-tab-active" : ""} ${
+                  s.label.trim().toLowerCase() === "combos" ? "tz-tab-combos" : ""
+                }`}
                 onClick={() => setActiveTab(s.key)}
               >
                 {s.label}
@@ -165,40 +169,46 @@ export default function CatalogPage() {
                         key={item.id}
                         className={`tz-card tz-card-readonly ${
                           soldOut ? "tz-card-disabled" : ""
-                        }`}
+                        } ${item.esCombo ? "tz-card-combo" : ""}`}
                       >
-                        <div className="tz-card-top">
-                          <div className="tz-card-info">
-                            {item.combo && <span className="tz-combo">{item.combo}</span>}
-                            <h3 className="tz-card-name">
-                              {item.name.split(/(\+)/).map((part, i) =>
-                                part === "+" ? (
-                                  <span className="tz-name-plus" key={i}>
-                                    +
-                                  </span>
-                                ) : (
-                                  <span key={i}>{part}</span>
-                                )
-                              )}
-                            </h3>
-                            <CardDetail item={item} />
-                          </div>
-                        </div>
+                        <div className="tz-card-row">
+                          <ProductImage item={item} editable={false} />
+                          <div className="tz-card-main">
+                            <div className="tz-card-top">
+                              <div className="tz-card-info">
+                                {item.combo && <span className="tz-combo">{item.combo}</span>}
+                                <h3 className="tz-card-name">
+                                  {item.name.split(/(\+)/).map((part, i) =>
+                                    part === "+" ? (
+                                      <span className="tz-name-plus" key={i}>
+                                        +
+                                      </span>
+                                    ) : (
+                                      <span key={i}>{part}</span>
+                                    )
+                                  )}
+                                </h3>
+                                <CardDetail item={item} />
+                                <ComboIngredients item={item} productsById={productsById} />
+                              </div>
+                            </div>
 
-                        <div className="tz-card-bottom">
-                          <div className="tz-card-stockrow">
-                            {soldOut ? (
-                              <span className="tz-tag tz-tag-danger">AGOTADO</span>
-                            ) : low ? (
-                              <span className="tz-tag tz-tag-warn">¡Quedan {avail}!</span>
-                            ) : (
-                              <span className="tz-tag tz-tag-ok">Disponible</span>
-                            )}
-                          </div>
-                          <div className="tz-card-priceqty">
-                            <div className="tz-price-block">
-                              <span className="tz-price-label">Precio</span>
-                              <span className="tz-price">{formatSoles(item.price)}</span>
+                            <div className="tz-card-bottom">
+                              <div className="tz-card-stockrow">
+                                {soldOut ? (
+                                  <span className="tz-tag tz-tag-danger">AGOTADO</span>
+                                ) : low ? (
+                                  <span className="tz-tag tz-tag-warn">¡Quedan {avail}!</span>
+                                ) : (
+                                  <span className="tz-tag tz-tag-ok">Disponible</span>
+                                )}
+                              </div>
+                              <div className="tz-card-priceqty">
+                                <div className="tz-price-block">
+                                  <span className="tz-price-label">Precio</span>
+                                  <span className="tz-price">{formatSoles(item.price)}</span>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </div>
