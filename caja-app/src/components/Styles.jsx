@@ -589,24 +589,103 @@ export default function Styles() {
          costado izquierdo de la tarjeta (ver .tz-card-row, que ahora
          centra verticalmente con align-items:center) — nunca un
          rectángulo ni 'width:100%' arriba (eso deformaba/achicaba mal).
-         Bordes redondeados suaves + fondo sutil para integrarse con el
-         tema oscuro/neón aunque el producto todavía no tenga foto. */
+         Base oscura pero NO negro puro (a pedido: "mezcla los colores
+         sobre una base ligeramente más clara") para que el glow de la
+         capa Aurora de abajo tenga contra qué contrastar sin quemar la
+         vista. 'position:relative' es obligatorio acá (no solo en el
+         modificador -editable): es el ancla de las 2 capas absolutas
+         de abajo. */
       .tz-product-image {
+        position: relative;
         width: 144px;
         height: 144px;
         flex-shrink: 0;
         border-radius: 14px;
         overflow: hidden;
-        background: rgba(255,255,255,0.04);
+        background: #14101f;
         border: 1px solid var(--border-soft);
+        --mouse-x: 50%;
+        --mouse-y: 50%;
       }
-      .tz-product-image-img {
+      /* Capa trasera (z-index 0): "Mesh Gradient" tipo Aurora — 3
+         manchas radiales (cyan/fucsia/amarillo) con bordes MUY
+         difuminados (varios stops de color hasta transparent, en vez
+         de un filter:blur real) que se desplazan rápido y en bucle.
+         Evité 'filter: blur()' a propósito: con muchas tarjetas
+         visibles a la vez en la grilla, un blur por tarjeta es
+         bastante más pesado para el navegador que gradientes con
+         degradé suave — el resultado visual es prácticamente el mismo.
+         Solo se anima 'background-position' (ease-in-out), así el
+         movimiento se siente fluido y nunca parpadea. */
+      .tz-product-image-particles {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        pointer-events: none;
+        background-image:
+          radial-gradient(circle at 20% 25%, rgba(43,232,255,0.65) 0%, rgba(43,232,255,0.22) 32%, transparent 62%),
+          radial-gradient(circle at 80% 30%, rgba(255,47,158,0.6) 0%, rgba(255,47,158,0.2) 34%, transparent 64%),
+          radial-gradient(circle at 50% 85%, rgba(215,255,59,0.5) 0%, rgba(215,255,59,0.16) 34%, transparent 64%);
+        background-size: 200% 200%;
+        animation: tz-aurora-drift 5s ease-in-out infinite alternate;
+      }
+      @keyframes tz-aurora-drift {
+        0% { background-position: 10% 15%; }
+        50% { background-position: 70% 55%; }
+        100% { background-position: 30% 80%; }
+      }
+      /* Capa intermedia (z-index 1): sigue al cursor vía --mouse-x/
+         --mouse-y (seteadas en JS por ProductImage.jsx en onMouseMove,
+         mutación directa del DOM — ver el componente). En reposo es
+         invisible (opacity 0); al pasar el mouse aparece un glow
+         blanco/cyan centrado en el cursor con mix-blend-mode:
+         color-dodge, que "quema"/empuja los colores del Aurora de
+         abajo como si el cursor agitara un líquido luminoso. Sin
+         'pointer-events' propios: no debe robarle el hover al padre.
+
+         CRÍTICO: la 'transition' de acá NUNCA debe tocar --mouse-x/
+         --mouse-y (ni top/left/transform si el día de mañana se migra
+         a esa técnica) — eso fue justo lo que causaba el retraso
+         perceptible al mover el mouse: cada frame el navegador
+         animaba HACIA la nueva posición en vez de pintarla al
+         instante. Solo 'opacity' anima (entrada/salida del hover); la
+         posición responde 1:1 con el cursor, cero latencia. */
+      .tz-product-image-liquid {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        pointer-events: none;
+        background-image: radial-gradient(
+          circle at var(--mouse-x) var(--mouse-y),
+          rgba(255,255,255,0.95) 0%,
+          rgba(43,232,255,0.65) 22%,
+          transparent 55%
+        );
+        mix-blend-mode: color-dodge;
+        opacity: 0;
+        transition: opacity 0.4s ease;
+      }
+      .tz-product-image:hover .tz-product-image-liquid { opacity: 1; }
+      /* Capa delantera (z-index 10): la foto del producto (PNG con
+         fondo removido por la IA, o cualquier foto normal) SIEMPRE en
+         object-contain — nunca cover, se vería recortada/estirada — con
+         un poco de padding para que no choque contra los bordes del
+         cuadro. Drop-shadow natural (ya no un halo negro pesado: el
+         fondo ahora es luz suave, no una fiesta de láseres) — solo
+         separa el producto del glow de atrás con un toque 3D. */
+      .tz-product-image-cutout {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
-        object-fit: cover;
-        display: block;
+        object-fit: contain;
+        padding: 8px;
+        z-index: 10;
+        filter: drop-shadow(0 8px 10px rgba(0,0,0,0.5));
       }
       .tz-product-image-placeholder {
+        position: relative;
+        z-index: 10;
         width: 100%;
         height: 100%;
         display: flex;
@@ -616,7 +695,6 @@ export default function Styles() {
         opacity: 0.6;
       }
       .tz-product-image-editable {
-        position: relative;
         cursor: pointer;
         transition: border-color 0.15s, box-shadow 0.15s;
       }
@@ -628,6 +706,7 @@ export default function Styles() {
         position: absolute;
         bottom: 6px;
         right: 6px;
+        z-index: 20;
         width: 24px;
         height: 24px;
         display: flex;
