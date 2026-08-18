@@ -2496,6 +2496,29 @@ export default function Styles() {
         object-fit: contain;
       }
 
+      /* ---------- MODAL: RECORTE DE FOTO (react-easy-crop) ---------- */
+      .tz-crop-modal { max-width: 420px; }
+      .tz-crop-area {
+        position: relative;
+        width: 100%;
+        height: 300px;
+        border-radius: 14px;
+        overflow: hidden;
+        background: #000;
+        margin: 4px 0 14px;
+      }
+      .tz-crop-zoom-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: var(--text-dim);
+        margin-bottom: 8px;
+      }
+      .tz-crop-zoom-slider {
+        flex: 1 1 auto;
+        accent-color: var(--cyan);
+      }
+
       /* ---------- MODAL: PAGO / ESCANEO ---------- */
       .tz-payment-modal {
         display: flex;

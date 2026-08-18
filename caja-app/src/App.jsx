@@ -61,6 +61,7 @@ import CatalogVisibilityAccordion from "./components/CatalogVisibilityAccordion"
 import ColorPicker from "./components/ColorPicker";
 import LogoEasterEgg from "./components/LogoEasterEgg";
 import TicketBoleta from "./components/TicketBoleta";
+import ImageCropModal from "./components/ImageCropModal";
 
 import logo from "./assets/logo.png";
 
@@ -653,6 +654,14 @@ export default function App() {
   const [lastUploadedImage, setLastUploadedImage] = useState(null);
   const [aiProcessing, setAiProcessing] = useState(false);
   const [aiError, setAiError] = useState("");
+
+  /* ---- Recorte 1:1 (react-easy-crop): se interpone ANTES de subir
+     cualquier foto elegida/tomada — 'cropSrc' es la data URL de la
+     foto recién elegida (null = modal de recorte cerrado). Confirmar
+     recorte sube el Blob resultante con uploadProductImage, igual que
+     ya hacía handleUploadFromInput con el archivo crudo. ---- */
+  const [cropSrc, setCropSrc] = useState(null);
+  const [cropMimeType, setCropMimeType] = useState("image/jpeg");
   const [aiPreviewBlob, setAiPreviewBlob] = useState(null);
   const [aiPreviewUrl, setAiPreviewUrl] = useState("");
 
@@ -2595,11 +2604,31 @@ export default function App() {
     }
   };
 
+  // Ya no sube directo: abre el modal de recorte 1:1 primero — el
+  // File elegido/tomado con la cámara se lee como data URL para que
+  // <Cropper> tenga algo que mostrar (no acepta un File/Blob crudo).
   const handleUploadFromInput = (file) => {
     if (!file) return;
-    setLastUploadedImage(file);
+    setCropMimeType(file.type || "image/jpeg");
+    const reader = new FileReader();
+    reader.onload = () => setCropSrc(reader.result);
+    reader.onerror = () => setImageUploadError("No se pudo leer la imagen elegida. Intenta de nuevo.");
+    reader.readAsDataURL(file);
+  };
+
+  const handleCropCancel = () => setCropSrc(null);
+
+  // El admin confirmó el recorte: el Blob que devuelve el modal YA es
+  // la foto final (recortada 1:1) — de acá en más sigue el mismo
+  // camino que un archivo elegido a mano (uploadProductImage), solo
+  // que 'forcedExt'/'forcedType' hacen falta porque un Blob generado
+  // por canvas no trae '.name'.
+  const handleCropConfirm = (blob) => {
+    setCropSrc(null);
+    setLastUploadedImage(blob);
     discardAiPreview();
-    uploadProductImage(file);
+    const ext = (cropMimeType.split("/")[1] || "jpg").toLowerCase();
+    uploadProductImage(blob, ext, cropMimeType);
   };
 
   /* ---- "Mejorar con IA": quita el fondo 100% en el navegador del
@@ -6057,66 +6086,71 @@ export default function App() {
                           </select>
                         )}
 
-                        {!checkoutFiadoAddingNew ? (
-                          <button
-                            className="tz-gasto-add-item"
-                            onClick={() => setCheckoutFiadoAddingNew(true)}
-                          >
-                            <Plus size={13} /> Nuevo cliente
-                          </button>
-                        ) : (
-                          <div className="tz-checkout-fiado-new">
-                            <input
-                              type="text"
-                              className="tz-text-input"
-                              placeholder="Nombre del nuevo cliente"
-                              value={checkoutFiadoNewName}
-                              onChange={(e) => setCheckoutFiadoNewName(e.target.value)}
-                              autoFocus
-                            />
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              className="tz-text-input"
-                              placeholder="Celular (será su usuario para iniciar sesión)"
-                              value={checkoutFiadoNewWhatsapp}
-                              onChange={(e) => setCheckoutFiadoNewWhatsapp(e.target.value)}
-                            />
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              className="tz-text-input"
-                              placeholder="PIN (4 a 10 dígitos)"
-                              value={checkoutFiadoNewPin}
-                              onChange={(e) => setCheckoutFiadoNewPin(e.target.value)}
-                            />
-                            <div className="tz-add-entry-actions">
-                              <button
-                                className="tz-camera-cancel"
-                                onClick={() => {
-                                  setCheckoutFiadoAddingNew(false);
-                                  setCheckoutFiadoNewName("");
-                                  setCheckoutFiadoNewWhatsapp("");
-                                  setCheckoutFiadoNewPin("");
-                                }}
-                              >
-                                Cancelar
-                              </button>
-                              <button
-                                className="tz-pw-submit tz-payment-save"
-                                onClick={saveCheckoutFiadoCliente}
-                                disabled={checkoutFiadoSaving}
-                              >
-                                {checkoutFiadoSaving ? (
-                                  <Loader2 size={16} className="tz-spin" />
-                                ) : (
-                                  <Save size={16} />
-                                )}
-                                Crear
-                              </button>
+                        {/* Crear cliente nuevo desde el checkout: SOLO admin — un
+                           cajero solo puede fiar a clientes que el admin ya
+                           registró de antemano, nunca dar de alta uno nuevo
+                           acá mismo. */}
+                        {isAdmin &&
+                          (!checkoutFiadoAddingNew ? (
+                            <button
+                              className="tz-gasto-add-item"
+                              onClick={() => setCheckoutFiadoAddingNew(true)}
+                            >
+                              <Plus size={13} /> Nuevo cliente
+                            </button>
+                          ) : (
+                            <div className="tz-checkout-fiado-new">
+                              <input
+                                type="text"
+                                className="tz-text-input"
+                                placeholder="Nombre del nuevo cliente"
+                                value={checkoutFiadoNewName}
+                                onChange={(e) => setCheckoutFiadoNewName(e.target.value)}
+                                autoFocus
+                              />
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                className="tz-text-input"
+                                placeholder="Celular (será su usuario para iniciar sesión)"
+                                value={checkoutFiadoNewWhatsapp}
+                                onChange={(e) => setCheckoutFiadoNewWhatsapp(e.target.value)}
+                              />
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                className="tz-text-input"
+                                placeholder="PIN (4 a 10 dígitos)"
+                                value={checkoutFiadoNewPin}
+                                onChange={(e) => setCheckoutFiadoNewPin(e.target.value)}
+                              />
+                              <div className="tz-add-entry-actions">
+                                <button
+                                  className="tz-camera-cancel"
+                                  onClick={() => {
+                                    setCheckoutFiadoAddingNew(false);
+                                    setCheckoutFiadoNewName("");
+                                    setCheckoutFiadoNewWhatsapp("");
+                                    setCheckoutFiadoNewPin("");
+                                  }}
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  className="tz-pw-submit tz-payment-save"
+                                  onClick={saveCheckoutFiadoCliente}
+                                  disabled={checkoutFiadoSaving}
+                                >
+                                  {checkoutFiadoSaving ? (
+                                    <Loader2 size={16} className="tz-spin" />
+                                  ) : (
+                                    <Save size={16} />
+                                  )}
+                                  Crear
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          ))}
 
                         {checkoutFiadoClienteId && (
                           <p className="tz-checkout-fiado-selected">
@@ -7120,6 +7154,15 @@ export default function App() {
             )}
           </div>
         </div>
+      )}
+
+      {cropSrc && (
+        <ImageCropModal
+          imageSrc={cropSrc}
+          mimeType={cropMimeType}
+          onCancel={handleCropCancel}
+          onConfirm={handleCropConfirm}
+        />
       )}
 
       {stockScannerOpen && (
