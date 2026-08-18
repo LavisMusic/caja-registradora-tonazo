@@ -62,6 +62,7 @@ import ColorPicker from "./components/ColorPicker";
 import LogoEasterEgg from "./components/LogoEasterEgg";
 import TicketBoleta from "./components/TicketBoleta";
 import ImageCropModal from "./components/ImageCropModal";
+import Combobox from "./components/Combobox";
 
 import logo from "./assets/logo.png";
 
@@ -2638,7 +2639,24 @@ export default function App() {
      en esta sesión del modal si existe, si no se descarga la ya
      guardada ('imagen_url') para poder reprocesar una foto vieja.
      Nunca pisa nada solo — deja el resultado en 'aiPreviewBlob' para
-     que el admin decida "Guardar recorte" o "Descartar". ---- */
+     que el admin decida "Guardar recorte" o "Descartar".
+
+     La librería NO llama a ningún servidor propio: al correr en el
+     navegador descarga su modelo ONNX/WASM de la CDN pública de IMG.LY
+     (staticimgly.com) recién en este momento — 'publicPath' apunta ahí
+     por defecto, con la versión resuelta vía un placeholder interno.
+     El error "'text/html' is not a valid JavaScript MIME type" pasa
+     cuando esa descarga NO devuelve el archivo esperado (típicamente
+     un bloqueador de contenido/firewall filtrando el dominio, o un
+     problema de red) — el navegador SÍ recibe una respuesta, pero es
+     una página de error HTML en vez del binario, y la librería explota
+     al intentar interpretarla como JS/WASM. Acá:
+     1) se fija 'publicPath' EXPLÍCITO (leyendo la versión real del
+        paquete instalado, no un placeholder) para eliminar cualquier
+        ambigüedad de resolución de URL, y
+     2) el catch detecta esa firma de error específica y muestra un
+        mensaje que señala la causa real, en vez de un mensaje genérico
+        o dejar que la app intente parsear HTML como JS. ---- */
   const handleAiEnhance = async () => {
     if (!imageManagerProduct) return;
     setAiProcessing(true);
@@ -2655,17 +2673,40 @@ export default function App() {
       }
 
       const { removeBackground } = await import("@imgly/background-removal");
-      const resultBlob = await removeBackground(source);
+      // Versión exacta del paquete instalado (ver package.json de este
+      // proyecto) — NO se puede leer en tiempo de ejecución porque
+      // "@imgly/background-removal" solo expone su entrypoint principal
+      // en su campo "exports" (import("…/package.json") rompe el build:
+      // "./package.json" is not exported). Si se actualiza la
+      // dependencia, actualizar este número también.
+      const BG_REMOVAL_VERSION = "1.7.0";
+      const resultBlob = await removeBackground(source, {
+        publicPath: `https://staticimgly.com/@imgly/background-removal-data/${BG_REMOVAL_VERSION}/dist/`,
+      });
 
       setAiPreviewBlob(resultBlob);
       setAiPreviewUrl(URL.createObjectURL(resultBlob));
     } catch (err) {
       console.error("Error quitando el fondo con IA:", err);
-      setAiError(
-        err.message
-          ? `No se pudo procesar la imagen: ${err.message}`
-          : "No se pudo procesar la imagen con IA."
-      );
+      const rawMsg = err?.message || String(err || "");
+      // Firma típica de "la CDN del modelo devolvió HTML en vez del
+      // binario esperado" — bloqueador de contenido, firewall, o el
+      // dominio 'staticimgly.com' filtrado en esta red.
+      const esFalloDeDescargaModelo =
+        /valid javascript mime type|unexpected token ?['"<]|failed to fetch|networkerror|load failed/i.test(
+          rawMsg
+        );
+      if (esFalloDeDescargaModelo) {
+        setAiError(
+          "Error en el servidor de IA: no se pudo descargar el modelo de recorte automático. " +
+            "Esto pasa por un bloqueador de anuncios/contenido o un firewall filtrando " +
+            "'staticimgly.com' — desactívalo para este sitio o probá desde otra red, y reintenta."
+        );
+      } else {
+        setAiError(
+          rawMsg ? `No se pudo procesar la imagen: ${rawMsg}` : "No se pudo procesar la imagen con IA."
+        );
+      }
     } finally {
       setAiProcessing(false);
     }
@@ -6480,46 +6521,29 @@ export default function App() {
                   })()}
 
                   <label className="tz-field-label">Categoría / Sección</label>
-                  <input
-                    type="text"
-                    list="tz-categoria-options"
-                    className="tz-text-input"
-                    placeholder="Elige una existente o escribe una nueva"
+                  <Combobox
                     value={newProductoCategoria}
-                    onChange={(e) => {
-                      setNewProductoCategoria(e.target.value);
+                    placeholder="Elige una existente o escribe una nueva"
+                    options={sections.map((s) => s.label)}
+                    onChange={(val) => {
+                      setNewProductoCategoria(val);
                       // Blindaje: si borran la categoría, el subgrupo
                       // queda huérfano — se limpia para no arrastrar un
                       // subgrupo de otra categoría por error.
-                      if (!e.target.value.trim()) setNewProductoSubgrupo("");
+                      if (!val.trim()) setNewProductoSubgrupo("");
                     }}
                   />
-                  <datalist id="tz-categoria-options">
-                    {sections.map((s) => (
-                      <option key={s.key} value={s.label} />
-                    ))}
-                  </datalist>
 
                   <label className="tz-field-label">Subgrupo (opcional)</label>
-                  <input
-                    type="text"
-                    list="tz-subgrupo-options"
-                    className="tz-text-input"
+                  <Combobox
+                    value={newProductoSubgrupo}
                     placeholder={
                       newProductoCategoria.trim()
                         ? "Elige uno existente o escribe uno nuevo"
                         : "Primero elige una categoría"
                     }
-                    value={newProductoSubgrupo}
-                    onChange={(e) => setNewProductoSubgrupo(e.target.value)}
                     disabled={!newProductoCategoria.trim()}
-                  />
-                  <p className="tz-field-hint">
-                    Nota: Si creas un subgrupo nuevo, inicia el nombre con un número (ej. "03
-                    Nuevo Pack") para mantener el orden en el catálogo.
-                  </p>
-                  <datalist id="tz-subgrupo-options">
-                    {(() => {
+                    options={(() => {
                       // Blindaje: SOLO se sugieren subgrupos que ya
                       // existen dentro de la categoría elegida — nunca
                       // los de otras categorías (evita, ej., colgar un
@@ -6541,9 +6565,14 @@ export default function App() {
                           if (!b.numero) return -1;
                           return a.numero.localeCompare(b.numero, undefined, { numeric: true });
                         })
-                        .map((g) => <option key={g.title} value={g.title} />);
+                        .map((g) => g.title);
                     })()}
-                  </datalist>
+                    onChange={setNewProductoSubgrupo}
+                  />
+                  <p className="tz-field-hint">
+                    Nota: Si creas un subgrupo nuevo, inicia el nombre con un número (ej. "03
+                    Nuevo Pack") para mantener el orden en el catálogo.
+                  </p>
 
                   {newProductoError && <p className="tz-error">{newProductoError}</p>}
 
@@ -6916,19 +6945,12 @@ export default function App() {
             />
 
             <label className="tz-field-label">Categoría</label>
-            <input
-              type="text"
-              list="tz-combo-categoria-options"
-              className="tz-text-input"
-              placeholder='Ej. "Combos"'
+            <Combobox
               value={comboCategoria}
-              onChange={(e) => setComboCategoria(e.target.value)}
+              placeholder='Ej. "Combos"'
+              options={sections.map((s) => s.label)}
+              onChange={setComboCategoria}
             />
-            <datalist id="tz-combo-categoria-options">
-              {sections.map((s) => (
-                <option key={s.key} value={s.label} />
-              ))}
-            </datalist>
 
             <label className="tz-field-label">Subgrupo (opcional)</label>
             <input
