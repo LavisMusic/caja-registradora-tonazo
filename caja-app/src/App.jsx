@@ -4327,36 +4327,48 @@ export default function App() {
       "Ganancia Neta Fiados (S/)",
       "Ganancia Neta Total (S/)",
       "Ticket General (S/)",
+      "Efectivo Esperado (S/)",
       "Efectivo Real (S/)",
       "Diferencia (S/)",
     ];
     const filasCierres = [
       headersCierres,
-      ...cierres.map((c) => [
-        formatDate(c.timestamp),
-        formatTime(c.timestamp),
-        c.cajeroNombre || "",
-        // 'abiertaEn' es la fotografía real del momento de apertura
-        // (desde estado_caja, migración 0029) — para cierres de antes
-        // de esa migración no hay forma de reconstruirlo, así que cae
-        // a 'turnoInicio' (el corte de estadísticas, la mejor
-        // aproximación disponible) en vez de quedar vacío.
-        formatDate(c.abiertaEn ?? c.turnoInicio),
-        formatTime(c.abiertaEn ?? c.turnoInicio),
-        c.fondoInicial != null ? Number(c.fondoInicial.toFixed(2)) : "",
-        Number(c.recaudadoTotal.toFixed(2)),
-        c.ingresoEfectivo != null ? Number(c.ingresoEfectivo.toFixed(2)) : "",
-        c.ingresoDigital != null ? Number(c.ingresoDigital.toFixed(2)) : "",
-        c.productosVendidos,
-        c.ventasRegistradas,
-        Number(c.gastosTotal.toFixed(2)),
-        c.gananciaVentas != null ? Number(c.gananciaVentas.toFixed(2)) : "",
-        c.gananciaFiados != null ? Number(c.gananciaFiados.toFixed(2)) : "",
-        Number(c.gananciaNeta.toFixed(2)),
-        Number(c.ticketGeneral.toFixed(2)),
-        c.efectivoReal != null ? Number(c.efectivoReal.toFixed(2)) : "",
-        c.diferencia != null ? Number(c.diferencia.toFixed(2)) : "",
-      ]),
+      ...cierres.map((c) => {
+        // Efectivo Esperado no se guarda como columna propia en
+        // 'cierres_caja' — se reconstruye algebraicamente de lo que sí
+        // se guarda: diferencia = efectivoReal - esperado, así que
+        // esperado = efectivoReal - diferencia. Ambos ya reflejan la
+        // fórmula corregida (Fondo Inicial + Ingreso Efectivo - Gastos
+        // Efectivo) para cualquier cierre hecho después de este fix.
+        const efectivoEsperado =
+          c.efectivoReal != null && c.diferencia != null ? c.efectivoReal - c.diferencia : null;
+        return [
+          formatDate(c.timestamp),
+          formatTime(c.timestamp),
+          c.cajeroNombre || "",
+          // 'abiertaEn' es la fotografía real del momento de apertura
+          // (desde estado_caja, migración 0029) — para cierres de antes
+          // de esa migración no hay forma de reconstruirlo, así que cae
+          // a 'turnoInicio' (el corte de estadísticas, la mejor
+          // aproximación disponible) en vez de quedar vacío.
+          formatDate(c.abiertaEn ?? c.turnoInicio),
+          formatTime(c.abiertaEn ?? c.turnoInicio),
+          c.fondoInicial != null ? Number(c.fondoInicial.toFixed(2)) : "",
+          Number(c.recaudadoTotal.toFixed(2)),
+          c.ingresoEfectivo != null ? Number(c.ingresoEfectivo.toFixed(2)) : "",
+          c.ingresoDigital != null ? Number(c.ingresoDigital.toFixed(2)) : "",
+          c.productosVendidos,
+          c.ventasRegistradas,
+          Number(c.gastosTotal.toFixed(2)),
+          c.gananciaVentas != null ? Number(c.gananciaVentas.toFixed(2)) : "",
+          c.gananciaFiados != null ? Number(c.gananciaFiados.toFixed(2)) : "",
+          Number(c.gananciaNeta.toFixed(2)),
+          Number(c.ticketGeneral.toFixed(2)),
+          efectivoEsperado != null ? Number(efectivoEsperado.toFixed(2)) : "",
+          c.efectivoReal != null ? Number(c.efectivoReal.toFixed(2)) : "",
+          c.diferencia != null ? Number(c.diferencia.toFixed(2)) : "",
+        ];
+      }),
     ];
 
     const mensual = {};
@@ -4460,16 +4472,25 @@ export default function App() {
     const abiertaEn = Date.now();
     const nombreQuienAbre = cajeroNombre || (isAdmin ? "Admin" : "Cajero");
 
-    const { error } = await supabase
-      .from("estado_caja")
-      .update({
+    // upsert, NO update: un .update().eq('id',1) sobre una fila que no
+    // existe (migración 0028 nunca corrida, o el seed 'insert ... on
+    // conflict do nothing' no se llegó a ejecutar) actualiza CERO filas
+    // y Supabase no lo reporta como error — la apertura "funcionaba"
+    // en la sesión del admin (estado local optimista) pero jamás
+    // quedaba escrita en Supabase, así que cualquier recarga volvía a
+    // pedir la apertura. upsert garantiza que la fila id=1 siempre
+    // termine existiendo, exista antes o no.
+    const { error } = await supabase.from("estado_caja").upsert(
+      {
+        id: 1,
         estado: "abierta",
         fondo_inicial: fondo,
         abierta_por: nombreQuienAbre,
         abierta_en: abiertaEn,
         cerrada_en: null,
-      })
-      .eq("id", 1);
+      },
+      { onConflict: "id" }
+    );
 
     setAperturaSaving(false);
 
@@ -4524,8 +4545,13 @@ export default function App() {
       ganancia_fiados: todayStats.gananciaFiados,
       ticket_general: todayStats.avgTicket,
       efectivo_real: tieneArqueo ? efectivoRealNum : null,
+      // Efectivo Esperado = Fondo Inicial + Ingresos (Efectivo) -
+      // Gastos (Efectivo) — antes faltaba sumar el fondo inicial, así
+      // que el arqueo siempre mostraba un "Faltante" del tamaño exacto
+      // del fondo con el que se abrió la caja.
       diferencia: tieneArqueo
-        ? efectivoRealNum - (todayStats.ingresoEfectivo - todayStats.gastosEfectivoHoy)
+        ? efectivoRealNum -
+          ((estadoCaja?.fondoInicial ?? 0) + todayStats.ingresoEfectivo - todayStats.gastosEfectivoHoy)
         : null,
       ingreso_efectivo: todayStats.ingresoEfectivo,
       ingreso_digital: todayStats.ingresoDigital,
@@ -4587,10 +4613,12 @@ export default function App() {
     // queda bloqueado hasta la próxima apertura. No se revierte el
     // cierre ya guardado si esto falla — mismo criterio que el resto
     // de la app (el dato importante ya quedó registrado).
-    const { error: estadoCajaCloseError } = await supabase
-      .from("estado_caja")
-      .update({ estado: "cerrada", cerrada_en: timestamp })
-      .eq("id", 1);
+    // Mismo motivo que en abrirCaja: upsert en vez de update para que
+    // nunca sea un no-op silencioso si la fila id=1 no existía.
+    const { error: estadoCajaCloseError } = await supabase.from("estado_caja").upsert(
+      { id: 1, estado: "cerrada", cerrada_en: timestamp },
+      { onConflict: "id" }
+    );
 
     if (estadoCajaCloseError) {
       console.error("Error al cerrar estado_caja:", estadoCajaCloseError);
@@ -4600,6 +4628,24 @@ export default function App() {
     } else {
       setEstadoCaja((prev) => (prev ? { ...prev, estado: "cerrada", cerradaEn: timestamp } : prev));
     }
+  };
+
+  /* ---- "Cierre Ciego" (solo cajero): a diferencia del flujo del
+     admin (arqueo opcional, dos pasos con confirmación en pantalla),
+     acá el efectivo contado es OBLIGATORIO — es el único dato que el
+     cajero aporta, todo el resto del desglose queda oculto para él —
+     y el "¿estás seguro?" es un confirm() nativo en vez de un segundo
+     paso en el modal, para mantenerlo en una sola pantalla bien
+     simple como se pidió. ---- */
+  const handleCierreCiego = () => {
+    const num = parseFloat(efectivoReal);
+    if (efectivoReal === "" || isNaN(num) || num < 0) {
+      setCierreError("Ingresa el efectivo físico que contaste en caja.");
+      return;
+    }
+    setCierreError("");
+    if (!window.confirm("¿Cerrar turno? Esta acción no se puede deshacer.")) return;
+    ejecutarCierre();
   };
 
   /* ---- estadísticas globales por método de pago (para el modal de
@@ -4878,13 +4924,17 @@ export default function App() {
   };
 
   /* ---- Arqueo de Caja: diferencia entre lo que el admin cuenta a mano
-     y lo que el sistema espera tener FÍSICAMENTE en el cajón. Usa
-     ÚNICAMENTE ingresoEfectivo (nunca el digital — ese dinero va al
-     banco, no al cajón) menos los Gastos pagados desde esa misma caja.
-     No es lo mismo que la Ganancia Neta, que además descuenta el costo
-     de los productos vendidos. ---- */
+     y lo que el sistema espera tener FÍSICAMENTE en el cajón. Efectivo
+     Esperado = Fondo Inicial (con el que se abrió la caja) + Ingresos
+     Efectivo (ÚNICAMENTE efectivo — nunca el digital, ese dinero va al
+     banco, no al cajón) - Gastos pagados desde esa misma caja. Sin el
+     fondo inicial, el arqueo mostraba un "Faltante" fantasma del
+     mismo tamaño que el fondo con el que se abrió el turno. No es lo
+     mismo que la Ganancia Neta, que además descuenta el costo de los
+     productos vendidos. ---- */
   const efectivoRealNum = parseFloat(efectivoReal);
-  const cajaFisicaEsperada = todayStats.ingresoEfectivo - todayStats.gastosEfectivoHoy;
+  const cajaFisicaEsperada =
+    (estadoCaja?.fondoInicial ?? 0) + todayStats.ingresoEfectivo - todayStats.gastosEfectivoHoy;
   const arqueoDiferencia =
     efectivoReal !== "" && !isNaN(efectivoRealNum) ? efectivoRealNum - cajaFisicaEsperada : null;
   const arqueoInfo =
@@ -8730,21 +8780,25 @@ export default function App() {
                 <Receipt size={17} /> Cierre de Caja
               </h2>
 
-              {/* ---- recibo del turno actual (aún no cerrado) ---- */}
-              <div className="tz-receipt">
-                <div className="tz-receipt-header">
-                  <span className="tz-receipt-title">Turno actual</span>
-                  <span className="tz-receipt-date">
-                    Desde {formatDate(turnoCutoff)} · {formatTime(turnoCutoff)}
-                  </span>
-                </div>
-                <div className="tz-receipt-row">
-                  <span>Cajero</span>
-                  <strong>{currentUserLabel}</strong>
-                </div>
-                <div className="tz-receipt-divider" />
-                {isAdmin ? (
-                  <>
+              {isAdmin ? (
+                <>
+                  {/* ---- recibo completo del turno actual (aún no cerrado) ---- */}
+                  <div className="tz-receipt">
+                    <div className="tz-receipt-header">
+                      <span className="tz-receipt-title">Turno actual</span>
+                      <span className="tz-receipt-date">
+                        Desde {formatDate(turnoCutoff)} · {formatTime(turnoCutoff)}
+                      </span>
+                    </div>
+                    <div className="tz-receipt-row">
+                      <span>Cajero</span>
+                      <strong>{currentUserLabel}</strong>
+                    </div>
+                    <div className="tz-receipt-row">
+                      <span>Fondo Inicial</span>
+                      <strong>{formatSoles(estadoCaja?.fondoInicial ?? 0)}</strong>
+                    </div>
+                    <div className="tz-receipt-divider" />
                     {/* ---- valor comercial vs flujo de caja: separado para
                        que no parezca que una venta fiada "no se registró"
                        solo porque el dinero todavía no entró físicamente ---- */}
@@ -8800,185 +8854,211 @@ export default function App() {
                       <span>GANANCIA NETA DEL TURNO</span>
                       <strong>{formatSoles(todayStats.gananciaNetaTurno)}</strong>
                     </div>
-                  </>
-                ) : (
-                  // Cajero: solo lo operativo, nada de márgenes/ganancias.
-                  <>
-                    <div className="tz-receipt-row">
-                      <span>Total Vendido</span>
-                      <strong>{formatSoles(todayStats.total)}</strong>
-                    </div>
-                    <div className="tz-receipt-row">
-                      <span>Ingresos (Efectivo)</span>
-                      <strong>{formatSoles(todayStats.ingresoEfectivo)}</strong>
-                    </div>
-                    <div className="tz-receipt-row">
-                      <span>Ingresos (Digitales)</span>
-                      <strong>{formatSoles(todayStats.ingresoDigital)}</strong>
-                    </div>
-                    <div className="tz-receipt-row">
-                      <span>Productos vendidos</span>
-                      <strong>{todayStats.items}</strong>
-                    </div>
-                    <div className="tz-receipt-row">
-                      <span>Ventas registradas</span>
-                      <strong>{todayStats.purchaseCount}</strong>
-                    </div>
-                    <div className="tz-receipt-row">
-                      <span>Gastos (Efectivo)</span>
-                      <strong>{formatSoles(todayStats.gastosEfectivoHoy)}</strong>
-                    </div>
-                    <div className="tz-receipt-row">
-                      <span>Gastos (Digitales)</span>
-                      <strong>{formatSoles(todayStats.gastosDigitalHoy)}</strong>
-                    </div>
-                  </>
-                )}
-              </div>
+                  </div>
 
-              {!confirmCierreOpen ? (
-                <button
-                  className="tz-scan-btn tz-add-entry-toggle"
-                  onClick={() => setConfirmCierreOpen(true)}
-                >
-                  <Receipt size={16} /> Cerrar turno
-                </button>
-              ) : (
-                <div className="tz-add-entry">
-                  <p className="tz-cierre-warning">
-                    <AlertTriangle size={14} /> Esto guarda una instantánea de estos totales y
-                    reinicia los contadores de "Hoy" para el nuevo turno. No se puede deshacer.
-                  </p>
-
-                  <label className="tz-field-label">Efectivo físico en caja (S/)</label>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className="tz-amount-input"
-                    placeholder="0.00"
-                    value={efectivoReal}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "" || /^\d*\.?\d{0,2}$/.test(v)) setEfectivoReal(v);
-                    }}
-                  />
-                  {arqueoInfo && <p className={arqueoInfo.clase}>{arqueoInfo.texto}</p>}
-
-                  {cierreError && <p className="tz-error">{cierreError}</p>}
-                  <div className="tz-add-entry-actions">
+                  {!confirmCierreOpen ? (
                     <button
-                      className="tz-camera-cancel"
-                      onClick={() => {
-                        setConfirmCierreOpen(false);
-                        setEfectivoReal("");
-                      }}
+                      className="tz-scan-btn tz-add-entry-toggle"
+                      onClick={() => setConfirmCierreOpen(true)}
                     >
-                      Cancelar
+                      <Receipt size={16} /> Cerrar turno
                     </button>
+                  ) : (
+                    <div className="tz-add-entry">
+                      <p className="tz-cierre-warning">
+                        <AlertTriangle size={14} /> Esto guarda una instantánea de estos totales y
+                        reinicia los contadores de "Hoy" para el nuevo turno. No se puede deshacer.
+                      </p>
+
+                      <label className="tz-field-label">Efectivo físico en caja (S/)</label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="tz-amount-input"
+                        placeholder="0.00"
+                        value={efectivoReal}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "" || /^\d*\.?\d{0,2}$/.test(v)) setEfectivoReal(v);
+                        }}
+                      />
+                      {arqueoInfo && <p className={arqueoInfo.clase}>{arqueoInfo.texto}</p>}
+
+                      {cierreError && <p className="tz-error">{cierreError}</p>}
+                      <div className="tz-add-entry-actions">
+                        <button
+                          className="tz-camera-cancel"
+                          onClick={() => {
+                            setConfirmCierreOpen(false);
+                            setEfectivoReal("");
+                          }}
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          className="tz-pw-submit tz-payment-save"
+                          onClick={ejecutarCierre}
+                          disabled={cierreSaving}
+                        >
+                          {cierreSaving ? (
+                            <Loader2 size={16} className="tz-spin" />
+                          ) : (
+                            <Save size={16} />
+                          )}
+                          Sí, cerrar turno
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ---- historial de cierres pasados, estilo ticket neón —
+                     solo admin: son cifras financieras (recaudado, gastos,
+                     ganancia neta, arqueo), lo mismo que el resto del
+                     desglose de acá arriba. ---- */}
+                  {cierres.length > 0 && (
+                    <div className="tz-method-history">
+                      <span className="tz-method-history-label">Historial de cierres</span>
+                      <div className="tz-export-buttons">
+                        <button
+                          type="button"
+                          className="tz-csv-btn"
+                          onClick={exportHistorialCierresXLSX}
+                        >
+                          <Download size={13} /> 📥 Exportar Historial de Cierres
+                        </button>
+                      </div>
+                      <div className="tz-export-buttons">
+                        <button
+                          type="button"
+                          className="tz-csv-btn"
+                          onClick={enviarResumenCierrePorWhatsApp}
+                        >
+                          <MessageCircle size={13} /> 📲 Enviar Resumen a WhatsApp
+                        </button>
+                      </div>
+                      <div className="tz-cierre-list">
+                        {cierres.map((c) => (
+                          <div key={c.id} className="tz-receipt tz-receipt-compact">
+                            <div className="tz-receipt-header">
+                              <span className="tz-receipt-title">Cierre</span>
+                              <span className="tz-receipt-date">
+                                {formatDate(c.timestamp)} · {formatTime(c.timestamp)}
+                              </span>
+                            </div>
+                            <div className="tz-receipt-divider" />
+                            {c.fondoInicial != null && (
+                              <div className="tz-receipt-row">
+                                <span>Fondo Inicial</span>
+                                <strong>{formatSoles(c.fondoInicial)}</strong>
+                              </div>
+                            )}
+                            <div className="tz-receipt-row">
+                              <span>Recaudado</span>
+                              <strong>{formatSoles(c.recaudadoTotal)}</strong>
+                            </div>
+                            <div className="tz-receipt-row">
+                              <span>Ventas</span>
+                              <strong>{c.ventasRegistradas}</strong>
+                            </div>
+                            <div className="tz-receipt-row">
+                              <span>Gastos</span>
+                              <strong>{formatSoles(c.gastosTotal)}</strong>
+                            </div>
+                            <div className="tz-receipt-divider" />
+                            {c.gananciaVentas != null ? (
+                              <>
+                                <div className="tz-receipt-row">
+                                  <span>Ganancia Neta (Ventas)</span>
+                                  <strong>{formatSoles(c.gananciaVentas)}</strong>
+                                </div>
+                                <div className="tz-receipt-row tz-receipt-total">
+                                  <span>Ganancia Neta (Fiados)</span>
+                                  <strong>{formatSoles(c.gananciaFiados)}</strong>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="tz-receipt-row tz-receipt-total">
+                                <span>Ganancia Neta</span>
+                                <strong>{formatSoles(c.gananciaNeta)}</strong>
+                              </div>
+                            )}
+                            {c.efectivoReal != null && (
+                              <div className="tz-receipt-row">
+                                <span>Arqueo</span>
+                                <strong
+                                  className={
+                                    Math.abs(c.diferencia) <= 0.009
+                                      ? "tz-arqueo-ok"
+                                      : c.diferencia < 0
+                                      ? "tz-arqueo-faltante"
+                                      : "tz-arqueo-sobrante"
+                                  }
+                                >
+                                  {Math.abs(c.diferencia) <= 0.009
+                                    ? "Cuadrada"
+                                    : `${c.diferencia < 0 ? "Faltante" : "Sobrante"} ${formatSoles(
+                                        Math.abs(c.diferencia)
+                                      )}`}
+                                </strong>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* ---- "Cierre Ciego" (cajero): una sola pantalla, sin
+                   ningún desglose de ventas/ingresos/gastos/totales — el
+                   cajero solo aporta el efectivo físico que contó, el
+                   admin reconcilia todo lo demás después con el detalle
+                   completo de su propia vista. ---- */
+                <>
+                  <div className="tz-receipt">
+                    <div className="tz-receipt-header">
+                      <span className="tz-receipt-title">Turno actual</span>
+                      <span className="tz-receipt-date">
+                        Desde {formatDate(turnoCutoff)} · {formatTime(turnoCutoff)}
+                      </span>
+                    </div>
+                    <div className="tz-receipt-row">
+                      <span>Cajero</span>
+                      <strong>{currentUserLabel}</strong>
+                    </div>
+                  </div>
+
+                  <div className="tz-add-entry">
+                    <p className="tz-cierre-warning">
+                      <AlertTriangle size={14} /> Ingresa el monto total de efectivo físico en
+                      caja (incluyendo tu fondo inicial).
+                    </p>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className="tz-amount-input"
+                      placeholder="0.00"
+                      value={efectivoReal}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "" || /^\d*\.?\d{0,2}$/.test(v)) setEfectivoReal(v);
+                      }}
+                    />
+                    {cierreError && <p className="tz-error">{cierreError}</p>}
                     <button
-                      className="tz-pw-submit tz-payment-save"
-                      onClick={ejecutarCierre}
+                      className="tz-cierre-ciego-btn"
+                      onClick={handleCierreCiego}
                       disabled={cierreSaving}
                     >
                       {cierreSaving ? (
                         <Loader2 size={16} className="tz-spin" />
                       ) : (
-                        <Save size={16} />
+                        <Receipt size={16} />
                       )}
-                      Sí, cerrar turno
+                      Cerrar Turno
                     </button>
                   </div>
-                </div>
-              )}
-
-              {/* ---- historial de cierres pasados, estilo ticket neón ---- */}
-              {cierres.length > 0 && (
-                <div className="tz-method-history">
-                  <span className="tz-method-history-label">Historial de cierres</span>
-                  {isAdmin && (
-                    <div className="tz-export-buttons">
-                      <button
-                        type="button"
-                        className="tz-csv-btn"
-                        onClick={exportHistorialCierresXLSX}
-                      >
-                        <Download size={13} /> 📥 Exportar Historial de Cierres
-                      </button>
-                    </div>
-                  )}
-                  <div className="tz-export-buttons">
-                    <button
-                      type="button"
-                      className="tz-csv-btn"
-                      onClick={enviarResumenCierrePorWhatsApp}
-                    >
-                      <MessageCircle size={13} /> 📲 Enviar Resumen a WhatsApp
-                    </button>
-                  </div>
-                  <div className="tz-cierre-list">
-                    {cierres.map((c) => (
-                      <div key={c.id} className="tz-receipt tz-receipt-compact">
-                        <div className="tz-receipt-header">
-                          <span className="tz-receipt-title">Cierre</span>
-                          <span className="tz-receipt-date">
-                            {formatDate(c.timestamp)} · {formatTime(c.timestamp)}
-                          </span>
-                        </div>
-                        <div className="tz-receipt-divider" />
-                        <div className="tz-receipt-row">
-                          <span>Recaudado</span>
-                          <strong>{formatSoles(c.recaudadoTotal)}</strong>
-                        </div>
-                        <div className="tz-receipt-row">
-                          <span>Ventas</span>
-                          <strong>{c.ventasRegistradas}</strong>
-                        </div>
-                        <div className="tz-receipt-row">
-                          <span>Gastos</span>
-                          <strong>{formatSoles(c.gastosTotal)}</strong>
-                        </div>
-                        <div className="tz-receipt-divider" />
-                        {c.gananciaVentas != null ? (
-                          <>
-                            <div className="tz-receipt-row">
-                              <span>Ganancia Neta (Ventas)</span>
-                              <strong>{formatSoles(c.gananciaVentas)}</strong>
-                            </div>
-                            <div className="tz-receipt-row tz-receipt-total">
-                              <span>Ganancia Neta (Fiados)</span>
-                              <strong>{formatSoles(c.gananciaFiados)}</strong>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="tz-receipt-row tz-receipt-total">
-                            <span>Ganancia Neta</span>
-                            <strong>{formatSoles(c.gananciaNeta)}</strong>
-                          </div>
-                        )}
-                        {c.efectivoReal != null && (
-                          <div className="tz-receipt-row">
-                            <span>Arqueo</span>
-                            <strong
-                              className={
-                                Math.abs(c.diferencia) <= 0.009
-                                  ? "tz-arqueo-ok"
-                                  : c.diferencia < 0
-                                  ? "tz-arqueo-faltante"
-                                  : "tz-arqueo-sobrante"
-                              }
-                            >
-                              {Math.abs(c.diferencia) <= 0.009
-                                ? "Cuadrada"
-                                : `${c.diferencia < 0 ? "Faltante" : "Sobrante"} ${formatSoles(
-                                    Math.abs(c.diferencia)
-                                  )}`}
-                            </strong>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                </>
               )}
             </div>
           </div>

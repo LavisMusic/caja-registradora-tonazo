@@ -1882,6 +1882,30 @@ export default function Styles() {
         box-shadow: 0 0 20px rgba(43,232,255,0.35);
       }
 
+      /* "Cierre Ciego" (cajero): mismo molde que .tz-pw-submit pero en
+         rojo — es una acción irreversible, tiene que leerse como tal. */
+      .tz-cierre-ciego-btn {
+        margin-top: 12px;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: var(--danger);
+        color: #1a0208;
+        border: none;
+        border-radius: 10px;
+        padding: 13px;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 13px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+        box-shadow: 0 0 20px rgba(255,84,112,0.4);
+      }
+      .tz-cierre-ciego-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
       .tz-stock-editor h2 {
         margin: 0 0 4px;
         font-family: 'Orbitron', sans-serif;
