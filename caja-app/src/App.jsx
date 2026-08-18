@@ -31,11 +31,10 @@ import {
   DollarSign,
   Trophy,
   Percent,
-  Upload,
-  Wand2,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
+import imageCompression from "browser-image-compression";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import { formatSoles, formatDate } from "./utils/format";
@@ -61,7 +60,7 @@ import CatalogVisibilityAccordion from "./components/CatalogVisibilityAccordion"
 import ColorPicker from "./components/ColorPicker";
 import LogoEasterEgg from "./components/LogoEasterEgg";
 import TicketBoleta from "./components/TicketBoleta";
-import ImageCropModal from "./components/ImageCropModal";
+import ImageManager from "./components/ImageManager";
 import Combobox from "./components/Combobox";
 
 import logo from "./assets/logo.png";
@@ -182,6 +181,31 @@ function buildSaleWhatsappMessage(sale) {
   return `${greeting}aquí tienes el resumen de tu compra:\n\n${lines.join(
     "\n"
   )}\n\nTotal: ${formatSoles(sale.total)}\n¡Gracias por tu compra!`;
+}
+
+/* Comprime CUALQUIER foto de comprobante (Yape/Plin/Otros del
+   checkout, y el escaneo de un comprobante digital al cobrar un
+   Fiado) antes de subirla a Storage — las cámaras de celular actuales
+   entregan fotos de varios MB cada una, y a este ritmo el bucket se
+   satura rápido. maxWidthOrHeight 1280 + initialQuality 0.8 es un
+   punto medio deliberado: se sigue leyendo el número de operación y
+   el monto a simple vista (que es TODO lo que se necesita de esta
+   foto), pero el archivo final queda muchísimo más liviano. Si la
+   compresión en sí falla por cualquier motivo (formato raro, memoria,
+   etc.), se sube la foto ORIGINAL sin comprimir en vez de bloquear el
+   registro del pago — perder algo de espacio en Storage es siempre
+   preferible a perder un comprobante. */
+async function compressReceiptImage(blob) {
+  try {
+    return await imageCompression(blob, {
+      maxWidthOrHeight: 1280,
+      initialQuality: 0.8,
+      useWebWorker: true,
+    });
+  } catch (err) {
+    console.error("No se pudo comprimir la foto del comprobante, se sube sin comprimir:", err);
+    return blob;
+  }
 }
 
 /* Perú: los celulares se anotan localmente con 9 dígitos empezando en
@@ -611,6 +635,14 @@ export default function App() {
   const [newProductoCostoTotal, setNewProductoCostoTotal] = useState("");
   const [newProductoSaving, setNewProductoSaving] = useState(false);
   const [newProductoError, setNewProductoError] = useState("");
+  // Foto elegida/recortada/mejorada con <ImageManager> ANTES de que el
+  // producto exista — se queda acá, en memoria, hasta que
+  // saveNewProducto cree el producto y recién ahí la suba con el id
+  // real (ver handleNewProductoImageConfirm / uploadImageForProduct).
+  const [newProductoImagenBlob, setNewProductoImagenBlob] = useState(null);
+  const [newProductoImagenExt, setNewProductoImagenExt] = useState("jpg");
+  const [newProductoImagenMime, setNewProductoImagenMime] = useState("image/jpeg");
+  const [newProductoImagenPreviewUrl, setNewProductoImagenPreviewUrl] = useState(null);
 
   /* ---- "+ Nueva variedad" (Agregar Unidades al Stock): alta rápida
      de una variante del mismo producto base sin salir de la pantalla
@@ -638,33 +670,19 @@ export default function App() {
   const [comboError, setComboError] = useState("");
 
   /* ---- Módulo de Imágenes (solo admin): 'imageManagerProduct' es el
-     producto cuyo modal está abierto (null = cerrado). Subir/Tomar
-     Foto van al bucket 'productos-imagenes' (Supabase Storage) y
-     actualizan 'productos.imagen_url'.
-
-     "Mejorar con IA" (@imgly/background-removal, 100% en el navegador
-     del admin — no hay backend propio de por medio) quita el fondo de
-     'lastUploadedImage' (el File/Blob de la última foto elegida en
-     ESTA sesión del modal, o si no hay uno, se descarga 'imagen_url')
-     y deja el resultado en 'aiPreviewBlob' como una previsualización
-     PENDIENTE — recién se sube/reemplaza en Storage cuando el admin
-     confirma con "Guardar recorte", nunca antes. ---- */
+     producto EXISTENTE cuyo modal está abierto (null = cerrado). Todo
+     el flujo de Subir/Tomar Foto, Recortar (manual, bajo demanda) y
+     Mejorar con IA vive en el componente reutilizable
+     <ImageManager> (components/ImageManager.jsx) — acá solo queda el
+     handler que decide QUÉ HACER cuando el componente confirma una
+     imagen final: para un producto ya existente, subirla YA MISMO a
+     Storage y actualizar 'productos.imagen_url' (ver
+     handleExistingProductImageConfirm). El mismo componente se reusa,
+     con un handler DISTINTO, en el formulario de alta rápida — ver
+     'newProductoImagen*' más abajo. ---- */
   const [imageManagerProduct, setImageManagerProduct] = useState(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadError, setImageUploadError] = useState("");
-  const [lastUploadedImage, setLastUploadedImage] = useState(null);
-  const [aiProcessing, setAiProcessing] = useState(false);
-  const [aiError, setAiError] = useState("");
-
-  /* ---- Recorte 1:1 (react-easy-crop): se interpone ANTES de subir
-     cualquier foto elegida/tomada — 'cropSrc' es la data URL de la
-     foto recién elegida (null = modal de recorte cerrado). Confirmar
-     recorte sube el Blob resultante con uploadProductImage, igual que
-     ya hacía handleUploadFromInput con el archivo crudo. ---- */
-  const [cropSrc, setCropSrc] = useState(null);
-  const [cropMimeType, setCropMimeType] = useState("image/jpeg");
-  const [aiPreviewBlob, setAiPreviewBlob] = useState(null);
-  const [aiPreviewUrl, setAiPreviewUrl] = useState("");
 
   /* ---- módulo global de "Métodos de Pago" (header) ---- */
   const [comprobantes, setComprobantes] = useState([]);
@@ -1877,6 +1895,22 @@ export default function App() {
     setNewProductoCategoria("");
     setNewProductoSubgrupo("");
     setNewProductoError("");
+    setNewProductoImagenBlob(null);
+    setNewProductoImagenExt("jpg");
+    setNewProductoImagenMime("image/jpeg");
+    setNewProductoImagenPreviewUrl(null);
+  };
+
+  // Handler para <ImageManager> cuando se abre desde el formulario de
+  // alta rápida (producto TODAVÍA sin id): a diferencia del producto
+  // existente, acá NO se sube nada a Supabase todavía — solo se guarda
+  // el Blob en estado hasta que saveNewProducto cree el producto y
+  // pueda subirla con el id real.
+  const handleNewProductoImageConfirm = async (blob, ext, mimeType) => {
+    setNewProductoImagenBlob(blob);
+    setNewProductoImagenExt(ext);
+    setNewProductoImagenMime(mimeType);
+    setNewProductoImagenPreviewUrl(URL.createObjectURL(blob));
   };
 
   const resetNuevaVariedadForm = () => {
@@ -2012,7 +2046,7 @@ export default function App() {
     setNewProductoError("");
 
     try {
-      await crearProducto({
+      const { producto } = await crearProducto({
         codigoBarras: newProductoCodigo,
         nombreBase,
         variante: newProductoVariante,
@@ -2025,16 +2059,42 @@ export default function App() {
         unidadesIniciales: unidadesNum,
         costoTotalInicial: costoTotalNum,
       });
-      await refetchCatalog();
+
       const nombreCreado = composeProductoNombre({
         nombreBase,
         variante: newProductoVariante,
         presentacion: newProductoPresentacion,
       });
+
+      // Recién ACÁ existe un id real al que subirle la foto que se
+      // haya elegido/recortado/mejorado con <ImageManager> mientras se
+      // llenaba el formulario (quedó en espera en
+      // 'newProductoImagenBlob', nunca tocó Supabase hasta este
+      // momento). Si esto falla, el producto YA quedó creado
+      // correctamente — se avisa aparte en vez de hacer fallar todo
+      // el alta por un problema de la foto.
+      let fotoWarning = "";
+      if (newProductoImagenBlob) {
+        try {
+          await uploadImageForProduct(
+            producto.id,
+            newProductoImagenBlob,
+            newProductoImagenExt,
+            newProductoImagenMime
+          );
+        } catch (imgErr) {
+          console.error("Error subiendo la foto del producto nuevo:", imgErr);
+          fotoWarning = " (el producto se creó, pero la foto no se pudo subir — agrégala después desde el catálogo)";
+        }
+      }
+
+      await refetchCatalog();
       resetNewProductoForm();
       setScannedStockKey(null);
       setStockSearchTerm(nombreCreado);
-      setStockSavedMsg(`"${nombreCreado}" creado con ${unidadesNum} unidades en stock.`);
+      setStockSavedMsg(
+        `"${nombreCreado}" creado con ${unidadesNum} unidades en stock.${fotoWarning}`
+      );
     } catch (err) {
       console.error("Error creando producto:", err);
       setNewProductoError(
@@ -2529,57 +2589,55 @@ export default function App() {
   };
 
   /* ---- Módulo de Imágenes (solo admin) ---- */
-  const discardAiPreview = () => {
-    if (aiPreviewUrl) URL.revokeObjectURL(aiPreviewUrl);
-    setAiPreviewBlob(null);
-    setAiPreviewUrl("");
-    setAiError("");
-  };
-
   const openImageManager = (product) => {
     setImageManagerProduct(product);
     setImageUploadError("");
-    setLastUploadedImage(null);
-    setAiError("");
-    discardAiPreview();
   };
 
   const closeImageManager = () => {
     setImageManagerProduct(null);
     setImageUploadError("");
-    setLastUploadedImage(null);
-    discardAiPreview();
   };
 
-  // 'forcedExt'/'forcedType' existen porque el resultado de la IA es un
-  // Blob puro (sin '.name', a diferencia de un File elegido en el
-  // input) — sin esto, 'file.name.split(".")' explotaría al guardar el
-  // recorte con fondo removido.
-  const uploadProductImage = async (file, forcedExt, forcedType) => {
-    if (!imageManagerProduct || !file) return;
+  // Genérico: sube un Blob ya finalizado (elegido, recortado, o con
+  // fondo removido por IA — <ImageManager> ya resolvió cuál) al bucket
+  // 'productos-imagenes' y actualiza 'productos.imagen_url' de
+  // CUALQUIER producto por id — no depende de 'imageManagerProduct',
+  // así lo puede reusar también saveNewProducto para el producto recién
+  // creado (que todavía no existía cuando se eligió la foto).
+  const uploadImageForProduct = async (productId, blob, ext, mimeType) => {
+    const fileName = `${productId}-${Date.now()}.${ext || "jpg"}`;
+    const { error: uploadError } = await supabase.storage
+      .from("productos-imagenes")
+      .upload(fileName, blob, {
+        contentType: mimeType || "image/jpeg",
+        upsert: false,
+      });
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from("productos-imagenes").getPublicUrl(fileName);
+    const url = data?.publicUrl;
+    if (!url) throw new Error("No se pudo obtener la URL pública de la imagen.");
+
+    const { error: updateError } = await supabase
+      .from("productos")
+      .update({ imagen_url: url })
+      .eq("id", productId);
+    if (updateError) throw updateError;
+
+    return url;
+  };
+
+  // Handler para <ImageManager> cuando se abre desde el catálogo de un
+  // producto YA EXISTENTE (openImageManager) — a diferencia del alta
+  // rápida, acá sí hay un id real, así que cada imagen confirmada se
+  // sube a Storage de inmediato, sin esperar ningún "Guardar".
+  const handleExistingProductImageConfirm = async (blob, ext, mimeType) => {
+    if (!imageManagerProduct) return;
     setImageUploading(true);
     setImageUploadError("");
     try {
-      const ext = forcedExt || (file.name ? (file.name.split(".").pop() || "jpg").toLowerCase() : "jpg");
-      const fileName = `${imageManagerProduct.id}-${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from("productos-imagenes")
-        .upload(fileName, file, {
-          contentType: forcedType || file.type || "image/jpeg",
-          upsert: false,
-        });
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from("productos-imagenes").getPublicUrl(fileName);
-      const url = data?.publicUrl;
-      if (!url) throw new Error("No se pudo obtener la URL pública de la imagen.");
-
-      const { error: updateError } = await supabase
-        .from("productos")
-        .update({ imagen_url: url })
-        .eq("id", imageManagerProduct.id);
-      if (updateError) throw updateError;
-
+      const url = await uploadImageForProduct(imageManagerProduct.id, blob, ext, mimeType);
       await refetchCatalog();
       // Refleja la nueva foto al toque en el modal ya abierto, sin
       // esperar a que 'productsById' se reconstruya del refetch.
@@ -2603,119 +2661,6 @@ export default function App() {
     } finally {
       setImageUploading(false);
     }
-  };
-
-  // Ya no sube directo: abre el modal de recorte 1:1 primero — el
-  // File elegido/tomado con la cámara se lee como data URL para que
-  // <Cropper> tenga algo que mostrar (no acepta un File/Blob crudo).
-  const handleUploadFromInput = (file) => {
-    if (!file) return;
-    setCropMimeType(file.type || "image/jpeg");
-    const reader = new FileReader();
-    reader.onload = () => setCropSrc(reader.result);
-    reader.onerror = () => setImageUploadError("No se pudo leer la imagen elegida. Intenta de nuevo.");
-    reader.readAsDataURL(file);
-  };
-
-  const handleCropCancel = () => setCropSrc(null);
-
-  // El admin confirmó el recorte: el Blob que devuelve el modal YA es
-  // la foto final (recortada 1:1) — de acá en más sigue el mismo
-  // camino que un archivo elegido a mano (uploadProductImage), solo
-  // que 'forcedExt'/'forcedType' hacen falta porque un Blob generado
-  // por canvas no trae '.name'.
-  const handleCropConfirm = (blob) => {
-    setCropSrc(null);
-    setLastUploadedImage(blob);
-    discardAiPreview();
-    const ext = (cropMimeType.split("/")[1] || "jpg").toLowerCase();
-    uploadProductImage(blob, ext, cropMimeType);
-  };
-
-  /* ---- "Mejorar con IA": quita el fondo 100% en el navegador del
-     admin con @imgly/background-removal (import dinámico — el modelo
-     ONNX/WASM pesa varios MB y NO tiene sentido bajarlo para Cliente o
-     Cajero, que nunca ven este botón). Fuente: la foto recién elegida
-     en esta sesión del modal si existe, si no se descarga la ya
-     guardada ('imagen_url') para poder reprocesar una foto vieja.
-     Nunca pisa nada solo — deja el resultado en 'aiPreviewBlob' para
-     que el admin decida "Guardar recorte" o "Descartar".
-
-     La librería NO llama a ningún servidor propio: al correr en el
-     navegador descarga su modelo ONNX/WASM de la CDN pública de IMG.LY
-     (staticimgly.com) recién en este momento — 'publicPath' apunta ahí
-     por defecto, con la versión resuelta vía un placeholder interno.
-     El error "'text/html' is not a valid JavaScript MIME type" pasa
-     cuando esa descarga NO devuelve el archivo esperado (típicamente
-     un bloqueador de contenido/firewall filtrando el dominio, o un
-     problema de red) — el navegador SÍ recibe una respuesta, pero es
-     una página de error HTML en vez del binario, y la librería explota
-     al intentar interpretarla como JS/WASM. Acá:
-     1) se fija 'publicPath' EXPLÍCITO (leyendo la versión real del
-        paquete instalado, no un placeholder) para eliminar cualquier
-        ambigüedad de resolución de URL, y
-     2) el catch detecta esa firma de error específica y muestra un
-        mensaje que señala la causa real, en vez de un mensaje genérico
-        o dejar que la app intente parsear HTML como JS. ---- */
-  const handleAiEnhance = async () => {
-    if (!imageManagerProduct) return;
-    setAiProcessing(true);
-    setAiError("");
-    try {
-      let source = lastUploadedImage;
-      if (!source) {
-        if (!imageManagerProduct.imagenUrl) {
-          throw new Error("Primero sube o toma una foto para poder mejorarla.");
-        }
-        const res = await fetch(imageManagerProduct.imagenUrl);
-        if (!res.ok) throw new Error("No se pudo cargar la imagen actual para procesarla.");
-        source = await res.blob();
-      }
-
-      const { removeBackground } = await import("@imgly/background-removal");
-      // Versión exacta del paquete instalado (ver package.json de este
-      // proyecto) — NO se puede leer en tiempo de ejecución porque
-      // "@imgly/background-removal" solo expone su entrypoint principal
-      // en su campo "exports" (import("…/package.json") rompe el build:
-      // "./package.json" is not exported). Si se actualiza la
-      // dependencia, actualizar este número también.
-      const BG_REMOVAL_VERSION = "1.7.0";
-      const resultBlob = await removeBackground(source, {
-        publicPath: `https://staticimgly.com/@imgly/background-removal-data/${BG_REMOVAL_VERSION}/dist/`,
-      });
-
-      setAiPreviewBlob(resultBlob);
-      setAiPreviewUrl(URL.createObjectURL(resultBlob));
-    } catch (err) {
-      console.error("Error quitando el fondo con IA:", err);
-      const rawMsg = err?.message || String(err || "");
-      // Firma típica de "la CDN del modelo devolvió HTML en vez del
-      // binario esperado" — bloqueador de contenido, firewall, o el
-      // dominio 'staticimgly.com' filtrado en esta red.
-      const esFalloDeDescargaModelo =
-        /valid javascript mime type|unexpected token ?['"<]|failed to fetch|networkerror|load failed/i.test(
-          rawMsg
-        );
-      if (esFalloDeDescargaModelo) {
-        setAiError(
-          "Error en el servidor de IA: no se pudo descargar el modelo de recorte automático. " +
-            "Esto pasa por un bloqueador de anuncios/contenido o un firewall filtrando " +
-            "'staticimgly.com' — desactívalo para este sitio o probá desde otra red, y reintenta."
-        );
-      } else {
-        setAiError(
-          rawMsg ? `No se pudo procesar la imagen: ${rawMsg}` : "No se pudo procesar la imagen con IA."
-        );
-      }
-    } finally {
-      setAiProcessing(false);
-    }
-  };
-
-  const confirmAiResult = async () => {
-    if (!aiPreviewBlob) return;
-    await uploadProductImage(aiPreviewBlob, "png", "image/png");
-    discardAiPreview();
   };
 
   /* ---- guardar unidades extra: UPDATE/upsert a 'stock' ---- */
@@ -2909,10 +2854,11 @@ export default function App() {
      (ej. "bucket not found" si falta correr el SQL de la Fase 2, o un
      error de policy si falta la política de INSERT para 'anon'). ---- */
   const uploadReceiptImage = async (blob, method) => {
+    const compressedBlob = await compressReceiptImage(blob);
     const fileName = `${method}-${Date.now()}-${Math.round(Math.random() * 1e6)}.jpg`;
     const { error: uploadError } = await supabase.storage
       .from("comprobantes-fotos")
-      .upload(fileName, blob, { contentType: "image/jpeg", upsert: false });
+      .upload(fileName, compressedBlob, { contentType: "image/jpeg", upsert: false });
 
     if (uploadError) {
       console.error("Error al subir la foto del comprobante:", uploadError);
@@ -6467,6 +6413,19 @@ export default function App() {
 
                   <ColorPicker value={newProductoColor} onChange={setNewProductoColor} />
 
+                  <label className="tz-field-label">Foto (opcional)</label>
+                  <p className="tz-stock-editor-sub" style={{ marginTop: -4 }}>
+                    Se guarda junto con el producto recién le des a "Crear producto" más abajo —
+                    todavía no existe un id al que subirla.
+                  </p>
+                  <ImageManager
+                    imageUrl={newProductoImagenPreviewUrl}
+                    title={newProductoNombre || "Nuevo producto"}
+                    onConfirm={handleNewProductoImageConfirm}
+                    saving={false}
+                    error=""
+                  />
+
                   <label className="tz-field-label">Precio de venta (S/)</label>
                   <input
                     type="number"
@@ -7048,12 +7007,11 @@ export default function App() {
       )}
 
       {/* ---------------- MODAL: GESTIÓN DE IMAGEN (solo admin) ----------------
-         Se abre al tocar el espacio de imagen de una tarjeta. "Subir
-         Foto"/"Tomar Foto" van directo a Storage + productos.imagen_url.
-         "Mejorar con IA" quita el fondo en el navegador (@imgly/
-         background-removal) y muestra el resultado en un recuadro
-         BLANCO ("efecto estudio", ya que el resto de la app es oscura)
-         antes de guardarlo — ver handleAiEnhance/confirmAiResult. */}
+         Se abre al tocar el espacio de imagen de una tarjeta de un
+         producto YA EXISTENTE. Todo el flujo (Subir/Tomar Foto,
+         Recortar bajo demanda, Mejorar con IA) vive en <ImageManager>
+         — acá solo el shell del modal (backdrop/cerrar/título) y el
+         handler que sube cada imagen confirmada de inmediato. */}
       {imageManagerProduct && (
         <div className="tz-modal-backdrop" onClick={closeImageManager}>
           <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
@@ -7064,127 +7022,15 @@ export default function App() {
             <h2>Gestión de Imagen</h2>
             <p className="tz-stock-editor-sub">{imageManagerProduct.name}</p>
 
-            <div className="tz-image-manager-preview">
-              {imageManagerProduct.imagenUrl ? (
-                <img src={imageManagerProduct.imagenUrl} alt={imageManagerProduct.name} />
-              ) : (
-                <div className="tz-product-image-placeholder">
-                  <Package size={32} />
-                </div>
-              )}
-            </div>
-
-            {imageUploadError && <p className="tz-error">{imageUploadError}</p>}
-            {imageUploading && (
-              <p className="tz-stock-editor-sub">
-                <Loader2 size={14} className="tz-spin" /> Subiendo imagen…
-              </p>
-            )}
-
-            {/* Mientras haya un recorte de IA pendiente de confirmar,
-               se ocultan Subir/Tomar Foto — obliga a resolver esa
-               decisión primero en vez de perder el resultado en
-               silencio si el admin sube otra foto encima. */}
-            {!aiPreviewBlob && (
-              <div className="tz-image-manager-actions">
-                <label className="tz-camera-cancel tz-image-manager-btn">
-                  <Upload size={15} /> Subir Foto
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    disabled={imageUploading || aiProcessing}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      handleUploadFromInput(file);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-                <label className="tz-camera-cancel tz-image-manager-btn">
-                  <Camera size={15} /> Tomar Foto
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    hidden
-                    disabled={imageUploading || aiProcessing}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      handleUploadFromInput(file);
-                      e.target.value = "";
-                    }}
-                  />
-                </label>
-              </div>
-            )}
-
-            {!aiPreviewBlob && (
-              <button
-                type="button"
-                className="tz-ai-magic-btn"
-                onClick={handleAiEnhance}
-                disabled={
-                  aiProcessing ||
-                  imageUploading ||
-                  !(lastUploadedImage || imageManagerProduct.imagenUrl)
-                }
-              >
-                {aiProcessing ? (
-                  <>
-                    <Loader2 size={16} className="tz-spin" /> Procesando recorte con IA…
-                  </>
-                ) : (
-                  <>
-                    <Wand2 size={16} /> Mejorar con IA
-                  </>
-                )}
-              </button>
-            )}
-            {aiError && <p className="tz-error">{aiError}</p>}
-
-            {aiPreviewUrl && (
-              <div className="tz-ai-result">
-                <p className="tz-field-label">Vista previa — fondo removido</p>
-                <div className="tz-ai-result-preview">
-                  <img src={aiPreviewUrl} alt={`${imageManagerProduct.name} sin fondo`} />
-                </div>
-                <div className="tz-image-manager-actions">
-                  <button
-                    type="button"
-                    className="tz-camera-cancel tz-image-manager-btn"
-                    onClick={discardAiPreview}
-                    disabled={imageUploading}
-                  >
-                    <X size={15} /> Descartar
-                  </button>
-                  <button
-                    type="button"
-                    className="tz-stock-save tz-image-manager-btn"
-                    onClick={confirmAiResult}
-                    disabled={imageUploading}
-                  >
-                    {imageUploading ? (
-                      <Loader2 size={15} className="tz-spin" />
-                    ) : (
-                      <Check size={15} />
-                    )}
-                    Guardar recorte
-                  </button>
-                </div>
-              </div>
-            )}
+            <ImageManager
+              imageUrl={imageManagerProduct.imagenUrl}
+              title={imageManagerProduct.name}
+              onConfirm={handleExistingProductImageConfirm}
+              saving={imageUploading}
+              error={imageUploadError}
+            />
           </div>
         </div>
-      )}
-
-      {cropSrc && (
-        <ImageCropModal
-          imageSrc={cropSrc}
-          mimeType={cropMimeType}
-          onCancel={handleCropCancel}
-          onConfirm={handleCropConfirm}
-        />
       )}
 
       {stockScannerOpen && (

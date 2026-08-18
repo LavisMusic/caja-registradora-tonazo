@@ -36,6 +36,26 @@ export default function Styles() {
         box-sizing: border-box;
       }
       .tz-root *, .tz-root *::before, .tz-root *::after { box-sizing: border-box; }
+
+      /* Anti auto-zoom de Safari/iOS: si un input/textarea/select
+         enfocado tiene font-size < 16px, Safari agranda TODO el
+         viewport al tocarlo (así el usuario "vea" lo que escribe),
+         descuadrando este diseño compacto tipo app nativa — el usuario
+         queda obligado a pellizcar hacia afuera para volver a ver la
+         pantalla completa. El meta viewport con user-scalable=0
+         (index.html) ayuda, pero versiones recientes de iOS lo
+         ignoran por accesibilidad — esta regla es la que realmente
+         previene el zoom en el origen. Global e incondicional (gana
+         sobre cualquier font-size más chico definido en clases
+         puntuales como .tz-text-input) y solo en mobile: en
+         tablet/desktop no hace falta, ahí no hay auto-zoom táctil. */
+      @media (max-width: 767px) {
+        .tz-root input,
+        .tz-root textarea,
+        .tz-root select {
+          font-size: 16px !important;
+        }
+      }
       /* index.css (plantilla base de Vite) trae "h1, h2 { color:
          var(--text-h) }" — negro cuando el SO está en modo claro. Esa
          regla apunta directo al h1/h2, así que gana por sobre el
