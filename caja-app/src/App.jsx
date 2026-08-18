@@ -4419,34 +4419,49 @@ export default function App() {
   /* ---- Enviar Resumen a WhatsApp (modal Cierre de Caja): abre wa.me
      SIN número (deja elegir el contacto/grupo destino) con un texto
      PLANO — sin emojis, sin branding — armado a mano, nada de
-     imágenes/PDF. El contenido está segmentado por rol EXACTAMENTE
-     como se pidió: Admin ve 9 campos (incluye Gastos, Fiados,
-     Ganancia Neta), Cajero ve solo 6 (nunca una cifra que su propia
-     pantalla de Cierre ya le oculta). ---- */
+     imágenes/PDF. El botón que dispara esto ya es admin-only (Cierre
+     Ciego le oculta este botón al cajero), así que un solo template
+     alcanza — no hace falta segmentar por rol. Usa 'cajaFisicaEsperada'
+     / 'efectivoRealNum' (definidos más abajo, mismo cálculo que ya
+     alimenta el arqueo en pantalla) para que el mensaje diga EXACTAMENTE
+     lo mismo que ve el admin, nunca un número recalculado aparte. ---- */
   const buildCierreResumenTexto = () => {
     const fecha = `${formatDate(Date.now())} ${formatTime(Date.now())}`;
-    const lineas = [
-      "RESUMEN",
-      `Fecha/Hora: ${fecha}`,
-      `Vendedor: ${currentUserLabel}`,
-      `Total Ventas: ${formatSoles(todayStats.total)}`,
-    ];
+    const tieneArqueoIngresado = efectivoReal !== "" && !isNaN(efectivoRealNum);
+    const efectivoFisicoTexto = tieneArqueoIngresado ? formatSoles(efectivoRealNum) : "No ingresado";
 
-    if (isAdmin) {
-      lineas.push(
-        `Total Gastos: ${formatSoles(todayStats.gastosHoyCaja)}`,
-        `Efectivo: ${formatSoles(todayStats.ingresoEfectivo)}`,
-        `Digital: ${formatSoles(todayStats.ingresoDigital)}`,
-        `Fiados: ${formatSoles(todayStats.fiadoHoy)}`,
-        `Ganancia Neta: ${formatSoles(todayStats.gananciaNetaTurno)}`
-      );
-    } else {
-      lineas.push(
-        `Efectivo: ${formatSoles(todayStats.ingresoEfectivo)}`,
-        `Digital: ${formatSoles(todayStats.ingresoDigital)}`
-      );
+    let cuadreTexto = "Pendiente (no se ingresó el efectivo físico contado)";
+    if (tieneArqueoIngresado) {
+      const diff = efectivoRealNum - cajaFisicaEsperada;
+      cuadreTexto =
+        Math.abs(diff) <= 0.009
+          ? "Caja cuadrada"
+          : diff < 0
+          ? `Faltante de ${formatSoles(Math.abs(diff))}`
+          : `Sobrante de ${formatSoles(diff)}`;
     }
 
+    const lineas = [
+      "RESUMEN DE CIERRE DE CAJA",
+      `Fecha/Hora: ${fecha}`,
+      `Cajero: ${currentUserLabel}`,
+      "",
+      `Fondo Inicial: ${formatSoles(estadoCaja?.fondoInicial ?? 0)}`,
+      `Total Ventas: ${formatSoles(todayStats.total)}`,
+      `Ingresos (Efectivo): ${formatSoles(todayStats.ingresoEfectivo)}`,
+      `Ingresos (Digitales): ${formatSoles(todayStats.ingresoDigital)}`,
+      `Gastos (Efectivo): ${formatSoles(todayStats.gastosEfectivoHoy)}`,
+      "",
+      `Efectivo Esperado (Sistema): ${formatSoles(cajaFisicaEsperada)}`,
+      `Efectivo Físico Contado: ${efectivoFisicoTexto}`,
+      `Cuadre: ${cuadreTexto}`,
+      `Ganancia Neta: ${formatSoles(todayStats.gananciaNetaTurno)}`,
+    ];
+
+    // \n + encodeURIComponent (en enviarResumenCierrePorWhatsApp) ya
+    // codifica los saltos de línea como %0A, que es lo que WhatsApp
+    // interpreta correctamente en un link wa.me?text=... — no hace
+    // falta (ni corresponde) usar <br> ni ningún otro escape acá.
     return lineas.join("\n");
   };
 
@@ -4480,34 +4495,61 @@ export default function App() {
     // quedaba escrita en Supabase, así que cualquier recarga volvía a
     // pedir la apertura. upsert garantiza que la fila id=1 siempre
     // termine existiendo, exista antes o no.
-    const { error } = await supabase.from("estado_caja").upsert(
-      {
-        id: 1,
-        estado: "abierta",
-        fondo_inicial: fondo,
-        abierta_por: nombreQuienAbre,
-        abierta_en: abiertaEn,
-        cerrada_en: null,
-      },
-      { onConflict: "id" }
-    );
+    //
+    // .select().maybeSingle() ADEMÁS del upsert: no basta con "no hubo
+    // error" para confirmar éxito — si falta la policy de RLS de
+    // INSERT (el mismo tipo de bug que ya pasó una vez), Postgres
+    // puede rechazar la fila sin que el cliente de Supabase lo
+    // reporte como 'error' en todos los casos. Leyendo de vuelta lo
+    // que realmente quedó en la tabla, cualquier fila ausente o con
+    // datos que no coinciden se detecta ACÁ, antes de dejar pasar al
+    // admin, en vez de descubrirlo recién en el próximo refresh.
+    const { data, error } = await supabase
+      .from("estado_caja")
+      .upsert(
+        {
+          id: 1,
+          estado: "abierta",
+          fondo_inicial: fondo,
+          abierta_por: nombreQuienAbre,
+          abierta_en: abiertaEn,
+          cerrada_en: null,
+        },
+        { onConflict: "id" }
+      )
+      .select()
+      .maybeSingle();
 
     setAperturaSaving(false);
 
     if (error) {
       console.error("Error al abrir caja:", error);
       setAperturaError(
-        error.message ? `No se pudo abrir la caja: ${error.message}` : "No se pudo abrir la caja."
+        `No se pudo abrir la caja — ${error.message || "error desconocido"}` +
+          (error.code ? ` (código ${error.code})` : "") +
+          (error.hint ? `. Sugerencia: ${error.hint}` : "") +
+          (error.details ? ` [${error.details}]` : "")
+      );
+      return;
+    }
+
+    if (!data || data.estado !== "abierta" || Number(data.fondo_inicial) !== fondo) {
+      console.error("La apertura de caja no se confirmó en Supabase. Fila leída de vuelta:", data);
+      setAperturaError(
+        "Supabase no confirmó la apertura: la fila de 'estado_caja' no quedó como se esperaba " +
+          "(probablemente falta la política RLS de INSERT — corre la migración " +
+          "0036_fix_estado_caja_insert.sql en el SQL Editor de Supabase). No avances hasta " +
+          "resolver esto: la caja NO está realmente abierta en el sistema."
       );
       return;
     }
 
     setEstadoCaja({
-      estado: "abierta",
-      fondoInicial: fondo,
-      abiertaPor: nombreQuienAbre,
-      abiertaEn,
-      cerradaEn: null,
+      estado: data.estado,
+      fondoInicial: Number(data.fondo_inicial),
+      abiertaPor: data.abierta_por,
+      abiertaEn: Number(data.abierta_en),
+      cerradaEn: data.cerrada_en != null ? Number(data.cerrada_en) : null,
     });
     setFondoInicialInput("");
   };
@@ -4614,16 +4656,32 @@ export default function App() {
     // cierre ya guardado si esto falla — mismo criterio que el resto
     // de la app (el dato importante ya quedó registrado).
     // Mismo motivo que en abrirCaja: upsert en vez de update para que
-    // nunca sea un no-op silencioso si la fila id=1 no existía.
-    const { error: estadoCajaCloseError } = await supabase.from("estado_caja").upsert(
-      { id: 1, estado: "cerrada", cerrada_en: timestamp },
-      { onConflict: "id" }
-    );
+    // nunca sea un no-op silencioso si la fila id=1 no existía, y
+    // .select() para confirmar leyendo de vuelta lo que realmente
+    // quedó guardado en vez de confiar en "no hubo error".
+    const {
+      data: estadoCajaCloseData,
+      error: estadoCajaCloseError,
+    } = await supabase
+      .from("estado_caja")
+      .upsert({ id: 1, estado: "cerrada", cerrada_en: timestamp }, { onConflict: "id" })
+      .select()
+      .maybeSingle();
 
     if (estadoCajaCloseError) {
       console.error("Error al cerrar estado_caja:", estadoCajaCloseError);
       setCierreError(
-        "El cierre se guardó, pero no se pudo actualizar el estado de la caja. Recarga la página si el bloqueo no aparece."
+        `El cierre se guardó, pero no se pudo actualizar el estado de la caja: ${
+          estadoCajaCloseError.message || "error desconocido"
+        }. Recarga la página si el bloqueo no aparece.`
+      );
+    } else if (!estadoCajaCloseData || estadoCajaCloseData.estado !== "cerrada") {
+      console.error(
+        "El cierre de estado_caja no se confirmó en Supabase. Fila leída de vuelta:",
+        estadoCajaCloseData
+      );
+      setCierreError(
+        "El cierre se guardó, pero Supabase no confirmó que la caja quedara 'cerrada'. Recarga la página y verifica antes de asumir que el bloqueo del cajero está activo."
       );
     } else {
       setEstadoCaja((prev) => (prev ? { ...prev, estado: "cerrada", cerradaEn: timestamp } : prev));
