@@ -87,6 +87,9 @@ function buildSectionsFromRows(categoriaRows, productoRows) {
               ? JSON.parse(p.combo_items)
               : null,
           imagenUrl: p.imagen_url || null,
+          // "Venta a Granel / Por Peso": si es true, la cantidad en el
+          // carrito/boletas son kilos (decimales), no unidades enteras.
+          ventaPorPeso: p.venta_por_peso ?? false,
         })),
       };
     });

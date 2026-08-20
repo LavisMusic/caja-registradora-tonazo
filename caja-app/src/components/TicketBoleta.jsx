@@ -104,7 +104,9 @@ export default function TicketBoleta({ orden, cliente, productos, totales }) {
           letterSpacing: 0.3,
         }}
       >
-        <span style={{ width: 28, flexShrink: 0 }}>Cant</span>
+        {/* 44px en vez de 28px: "1.25 Kg" no entra en el ancho angosto
+           pensado para un conteo de 1-2 dígitos de unidades enteras. */}
+        <span style={{ width: 44, flexShrink: 0 }}>Cant</span>
         <span style={{ flex: 1, minWidth: 0 }}>Descripción</span>
         <span style={{ width: 64, flexShrink: 0, textAlign: "right" }}>Precio</span>
       </div>
@@ -112,12 +114,12 @@ export default function TicketBoleta({ orden, cliente, productos, totales }) {
       <div style={{ marginTop: 6 }}>
         {items.map((p, i) => (
           <div key={i} style={{ display: "flex", fontSize: 12.5, padding: "4px 0" }}>
-            <span style={{ width: 28, flexShrink: 0 }}>{p.cantidad}</span>
+            <span style={{ width: 44, flexShrink: 0 }}>{p.cantidad}</span>
             <span style={{ flex: 1, minWidth: 0 }}>
               {p.nombre}
               <br />
               <span style={{ fontSize: 10.5, color: COLORS.dim }}>
-                {formatSoles(p.precioUnitario)} c/u
+                {formatSoles(p.precioUnitario)} {p.ventaPorPeso ? "/Kg" : "c/u"}
               </span>
             </span>
             <span style={{ width: 64, flexShrink: 0, textAlign: "right", fontWeight: 700 }}>

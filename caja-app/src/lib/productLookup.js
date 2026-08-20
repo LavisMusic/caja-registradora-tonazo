@@ -67,38 +67,28 @@ function generateStockKey(nombre, stockKeysExistentes) {
   return `${base}-${sufijo}`;
 }
 
-/* Costo Promedio Ponderado de una clave de stock al recibir un lote
-   nuevo. Fórmula estricta:
-     Nuevo Costo = ((StockActual * CostoActual) + CostoTotalCompra)
-                   / (StockActual + UnidadesIngresan)
-   Caso especial (primer ingreso real): si no había stock previo, o el
-   costo previo no se conocía (null/0 — ej. mercadería cargada antes
-   de que existiera este sistema de costeo), no hay nada que
-   promediar todavía — el costo nuevo ES el de este lote
-   (CostoTotalCompra / UnidadesIngresan). Devuelve null si los datos
-   de entrada no permiten calcular nada (0 unidades — división por
-   cero — o un costo total inválido), para que el llamador decida qué
-   hacer en vez de guardar un NaN/Infinity en la base. */
-export function calcularCostoPromedioPonderado({
-  stockActual,
-  costoActualUnitario,
-  unidadesIngresan,
-  costoTotalCompra,
-}) {
+/* Costo de Reposición ("Último Costo") de una clave de stock al
+   recibir un lote nuevo. YA NO se promedia con el stock/costo previo
+   — cada compra nueva REEMPLAZA por completo el costo unitario
+   vigente, sin importar cuánto stock quedaba al costo anterior:
+     Nuevo Costo = CostoTotalCompra / UnidadesIngresan (o Kilos, para
+     productos 'venta_por_peso' — la fórmula es la misma, la unidad
+     cambia).
+   Devuelve null si los datos de entrada no permiten calcular nada (0
+   unidades — división por cero — o un costo total inválido), para
+   que el llamador decida qué hacer en vez de guardar un NaN/Infinity
+   en la base. Esto es DELIBERADO (no un caso especial de "primer
+   ingreso"): a diferencia del Costo Promedio Ponderado que este
+   modelo reemplaza, acá NUNCA hace falta stock/costo previo, porque
+   nunca se usan. */
+export function calcularCostoUltimaCompra({ unidadesIngresan, costoTotalCompra }) {
   const unidades = Number(unidadesIngresan);
   if (!unidades || unidades <= 0) return null;
 
   const costoTotal = Number(costoTotalCompra);
   if (isNaN(costoTotal) || costoTotal < 0) return null;
 
-  const stockPrevio = Number(stockActual) || 0;
-  const costoPrevio = Number(costoActualUnitario) || 0;
-
-  if (stockPrevio <= 0 || costoPrevio <= 0) {
-    return costoTotal / unidades;
-  }
-
-  return (stockPrevio * costoPrevio + costoTotal) / (stockPrevio + unidades);
+  return costoTotal / unidades;
 }
 
 /* 'orden' es una columna integer estándar de Postgres (máx.
@@ -174,6 +164,14 @@ export async function crearProducto({
   // para cargarlo después desde Agregar Unidades.
   unidadesIniciales,
   costoTotalInicial,
+  // "Venta a Granel / Por Peso": si es true, 'unidadesIniciales' se
+  // interpreta como KILOS (no unidades enteras) — el Costo Promedio
+  // Ponderado sale exactamente igual (calcularCostoPromedioPonderado
+  // ya es agnóstico a la unidad, es solo costoTotal/cantidad), así que
+  // no hace falta ninguna rama especial ahí abajo, solo guardar el
+  // flag para que el resto de la app (carrito, boletas, WhatsApp)
+  // sepa mostrar "Kg" en vez de "unidad(es)".
+  ventaPorPeso,
 }) {
   const categoriaNombre = (categoria || "").trim();
   const { data: catExistente, error: catLookupError } = await supabase
@@ -223,6 +221,7 @@ export async function crearProducto({
     activo: true,
     visible_publico: true,
     orden: safeOrdenValue(),
+    venta_por_peso: !!ventaPorPeso,
   };
 
   // Log explícito del payload exacto antes del INSERT, para poder
@@ -237,18 +236,12 @@ export async function crearProducto({
     .single();
   if (prodError) throw prodError;
 
-  // Costo inicial: como el producto (y su clave de stock) recién nace
-  // acá, no hay stock previo que promediar — es sencillamente
-  // costoTotal / unidades. Se reusa calcularCostoPromedioPonderado con
-  // stockActual/costoActualUnitario en 0 (misma fórmula, mismo caso
-  // especial "primer ingreso real" que ya cubre) para no duplicar el
-  // criterio en dos lugares.
+  // Costo inicial (Costo de Reposición / Último Costo): costoTotal /
+  // unidades, sin nada que promediar.
   const unidadesNum = Number(unidadesIniciales) || 0;
   const costoUnitarioInicial =
     unidadesNum > 0
-      ? calcularCostoPromedioPonderado({
-          stockActual: 0,
-          costoActualUnitario: 0,
+      ? calcularCostoUltimaCompra({
           unidadesIngresan: unidadesNum,
           costoTotalCompra: costoTotalInicial,
         })

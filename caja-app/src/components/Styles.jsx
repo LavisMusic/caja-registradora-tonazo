@@ -2571,6 +2571,104 @@ export default function Styles() {
         opacity: 0.8;
         font-style: italic;
       }
+
+      /* ---------- SWITCH (Venta a Granel / Por Peso) ---------- */
+      .tz-switch-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-soft);
+      }
+      .tz-switch {
+        flex-shrink: 0;
+        position: relative;
+        width: 42px;
+        height: 24px;
+        border-radius: 999px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.08);
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease;
+      }
+      .tz-switch-on {
+        background: var(--cyan);
+        border-color: var(--cyan);
+        box-shadow: 0 0 12px rgba(43,232,255,0.4);
+      }
+      .tz-switch-knob {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #fff;
+        transition: transform 0.15s ease;
+      }
+      .tz-switch-on .tz-switch-knob { transform: translateX(18px); }
+
+      /* ---------- MODAL: CALCULADORA DE PESO ---------- */
+      .tz-peso-modal { max-width: 380px; }
+      .tz-peso-subtotal {
+        margin: 10px 0 0;
+        font-size: 14px;
+        color: var(--text-dim);
+      }
+      .tz-peso-subtotal strong {
+        color: var(--green);
+        font-size: 18px;
+        font-family: 'Orbitron', sans-serif;
+      }
+
+      /* Cantidad en Kg dentro de la tarjeta de producto (reemplaza al
+         stepper +/- de unidades, que no tiene sentido para algo que se
+         vende a granel). */
+      .tz-qty-peso {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--cyan);
+      }
+      .tz-qty-peso button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.06);
+        color: var(--cyan);
+        cursor: pointer;
+      }
+
+      /* Mismo botón, versión del carrito (CartRow) — reemplaza el
+         stepper numérico +/- por "1.25 Kg [lápiz]" que reabre el modal
+         de peso para editar. */
+      .tz-cart-peso-edit-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border-soft);
+        background: rgba(43,232,255,0.08);
+        color: var(--cyan);
+        font-family: 'Orbitron', sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .tz-cart-peso-edit-btn:hover { background: rgba(43,232,255,0.18); }
       /* Nombre 70% / Detalle 30% en una sola fila (alta de producto al
          vuelo) — flex-grow en proporción 7:3 en vez de width en %, así
          no hay que restar el gap a mano. */

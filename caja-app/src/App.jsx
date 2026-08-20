@@ -51,7 +51,7 @@ import {
   crearProducto,
   crearCombo,
   safeOrdenValue,
-  calcularCostoPromedioPonderado,
+  calcularCostoUltimaCompra,
   composeProductoNombre,
   composeProductoDescripcion,
 } from "./lib/productLookup";
@@ -61,6 +61,7 @@ import ColorPicker from "./components/ColorPicker";
 import LogoEasterEgg from "./components/LogoEasterEgg";
 import TicketBoleta from "./components/TicketBoleta";
 import ImageManager from "./components/ImageManager";
+import PesoModal from "./components/PesoModal";
 import Combobox from "./components/Combobox";
 
 import logo from "./assets/logo.png";
@@ -76,8 +77,8 @@ import logo from "./assets/logo.png";
    cuando no hay forma de derivarlo de verdad — ver unitCostFor. */
 const DEFAULT_COST_RATIO = 0.55;
 
-/* Costo real de un producto = suma del costo promedio ponderado (ver
-   'stock.precio_costo', calcularCostoPromedioPonderado en
+/* Costo real de un producto = suma del Costo de Reposición/Último
+   Costo (ver 'stock.precio_costo', calcularCostoUltimaCompra en
    productLookup.js) de cada clave que consume, multiplicado por
    cuánto consume de ella. Esto funciona igual de bien para un
    producto simple (una sola clave, qty 1) que para un combo (varias
@@ -173,10 +174,12 @@ function detectPaymentInfo(rawText) {
 
 /* Arma el texto del resumen de compra para el CRM básico de WhatsApp. */
 function buildSaleWhatsappMessage(sale) {
-  const lines = sale.items.map(
-    (it) =>
-      `• ${it.name}${it.detail ? ` (${it.detail})` : ""} x${it.qty} — ${formatSoles(it.total)}`
-  );
+  const lines = sale.items.map((it) => {
+    // Venta a Granel/Por Peso: "1.25 Kg" en vez de "x1.25" — para
+    // unidades normales sigue siendo "x3" como siempre.
+    const cantidadTexto = it.ventaPorPeso ? formatQty(true, it.qty) : `x${it.qty}`;
+    return `• ${it.name}${it.detail ? ` (${it.detail})` : ""} ${cantidadTexto} — ${formatSoles(it.total)}`;
+  });
   const greeting = sale.nombre ? `Hola ${sale.nombre}, ` : "Hola, ";
   return `${greeting}aquí tienes el resumen de tu compra:\n\n${lines.join(
     "\n"
@@ -239,9 +242,21 @@ function startOfDay(ts) {
 
 function availabilityFor(product, stock) {
   if (!product.consumes || product.consumes.length === 0) return Infinity;
-  return Math.min(
-    ...product.consumes.map((c) => Math.floor((stock[c.key] ?? 0) / c.qty))
-  );
+  const raw = Math.min(...product.consumes.map((c) => (stock[c.key] ?? 0) / c.qty));
+  // Venta a Granel/Por Peso: el disponible es un decimal de verdad
+  // (2.35 Kg en stock son 2.35 Kg vendibles) — redondear para abajo a
+  // enteros, como sí hace falta para unidades físicas indivisibles,
+  // acá tiraría kilos reales a la basura.
+  return product.ventaPorPeso ? raw : Math.floor(raw);
+}
+
+// "1.25 Kg" para venta a granel, "3" (bare, como siempre) para
+// productos por unidad — un solo lugar que decide el formato de
+// cantidad para carrito/tarjetas/boletas/WhatsApp, así los tres nunca
+// pueden mostrar cosas distintas entre sí.
+function formatQty(ventaPorPeso, qty) {
+  const n = Number(qty) || 0;
+  return ventaPorPeso ? `${n.toFixed(2)} Kg` : String(n);
 }
 
 /* Igual que resolveStockKey() de productLookup.js, pero sobre
@@ -266,14 +281,20 @@ const LOW_STOCK_THRESHOLD = 5;
 function StockTag({ avail }) {
   const soldOut = avail <= 0;
   const low = avail > 0 && avail <= LOW_STOCK_THRESHOLD;
+  // Venta a Granel/Por Peso: 'avail' es un decimal real (kilos), no un
+  // entero — availabilityFor solo deja de redondear para abajo en ese
+  // caso, así que cualquier 'avail' no-entero acá es kilos. Se muestra
+  // con 2 decimales para no exponer ruido de punto flotante
+  // (2.3471829999...) directo en la tarjeta.
+  const display = Number.isInteger(avail) ? avail : avail.toFixed(2);
   if (soldOut) return <span className="tz-tag tz-tag-danger">AGOTADO</span>;
   if (low)
     return (
       <span className="tz-tag tz-tag-danger">
-        <AlertTriangle size={11} strokeWidth={2.5} /> ¡Quedan {avail}!
+        <AlertTriangle size={11} strokeWidth={2.5} /> ¡Quedan {display}!
       </span>
     );
-  return <span className="tz-tag tz-tag-ok">Stock: {avail}</span>;
+  return <span className="tz-tag tz-tag-ok">Stock: {display}</span>;
 }
 
 /* Fila del ticket/carrito con controles de edición: [-] [input] [+] +
@@ -284,7 +305,16 @@ function StockTag({ avail }) {
    un render raro. Se compromete a 'selection' (vía onQtyChange) recién
    al perder foco o presionar Enter; un valor inválido revierte al
    último válido en vez de dejar el carrito en un estado roto. */
-function CartRow({ product, qty, avail, unitPrice, discountPercent, onQtyChange, onRemove }) {
+function CartRow({
+  product,
+  qty,
+  avail,
+  unitPrice,
+  discountPercent,
+  onQtyChange,
+  onRemove,
+  onEditWeight,
+}) {
   const [localQty, setLocalQty] = useState(String(qty));
   const hasDiscount = discountPercent > 0;
   const effectiveUnitPrice = unitPrice ?? product.price;
@@ -322,39 +352,50 @@ function CartRow({ product, qty, avail, unitPrice, discountPercent, onQtyChange,
         </span>
       </div>
       <div className="tz-cart-row-controls">
-        <div className="tz-qty-stepper tz-cart-qty-stepper">
+        {product.ventaPorPeso ? (
           <button
             type="button"
-            onClick={() => onQtyChange(Math.max(qty - 1, 1))}
-            disabled={qty <= 1}
-            aria-label={`Disminuir cantidad de ${product.name}`}
+            className="tz-cart-peso-edit-btn"
+            onClick={onEditWeight}
+            aria-label={`Editar peso de ${product.name}`}
           >
-            <Minus size={14} />
+            {formatQty(true, qty)} <Pencil size={13} />
           </button>
-          <input
-            type="number"
-            min="1"
-            max={avail}
-            className="tz-cart-qty-input"
-            value={localQty}
-            onChange={(e) => setLocalQty(e.target.value)}
-            onBlur={(e) => commit(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                commit(e.currentTarget.value);
-                e.currentTarget.blur();
-              }
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => onQtyChange(Math.min(qty + 1, avail))}
-            disabled={qty >= avail}
-            aria-label={`Aumentar cantidad de ${product.name}`}
-          >
-            <Plus size={14} />
-          </button>
-        </div>
+        ) : (
+          <div className="tz-qty-stepper tz-cart-qty-stepper">
+            <button
+              type="button"
+              onClick={() => onQtyChange(Math.max(qty - 1, 1))}
+              disabled={qty <= 1}
+              aria-label={`Disminuir cantidad de ${product.name}`}
+            >
+              <Minus size={14} />
+            </button>
+            <input
+              type="number"
+              min="1"
+              max={avail}
+              className="tz-cart-qty-input"
+              value={localQty}
+              onChange={(e) => setLocalQty(e.target.value)}
+              onBlur={(e) => commit(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  commit(e.currentTarget.value);
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => onQtyChange(Math.min(qty + 1, avail))}
+              disabled={qty >= avail}
+              aria-label={`Aumentar cantidad de ${product.name}`}
+            >
+              <Plus size={14} />
+            </button>
+          </div>
+        )}
         <button
           type="button"
           className="tz-cart-remove-btn"
@@ -625,12 +666,17 @@ export default function App() {
   const [newProductoPresentacion, setNewProductoPresentacion] = useState("");
   const [newProductoColor, setNewProductoColor] = useState(null);
   const [newProductoPrecio, setNewProductoPrecio] = useState("");
+  // "Venta a Granel / Por Peso": si está activo, el stock inicial que
+  // se pide más abajo son KILOS (no unidades enteras) y 'precio' pasa
+  // a interpretarse como precio POR KILO en todo el resto de la app
+  // (carrito, boletas, WhatsApp — ver PesoModal/formatQty).
+  const [newProductoVentaPorPeso, setNewProductoVentaPorPeso] = useState(false);
   const [newProductoCategoria, setNewProductoCategoria] = useState("");
   const [newProductoSubgrupo, setNewProductoSubgrupo] = useState("");
   // Stock inicial + costo, capturados en el MISMO formulario de alta
   // (unificación con "Agregar Unidades al Stock" — ver saveNewProducto)
-  // para que el costo promedio ponderado exista desde el primer día,
-  // no recién cuando alguien pase por Agregar Unidades después.
+  // para que el Costo de Reposición exista desde el primer día, no
+  // recién cuando alguien pase por Agregar Unidades después.
   const [newProductoUnidades, setNewProductoUnidades] = useState("");
   const [newProductoCostoTotal, setNewProductoCostoTotal] = useState("");
   const [newProductoSaving, setNewProductoSaving] = useState(false);
@@ -720,7 +766,6 @@ export default function App() {
   const [addClienteOpen, setAddClienteOpen] = useState(false);
   const [newClienteName, setNewClienteName] = useState("");
   const [newClienteWhatsapp, setNewClienteWhatsapp] = useState("");
-  const [newClientePin, setNewClientePin] = useState("");
   const [clienteSaving, setClienteSaving] = useState(false);
   const [clienteError, setClienteError] = useState("");
 
@@ -840,7 +885,6 @@ export default function App() {
   const [checkoutFiadoAddingNew, setCheckoutFiadoAddingNew] = useState(false);
   const [checkoutFiadoNewName, setCheckoutFiadoNewName] = useState("");
   const [checkoutFiadoNewWhatsapp, setCheckoutFiadoNewWhatsapp] = useState("");
-  const [checkoutFiadoNewPin, setCheckoutFiadoNewPin] = useState("");
   const [checkoutFiadoSaving, setCheckoutFiadoSaving] = useState(false);
 
   /* ---- fiado_items: deuda por producto individual (permite el
@@ -1042,6 +1086,22 @@ export default function App() {
     return (
       Object.keys(stock).find((key) => (stockLabels[key] ?? key).trim().toLowerCase() === desc) ||
       null
+    );
+  };
+
+  // Venta a Granel/Por Peso en un ítem de Gastos: el ítem puede venir
+  // vinculado por 'productoId' (escaneo) o solo por 'stockKey'
+  // (autocompletado por etiqueta, ver selectGastoItemStock — ahí
+  // 'productoId' queda null a propósito) — así que en vez de confiar
+  // en 'productoId', se busca directamente CUÁL producto simple (no
+  // combo: una sola clave, qty 1) consume esa clave de stock y se lee
+  // su 'ventaPorPeso' desde ahí. Determina si ESE ítem específico del
+  // gasto debe pedir "Peso/Kilos" en vez de "Unidades".
+  const gastoItemEsVentaPorPeso = (it) => {
+    const key = resolveGastoItemStockKey(it);
+    if (!key) return false;
+    return Object.values(productsById).some(
+      (p) => p.ventaPorPeso && p.consumes?.length === 1 && p.consumes[0].key === key
     );
   };
 
@@ -1313,6 +1373,28 @@ export default function App() {
     setActiveTab((prev) => prev || sections[0]?.key || "");
   }, [sections]);
 
+  /* ---- Modal Calculadora de Peso: intercepta el agregado al carrito
+     de cualquier producto 'ventaPorPeso' — "1 unidad" no tiene sentido
+     físico para algo que se vende a granel, así que en vez de sumar un
+     default se abre este modal a pedir los kilos exactos.
+     'pesoModalProduct' null = cerrado. ---- */
+  const [pesoModalProduct, setPesoModalProduct] = useState(null);
+
+  const confirmPesoModal = (kg) => {
+    if (!pesoModalProduct) return;
+    setSelection((prev) => ({ ...prev, [pesoModalProduct.id]: kg }));
+    setPesoModalProduct(null);
+  };
+
+  const closePesoModal = () => setPesoModalProduct(null);
+
+  const clearSuccessIfAny = () => {
+    if (!successMsg) return;
+    if (successTimer.current) clearTimeout(successTimer.current);
+    setSuccessMsg("");
+    setLastSale(null);
+  };
+
   /* ---- selección de productos ---- */
   const toggleProduct = (product) => {
     const avail = availabilityFor(product, stock);
@@ -1321,11 +1403,20 @@ export default function App() {
     // Arrancar una venta nueva limpia al toque el aviso de éxito de la
     // anterior — así el carrito se muestra de inmediato en vez de
     // quedar tapado por el mensaje mientras corre su propio timeout.
-    if (successMsg) {
-      if (successTimer.current) clearTimeout(successTimer.current);
-      setSuccessMsg("");
-      setLastSale(null);
+    clearSuccessIfAny();
+
+    if (product.ventaPorPeso) {
+      // Ya estaba en el carrito: tocar la tarjeta de nuevo lo saca
+      // directo (mismo gesto de "togglear" que un producto normal, sin
+      // reabrir el modal solo para deseleccionar).
+      if (selection[product.id] != null) {
+        removeFromCart(product.id);
+      } else {
+        setPesoModalProduct(product);
+      }
+      return;
     }
+
     setSelection((prev) => {
       const next = { ...prev };
       if (next[product.id] != null) {
@@ -1346,16 +1437,22 @@ export default function App() {
      suma +1 en vez de dejarlo igual, igual que un POS real. Clampa al
      stock disponible (mismo límite que ya aplica changeQty) para no
      vender de más. Devuelve false si no hay stock, para que el
-     llamador pueda avisar. ---- */
+     llamador pueda avisar. Para 'ventaPorPeso' no tiene sentido "sumar
+     +1" (no es una unidad discreta) — abre el modal de peso en su
+     lugar, con el kg ya cargado si se escanea/busca un producto que YA
+     estaba en el carrito (para ajustarlo, no para reemplazarlo a
+     ciegas). ---- */
   const selectProductForSale = (product) => {
     const avail = availabilityFor(product, stock);
     if (avail <= 0) return false;
     setSubmitError("");
-    if (successMsg) {
-      if (successTimer.current) clearTimeout(successTimer.current);
-      setSuccessMsg("");
-      setLastSale(null);
+    clearSuccessIfAny();
+
+    if (product.ventaPorPeso) {
+      setPesoModalProduct(product);
+      return true;
     }
+
     setSelection((prev) => {
       const current = prev[product.id] ?? 0;
       return { ...prev, [product.id]: Math.min(current + 1, avail) };
@@ -1364,6 +1461,10 @@ export default function App() {
   };
 
   const changeQty = (product, delta) => {
+    // Los productos por peso no incrementan de a 1 (no son unidades
+    // discretas) — su cantidad solo se toca reabriendo el modal de
+    // peso (ver 'onEditWeight' en la tarjeta/CartRow), nunca acá.
+    if (product.ventaPorPeso) return;
     const avail = availabilityFor(product, stock);
     setSelection((prev) => {
       const current = prev[product.id] ?? 1;
@@ -1519,7 +1620,7 @@ export default function App() {
     const newEntries = selectedIds.map((id) => {
       const product = productsById[id];
       const qty = selection[id];
-      // Fotografía del costo: el costo promedio ponderado ACTUAL
+      // Fotografía del costo: el Costo de Reposición ACTUAL
       // (unitCostFor/stockCostos) se calcula una única vez, ACÁ, y
       // queda congelado en 'historial' — el Dashboard de hoy nunca
       // vuelve a preguntarle a 'stock' cuál es el costo, así que un
@@ -1539,6 +1640,11 @@ export default function App() {
         total: unitPrice * qty,
         costoUnitario,
         costoTotal: costoUnitario * qty,
+        // Freeze de si esta línea se vendió por peso — la boleta/
+        // WhatsApp de ESTA venta tienen que mostrar "1.25 Kg" para
+        // siempre, sin importar si el producto cambia de modalidad
+        // después.
+        ventaPorPeso: !!product.ventaPorPeso,
       };
     });
 
@@ -1562,6 +1668,7 @@ export default function App() {
           metodo_pago: checkoutMetodo,
           vendedor: vendedorLabel,
           fecha: timestamp,
+          venta_por_peso: e.ventaPorPeso,
         }))
       )
       .select();
@@ -1611,6 +1718,7 @@ export default function App() {
         monto: e.total,
         saldo_restante: e.total,
         fecha: timestamp,
+        venta_por_peso: e.ventaPorPeso,
       }));
 
       const { data: insertedFiadoItems, error: fiadoItemsError } = await supabase
@@ -1697,6 +1805,7 @@ export default function App() {
       metodoPago: row.metodo_pago ?? checkoutMetodo,
       vendedor: row.vendedor ?? vendedorLabel,
       timestamp: Number(row.fecha ?? timestamp),
+      ventaPorPeso: row.venta_por_peso ?? newEntries[idx].ventaPorPeso,
     }));
 
     setStock(newStock);
@@ -1706,24 +1815,43 @@ export default function App() {
     if (!stockError) setSubmitError("");
     setSuccessMsg(`Venta registrada — ID ${purchaseId}`);
 
-    // CRM básico: si se ingresó un WhatsApp, guardamos el resumen de la
-    // compra para poder enviarlo por wa.me apenas termine la venta.
-    const whatsapp = checkoutWhatsapp.trim();
-    const nombre = checkoutNombre.trim();
-    const saleTotal = newEntries.reduce((sum, e) => sum + e.total, 0);
-    if (whatsapp) {
-      setLastSale({
-        purchaseId,
-        nombre,
-        whatsapp,
-        items: newEntries,
-        total: saleTotal,
-        metodoPago: checkoutMetodo,
-        timestamp,
-      });
-    } else {
-      setLastSale(null);
+    // CRM básico: se guarda SIEMPRE un resumen de la venta para poder
+    // enviarlo por WhatsApp desde la pantalla de éxito — antes esto
+    // dependía por completo de que el cajero hubiera tipeado un
+    // WhatsApp en los campos GENERALES del checkout, campos que están
+    // OCULTOS para FIADO (ese flujo usa su propio cliente — existente
+    // o recién creado — más abajo en el formulario, ver
+    // "tz-checkout-fiado"), así que TODA venta fiada se quedaba sin
+    // 'lastSale' y por lo tanto sin los botones de WhatsApp. Ahora, si
+    // no hay whatsapp/nombre "generales", se completan con los del
+    // cliente fiado elegido (nuevo o existente, da igual — para este
+    // punto 'checkoutFiadoClienteId' ya apunta a una fila real de
+    // 'clientes' en cualquiera de los dos casos).
+    let whatsapp = checkoutWhatsapp.trim();
+    let nombre = checkoutNombre.trim();
+    if (!whatsapp && checkoutMetodo === "FIADO" && checkoutFiadoClienteId) {
+      const clienteFiado = clientes.find((c) => c.id === checkoutFiadoClienteId);
+      if (clienteFiado) {
+        whatsapp = clienteFiado.whatsapp || "";
+        nombre = clienteFiado.nombre || "";
+      }
     }
+    const saleTotal = newEntries.reduce((sum, e) => sum + e.total, 0);
+    // Los botones de "Enviar resumen"/"Enviar Boleta" tienen que
+    // aparecer SIEMPRE después de una venta exitosa — sin importar el
+    // método de pago ni si se capturó un número. Si de verdad no hay
+    // WhatsApp válido, el botón avisa recién al tocarlo (ver
+    // buildWhatsappLink/enviarBoletaPorWhatsApp), pero ya no
+    // desaparece por completo.
+    setLastSale({
+      purchaseId,
+      nombre,
+      whatsapp,
+      items: newEntries,
+      total: saleTotal,
+      metodoPago: checkoutMetodo,
+      timestamp,
+    });
     setCheckoutNombre("");
     setCheckoutWhatsapp("");
     setCheckoutMetodo(null);
@@ -1733,15 +1861,10 @@ export default function App() {
     resetEntryForm();
 
     if (successTimer.current) clearTimeout(successTimer.current);
-    // Si hay un resumen para WhatsApp, dejamos más tiempo visible el
-    // botón de envío; si no, el aviso normal de 4s.
-    successTimer.current = setTimeout(
-      () => {
-        setSuccessMsg("");
-        setLastSale(null);
-      },
-      whatsapp ? 20000 : 4000
-    );
+    successTimer.current = setTimeout(() => {
+      setSuccessMsg("");
+      setLastSale(null);
+    }, 20000);
   };
 
   /* ---- checkout: elegir método de pago ---- */
@@ -1773,16 +1896,15 @@ export default function App() {
   /* ---- checkout: crear un cliente nuevo al vuelo (sin salir del cobro) ---- */
   /* ---- alta de cliente desde el checkout (sub-flujo Fiado): usa la
      MISMA Edge Function 'create-cliente' que ya usa la Libreta
-     (saveCliente) en vez de un INSERT directo — el PIN es una
-     credencial real (password de la cuenta de Supabase Auth del
-     cliente, celular@tonazo.app), así que necesita pasar por el
-     service_role del servidor para quedar hasheado, nunca guardarse
-     en texto plano en una tabla normal. Por esto mismo el celular acá
-     es obligatorio (es el usuario de login), no opcional. ---- */
+     (saveCliente) en vez de un INSERT directo — la cuenta real de
+     Supabase Auth (celular@tonazo.app) necesita pasar por el
+     service_role del servidor, nunca crearse desde acá directo. El
+     celular es obligatorio (es el usuario de login); el PIN YA NO se
+     pide acá — el cliente crea el suyo propio en su primer login (ver
+     LoginModal / set-initial-pin). ---- */
   const saveCheckoutFiadoCliente = async () => {
     const nombre = checkoutFiadoNewName.trim();
     const celular = checkoutFiadoNewWhatsapp.trim();
-    const pin = checkoutFiadoNewPin.trim();
 
     if (!nombre) {
       setSubmitError("Ingresa el nombre del cliente.");
@@ -1792,16 +1914,18 @@ export default function App() {
       setSubmitError("Ingresa un celular válido (solo números, 6 a 15 dígitos).");
       return;
     }
-    if (!/^\d{4,10}$/.test(pin)) {
-      setSubmitError("El PIN debe tener entre 4 y 10 dígitos.");
-      return;
-    }
 
     setCheckoutFiadoSaving(true);
     setSubmitError("");
 
+    // 'tipo' explícito: el rol de quien está logueado (admin/cajero
+    // creando esto) NUNCA debe confundirse con el rol de la cuenta que
+    // se está creando — este payload declara "cliente" a propósito,
+    // sin importar qué rol tenga la sesión actual del navegador.
+    const payload = { tipo: "cliente", nombre, celular };
+    console.log("create-cliente (checkout FIADO) → payload enviado:", payload);
     const { data, error } = await supabase.functions.invoke("create-cliente", {
-      body: { nombre, celular, pin },
+      body: payload,
     });
 
     setCheckoutFiadoSaving(false);
@@ -1825,7 +1949,6 @@ export default function App() {
     setCheckoutFiadoAddingNew(false);
     setCheckoutFiadoNewName("");
     setCheckoutFiadoNewWhatsapp("");
-    setCheckoutFiadoNewPin("");
   };
 
   /* ---- autocompletado de Nombre/WhatsApp en el checkout: sugiere
@@ -1890,6 +2013,7 @@ export default function App() {
     setNewProductoPresentacion("");
     setNewProductoColor(null);
     setNewProductoPrecio("");
+    setNewProductoVentaPorPeso(false);
     setNewProductoUnidades("");
     setNewProductoCostoTotal("");
     setNewProductoCategoria("");
@@ -1945,8 +2069,13 @@ export default function App() {
     resetNuevaVariedadForm();
   };
 
-  const handleStockEditChange = (key, value) => {
-    if (value === "" || /^[0-9]+$/.test(value)) {
+  // 'allowDecimal' se prende para restockear un producto 'ventaPorPeso'
+  // existente — ahí "unidades que ingresan" son kilos, y 2.5 es un
+  // valor perfectamente válido (antes el regex de solo enteros lo
+  // hacía imposible de escribir).
+  const handleStockEditChange = (key, value, allowDecimal) => {
+    const regex = allowDecimal ? /^\d*\.?\d{0,3}$/ : /^[0-9]+$/;
+    if (value === "" || regex.test(value)) {
       setStockEdits((prev) => ({ ...prev, [key]: value }));
     }
   };
@@ -2006,7 +2135,7 @@ export default function App() {
      desde el buscador): INSERT en 'productos' (+ 'categorias' si la
      categoría es nueva) Y su stock inicial YA con costo, en la misma
      operación — unificado con "Agregar Unidades al Stock" para que el
-     costo promedio ponderado exista desde el primer día (ver
+     Costo de Reposición exista desde el primer día (ver
      crearProducto() en productLookup.js). Al terminar, refresca el
      catálogo y deja el producto recién creado filtrado en la pantalla
      de "Agregar unidades al stock" (ya con su stock/costo cargados,
@@ -2014,7 +2143,10 @@ export default function App() {
   const saveNewProducto = async () => {
     const nombreBase = newProductoNombre.trim();
     const precioNum = parseFloat(newProductoPrecio);
-    const unidadesNum = parseInt(newProductoUnidades, 10);
+    // parseFloat, NO parseInt: para 'ventaPorPeso' esto son kilos
+    // (2.5), no unidades enteras — parseInt truncaba silenciosamente
+    // "2.5" a 2, guardando el stock inicial mal desde el día 1.
+    const unidadesNum = parseFloat(newProductoUnidades);
     const costoTotalNum = parseFloat(newProductoCostoTotal);
 
     if (!nombreBase) {
@@ -2034,7 +2166,11 @@ export default function App() {
     // ponderado, y crear el producto sin costo dejaría la Ganancia
     // Neta desactualizada desde el día 1.
     if (isNaN(unidadesNum) || unidadesNum <= 0) {
-      setNewProductoError("Ingresa las unidades que ingresan al stock inicial.");
+      setNewProductoError(
+        newProductoVentaPorPeso
+          ? "Ingresa los kilos que ingresan al stock inicial."
+          : "Ingresa las unidades que ingresan al stock inicial."
+      );
       return;
     }
     if (isNaN(costoTotalNum) || costoTotalNum < 0) {
@@ -2058,6 +2194,7 @@ export default function App() {
         stockExistente: stock,
         unidadesIniciales: unidadesNum,
         costoTotalInicial: costoTotalNum,
+        ventaPorPeso: newProductoVentaPorPeso,
       });
 
       const nombreCreado = composeProductoNombre({
@@ -2093,7 +2230,9 @@ export default function App() {
       setScannedStockKey(null);
       setStockSearchTerm(nombreCreado);
       setStockSavedMsg(
-        `"${nombreCreado}" creado con ${unidadesNum} unidades en stock.${fotoWarning}`
+        `"${nombreCreado}" creado con ${
+          newProductoVentaPorPeso ? `${unidadesNum} Kg` : `${unidadesNum} unidades`
+        } en stock.${fotoWarning}`
       );
     } catch (err) {
       console.error("Error creando producto:", err);
@@ -2665,8 +2804,12 @@ export default function App() {
 
   /* ---- guardar unidades extra: UPDATE/upsert a 'stock' ---- */
   const saveStockEdits = async () => {
+    // parseFloat, NO parseInt: una clave de stock 'ventaPorPeso' carga
+    // kilos (2.5), no unidades enteras — parseInt truncaba esos
+    // decimales en silencio. Para productos normales el comportamiento
+    // es idéntico (parseFloat("5") === parseInt("5",10) === 5).
     const additions = Object.keys(stockEdits).filter(
-      (k) => stockEdits[k] && parseInt(stockEdits[k], 10) > 0
+      (k) => stockEdits[k] && parseFloat(stockEdits[k]) > 0
     );
     if (additions.length === 0) {
       setStockSavedMsg("Ingresa al menos una cantidad para agregar.");
@@ -2674,9 +2817,9 @@ export default function App() {
     }
 
     // El costo TOTAL de la compra es obligatorio para cada clave con
-    // unidades cargadas — sin él no hay forma de calcular el Costo
-    // Promedio Ponderado, y guardar cantidad sin costo dejaría el
-    // costo de esa clave desactualizado en silencio.
+    // unidades cargadas — sin él no hay forma de calcular el Costo de
+    // Reposición, y guardar cantidad sin costo dejaría el costo de esa
+    // clave desactualizado en silencio.
     const sinCosto = additions.filter((k) => {
       const c = parseFloat(stockCostEdits[k]);
       return stockCostEdits[k] === undefined || stockCostEdits[k] === "" || isNaN(c) || c < 0;
@@ -2696,19 +2839,18 @@ export default function App() {
     const newStockCostos = { ...stockCostos };
     const newStockUltimoCosto = { ...stockUltimoCosto };
     additions.forEach((key) => {
-      const unidadesIngresan = parseInt(stockEdits[key], 10);
+      const unidadesIngresan = parseFloat(stockEdits[key]);
       const costoTotalCompra = parseFloat(stockCostEdits[key]);
       newStock[key] = (newStock[key] ?? 0) + unidadesIngresan;
-      newStockCostos[key] = calcularCostoPromedioPonderado({
-        stockActual: stock[key] ?? 0,
-        costoActualUnitario: stockCostos[key],
-        unidadesIngresan,
-        costoTotalCompra,
-      });
-      // 'último costo' NO se promedia — se SOBRESCRIBE con el costo
-      // unitario de este lote específico (a diferencia de
-      // precio_costo, que sí acumula).
-      newStockUltimoCosto[key] = costoTotalCompra / unidadesIngresan;
+      // Costo de Reposición / Último Costo: 'precio_costo' YA NO se
+      // promedia con el stock/costo anterior — cada compra nueva
+      // reemplaza directo el costo unitario vigente (mismo criterio
+      // que ya se usaba solo para 'ultimo_costo_compra', ahora es el
+      // único criterio que existe, así que ambos campos terminan
+      // guardando el mismo valor).
+      const costoUltimaCompra = calcularCostoUltimaCompra({ unidadesIngresan, costoTotalCompra });
+      newStockCostos[key] = costoUltimaCompra;
+      newStockUltimoCosto[key] = costoUltimaCompra;
     });
 
     // 'etiqueta' va siempre incluida (no solo cantidad/precio_costo):
@@ -2941,7 +3083,6 @@ export default function App() {
     setAddClienteOpen(false);
     setNewClienteName("");
     setNewClienteWhatsapp("");
-    setNewClientePin("");
     setClienteError("");
   };
 
@@ -3034,15 +3175,17 @@ export default function App() {
   };
 
   /* ---- guardar nuevo cliente: crea su cuenta real de Supabase Auth
-     (celular+PIN, vía dummy email) y su fila en 'clientes_fiado' a
-     través de la Edge Function create-cliente (usa service_role del
-     lado del servidor; la sesión del admin en este navegador no se
-     toca). El celular ahora es obligatorio: es el identificador de
-     login del cliente, ya no un dato opcional. ---- */
+     (vía dummy email) y su fila en 'clientes_fiado' a través de la
+     Edge Function create-cliente (usa service_role del lado del
+     servidor; la sesión del admin en este navegador no se toca). El
+     celular es obligatorio (es el identificador de login), pero el
+     PIN YA NO se pide acá — el admin solo registra nombre + teléfono;
+     create-cliente crea la cuenta con un password placeholder que
+     nadie conoce, y el cliente elige su propio PIN en su primer login
+     (ver LoginModal / set-initial-pin). ---- */
   const saveCliente = async () => {
     const nombre = newClienteName.trim();
     const celular = newClienteWhatsapp.trim();
-    const pin = newClientePin.trim();
 
     if (!nombre) {
       setClienteError("Ingresa el nombre del cliente.");
@@ -3052,16 +3195,17 @@ export default function App() {
       setClienteError("Ingresa un celular válido (solo números).");
       return;
     }
-    if (!/^\d{4,10}$/.test(pin)) {
-      setClienteError("El PIN debe tener entre 4 y 10 dígitos.");
-      return;
-    }
 
     setClienteSaving(true);
     setClienteError("");
 
+    // 'tipo' explícito por la misma razón que en saveCheckoutFiadoCliente:
+    // nunca debe confundirse con el rol de quien está logueado ahora
+    // mismo (admin) creando esta cuenta.
+    const payload = { tipo: "cliente", nombre, celular };
+    console.log("create-cliente (Libreta) → payload enviado:", payload);
     const { data, error } = await supabase.functions.invoke("create-cliente", {
-      body: { nombre, celular, pin },
+      body: payload,
     });
 
     setClienteSaving(false);
@@ -3321,19 +3465,38 @@ export default function App() {
   };
 
   /* ---- boleta digital: captura el TicketBoleta oculto (ticketRef) con
-     html2canvas, copia esa imagen al portapapeles del sistema y abre
-     WhatsApp con un mensaje que le indica al cajero que pegue (Ctrl+V)
-     la imagen — WhatsApp Web/App no tiene una API pública para adjuntar
-     una imagen directamente desde un link wa.me, así que el
-     portapapeles es el atajo real para no tener que descargar y volver
-     a subir la boleta a mano. ---- */
+     html2canvas y comparte esa imagen — DE VERDAD, como archivo
+     adjunto, no como texto — hacia WhatsApp.
+
+     Camino principal: navigator.share({ files: [...] }) — el share
+     sheet nativo del sistema operativo, que en Android/iOS entrega la
+     imagen directo a WhatsApp como adjunto real, sin que el cajero
+     tenga que pegar (Ctrl+V) nada a mano. Ese paso manual era lo que
+     hacía que este botón "se sintiera" como si solo mandara texto —
+     generaba la imagen, sí, pero la entrega dependía de un paso extra
+     fácil de pasar por alto.
+
+     Camino de respaldo (navigator.share no soportado — típicamente
+     desktop/Firefox): vuelve al truco anterior de copiar la imagen al
+     portapapeles + abrir wa.me con el texto, para que el cajero la
+     pegue manualmente — sigue funcionando en esas plataformas, no se
+     perdió nada.
+
+     Fix específico para iOS/Safari (donde "no hacía nada"):
+     1) html2canvas corre con un timeout propio (Promise.race): si el
+        navegador se queda "colgado" renderizando (reportado en
+        algunas versiones de WebKit con html2canvas + fuentes/
+        imágenes), antes esto dejaba el botón en "Generando boleta…"
+        para siempre — sin error, sin nada, que es exactamente "falla
+        en silencio". Ahora a los 12s se cancela y se avisa.
+     2) 'scale' es adaptivo: 2 en pantallas grandes, 1.5 en mobile
+        (pantallas angostas) — menos presión de memoria en un celular
+        gama media.
+     3) allowTaint:true además de useCORS:true — si ALGO no se puede
+        cargar vía CORS (logo, ícono), igual se dibuja en vez de
+        abortar. ---- */
   const enviarBoletaPorWhatsApp = async () => {
     if (!lastSale) return;
-    const numero = toPeruWhatsappNumber(lastSale.whatsapp);
-    if (!numero) {
-      setBoletaError("Ese número de WhatsApp no es válido.");
-      return;
-    }
     if (!ticketRef.current) {
       setBoletaError("No se pudo preparar la boleta. Intenta de nuevo.");
       return;
@@ -3342,14 +3505,50 @@ export default function App() {
     setBoletaError("");
     setBoletaSending(true);
     try {
-      const canvas = await html2canvas(ticketRef.current, { scale: 2, useCORS: true });
+      const isMobile = window.innerWidth < 768;
+      const canvasPromise = html2canvas(ticketRef.current, {
+        scale: isMobile ? 1.5 : 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#f8fafc",
+      });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("TIMEOUT_RENDER")), 12000)
+      );
+      const canvas = await Promise.race([canvasPromise, timeoutPromise]);
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       if (!blob) throw new Error("No se pudo generar la imagen de la boleta.");
 
-      // El portapapeles es la parte más frágil de este flujo (permisos
+      const texto = buildSaleWhatsappMessage(lastSale);
+      const file = new File([blob], `boleta-${lastSale.purchaseId}.png`, { type: "image/png" });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            text: "Aquí tienes tu boleta",
+          });
+        } catch (shareErr) {
+          // El usuario cerró el share sheet sin elegir nada: no es un
+          // error real, no hay nada que avisar.
+          if (shareErr?.name === "AbortError") return;
+          throw shareErr;
+        }
+        return;
+      }
+
+      // Respaldo sin Web Share API (desktop/Firefox, típicamente): el
+      // portapapeles es la parte más frágil de este camino (permisos
       // del navegador, contexto no seguro, etc.) — si falla, avisamos
       // puntualmente y NO abrimos WhatsApp: sin nada copiado, el aviso
       // de "presiona Ctrl+V" solo confundiría al cajero.
+      const numero = toPeruWhatsappNumber(lastSale.whatsapp);
+      if (!navigator.clipboard || typeof window.ClipboardItem !== "function") {
+        setBoletaError(
+          "Este dispositivo/navegador no soporta compartir ni copiar la imagen — usá 'Enviar resumen por WhatsApp' (solo texto)."
+        );
+        return;
+      }
       try {
         await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
       } catch (clipboardErr) {
@@ -3359,17 +3558,21 @@ export default function App() {
         );
         return;
       }
-
-      // Mismo texto que el botón "Enviar resumen por WhatsApp" (un solo
-      // formato de mensaje, sin mención a la empresa ni emojis, ya
-      // definido en buildSaleWhatsappMessage) — acá además viaja
-      // codificado con encodeURIComponent para que espacios/símbolos
-      // lleguen bien al link wa.me.
-      const texto = buildSaleWhatsappMessage(lastSale);
+      if (!numero) {
+        setBoletaError(
+          "La imagen se copió al portapapeles, pero ese número de WhatsApp no es válido — pégala (Ctrl+V) manualmente en el chat correcto."
+        );
+        return;
+      }
       window.open(`https://wa.me/${numero}?text=${encodeURIComponent(texto)}`, "_blank");
     } catch (err) {
-      console.error("Error generando la boleta para WhatsApp:", err);
-      setBoletaError("No se pudo generar la boleta. Intenta de nuevo.");
+      console.error("Error generando/compartiendo la boleta:", err);
+      const timedOut = err?.message === "TIMEOUT_RENDER";
+      setBoletaError(
+        timedOut
+          ? "No se pudo generar la imagen en este dispositivo (tardó demasiado). Intenta de nuevo o usa 'Enviar resumen por WhatsApp'."
+          : "No se pudo generar la imagen en este dispositivo. Intenta de nuevo o usa 'Enviar resumen por WhatsApp'."
+      );
     } finally {
       setBoletaSending(false);
     }
@@ -3525,10 +3728,11 @@ export default function App() {
   const gastoMixtoDiferencia = gastoItemsTotal - (gastoMontoEfectivoNum + gastoMontoDigitalNum);
 
   /* ---- Reporte de Precios y Márgenes (solo admin): cruza 'productos'
-     (vía productsById, ya armado por useCatalog) con 'stock' — costo
-     promedio ponderado (stockCostos) y último costo ingresado
-     (stockUltimoCosto) se derivan de las claves que cada producto
-     consume, igual que unitCostFor. Para un combo (varias claves), el
+     (vía productsById, ya armado por useCatalog) con 'stock' — Costo
+     de Reposición (stockCostos, que desde el modelo "Último Costo"
+     vale exactamente lo mismo que stockUltimoCosto) se deriva de las
+     claves que cada producto consume, igual que unitCostFor. Para un
+     combo (varias claves), el
      costo es la suma del costo de sus partes — no existe un "costo
      propio" independiente para un combo. Si alguna clave todavía no
      tiene 'último costo' cargado, esa celda queda vacía (no en 0 —
@@ -3711,13 +3915,15 @@ export default function App() {
       // por la sugerencia de autocompletado, o porque su descripción
       // final coincide exacto con una etiqueta de stock — ver
       // resolveGastoItemStockKey) suma su cantidad al stock actual Y
-      // recalcula 'precio_costo' con Costo Promedio Ponderado, igual
-      // que "Agregar Unidades al Stock" (calcularCostoPromedioPonderado).
-      // Si DOS ítems del mismo gasto apuntan a la misma clave (ej. la
-      // misma bebida en dos líneas), se agregan ANTES de aplicar la
-      // fórmula una sola vez por clave — aplicarla dos veces seguidas
-      // partiendo del mismo "stock actual" para cada línea daría un
-      // promedio incorrecto. No es una transacción real de Postgres
+      // reemplaza 'precio_costo' con el Costo de Reposición/Último
+      // Costo de este lote (calcularCostoUltimaCompra), igual que
+      // "Agregar Unidades al Stock". Si DOS ítems del mismo gasto
+      // apuntan a la misma clave (ej. la misma bebida en dos líneas,
+      // o kilos de un mismo producto 'venta_por_peso' repartidos en
+      // varias filas), se agregan ANTES de calcular el costo — se
+      // tratan como UN solo lote combinado (unidades/kilos y costo
+      // sumados), no como dos reemplazos sucesivos donde el segundo
+      // pisaría al primero. No es una transacción real de Postgres
       // (el cliente de Supabase no soporta eso desde el navegador) —
       // si esto falla, el gasto YA quedó guardado (correcto: la plata
       // sí salió de caja), así que solo se avisa para que el admin
@@ -3744,15 +3950,12 @@ export default function App() {
         const newStockUltimoCosto = { ...stockUltimoCosto };
         stockKeysToUpdate.forEach((key) => {
           const { unidades, costoTotal } = stockDeltas[key];
-          newStockCostos[key] = calcularCostoPromedioPonderado({
-            stockActual: stock[key] ?? 0,
-            costoActualUnitario: stockCostos[key],
+          const costoUltimaCompra = calcularCostoUltimaCompra({
             unidadesIngresan: unidades,
             costoTotalCompra: costoTotal,
           });
-          // Igual que en "Agregar Unidades al Stock": el último costo
-          // se sobreescribe con el de ESTE lote, no se promedia.
-          newStockUltimoCosto[key] = costoTotal / unidades;
+          newStockCostos[key] = costoUltimaCompra;
+          newStockUltimoCosto[key] = costoUltimaCompra;
           newStock[key] = (newStock[key] ?? 0) + unidades;
         });
         const stockUpdates = stockKeysToUpdate.map((key) => ({
@@ -4101,8 +4304,9 @@ export default function App() {
     // que se guardó en 'historial.costo_total' EN EL MOMENTO de esa
     // venta (ver submitVenta) — nunca se vuelve a buscar el costo
     // actual de 'productsById'/'stockCostos' acá. Si mañana cambia el
-    // costo promedio ponderado (nuevo ingreso de mercadería), las
-    // ventas de hoy no se mueven retroactivamente. Ventas de antes de
+    // Costo de Reposición (nuevo ingreso de mercadería reemplaza el
+    // costo unitario), las ventas de hoy no se mueven
+    // retroactivamente — es justamente lo que "congelar" evita. Ventas de antes de
     // la migración 0026 no tienen costo congelado (costoTotal: null)
     // y aportan 0 — no hay forma de reconstruir ese dato con certeza.
     const costOf = (list) => list.reduce((sum, s) => sum + (s.costoTotal || 0), 0);
@@ -4193,16 +4397,29 @@ export default function App() {
     // caja. No resta gastos (esos ya se ven en su propia fila).
     const gananciaEsperada = total - cost;
 
-    // GANANCIA NETA DEL TURNO (sección Cierre de Caja, solo admin):
-    // Total Vendido (valor comercial de todo lo entregado este turno,
-    // fiado incluido) menos el Total de Gastos del turno (gastosHoyCaja
-    // = gastosEfectivoHoy + gastosDigitalHoy). NO se resta 'cost' acá:
-    // cuando el stock se repone se registra como un Gasto (ver
-    // saveGasto, que además actualiza 'stock' con el costo promedio
-    // ponderado), así que restar 'cost' de nuevo aquí duplicaba el
-    // costo de mercadería (una vez como compra en Gastos, otra vez como
-    // costo de venta) y por eso el resultado se iba a negativo.
-    const gananciaNetaTurno = total - gastosHoyCaja;
+    // GANANCIA NETA DEL TURNO (sección Cierre de Caja Y el chip
+    // "Ganancia Neta (hoy)" del dashboard — comparten esta misma
+    // variable a propósito, para que nunca puedan mostrar números
+    // distintos entre sí):
+    //   Ganancia Neta = (Total Vendido - Costo de lo Vendido) - Gastos
+    //
+    // 'cost' es EXACTAMENTE "Costo Unitario en el momento de la venta ×
+    // Cantidad" sumado sobre todas las ventas del turno — no una
+    // aproximación: sale de 'historial.costo_total', congelado por
+    // submitVenta en el momento exacto de cada venta (ver 'costOf' más
+    // arriba), así que un reingreso de mercadería mañana JAMÁS puede
+    // alterar retroactivamente la ganancia de una venta ya hecha.
+    //
+    // Un cambio anterior había sacado 'cost' de esta fórmula asumiendo
+    // que el costo de mercadería ya estaba cubierto por 'gastosHoyCaja'
+    // (reponer stock también se registra como Gasto) — pero esas son
+    // dos cosas distintas: "plata gastada en compras HOY" no es lo
+    // mismo que "costo de lo que se VENDIÓ hoy" (se pudo comprar hoy
+    // algo que se vende la semana que viene, o vender hoy algo
+    // comprado la semana pasada). Restar 'gastosHoyCaja' en vez de
+    // 'cost' era la causa real del bug: la ganancia mostraba el bruto
+    // de la venta sin descontar ningún costo de mercadería.
+    const gananciaNetaTurno = total - cost - gastosHoyCaja;
 
     // Ticket General: monto promedio por venta registrada hoy.
     const avgTicket = purchaseCount > 0 ? total / purchaseCount : 0;
@@ -5563,7 +5780,22 @@ export default function App() {
                             </div>
 
                             <div className="tz-card-priceqty">
-                              {checked && (
+                              {checked && item.ventaPorPeso && (
+                                <div
+                                  className="tz-qty-stepper tz-qty-peso"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <span>{formatQty(true, qty)}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPesoModalProduct(item)}
+                                    aria-label="Editar peso"
+                                  >
+                                    <Pencil size={13} />
+                                  </button>
+                                </div>
+                              )}
+                              {checked && !item.ventaPorPeso && (
                                 <div
                                   className="tz-qty-stepper"
                                   onClick={(e) => e.stopPropagation()}
@@ -5586,7 +5818,9 @@ export default function App() {
                                 </div>
                               )}
                               <div className="tz-price-block">
-                                <span className="tz-price-label">Precio</span>
+                                <span className="tz-price-label">
+                                  Precio{item.ventaPorPeso ? "/Kg" : ""}
+                                </span>
                                 {discounts[item.id] ? (
                                   <>
                                     <span className="tz-price-original">
@@ -5621,6 +5855,16 @@ export default function App() {
             ))
           )}
         </section>
+
+        {pesoModalProduct && (
+          <PesoModal
+            product={pesoModalProduct}
+            avail={availabilityFor(pesoModalProduct, stock)}
+            initialKg={selection[pesoModalProduct.id] ?? null}
+            onCancel={closePesoModal}
+            onConfirm={confirmPesoModal}
+          />
+        )}
 
         {/* ---------------- MODAL: ¿QUÉ VARIANTE? (Fase 2) ---------------- */}
         {variantModalGroup && (
@@ -5724,7 +5968,9 @@ export default function App() {
                           title="Agregar al carrito"
                         >
                           <Plus size={15} />
-                          {qtyInCart > 0 && <span className="tz-variant-add-qty">{qtyInCart}</span>}
+                          {qtyInCart > 0 && !v.ventaPorPeso && (
+                            <span className="tz-variant-add-qty">{qtyInCart}</span>
+                          )}
                         </button>
                       </div>
                     </div>
@@ -5794,7 +6040,8 @@ export default function App() {
                           }}
                           cliente={{ nombre: lastSale.nombre }}
                           productos={lastSale.items.map((it) => ({
-                            cantidad: it.qty,
+                            cantidad: formatQty(it.ventaPorPeso, it.qty),
+                            ventaPorPeso: !!it.ventaPorPeso,
                             nombre: it.detail ? `${it.name} · ${it.detail}` : it.name,
                             precioUnitario: it.price,
                             subtotal: it.total,
@@ -5827,15 +6074,23 @@ export default function App() {
                             setSelection((prev) => ({ ...prev, [id]: newQty }))
                           }
                           onRemove={() => removeFromCart(id)}
+                          onEditWeight={() => setPesoModalProduct(product)}
                         />
                       );
                     })}
                   </div>
                   <p className="tz-submitbar-summary">
                     <ShoppingCart size={16} />
-                    {`${selectedCount} producto${selectedCount > 1 ? "s" : ""} · ${totalItems} unidad${
-                      totalItems > 1 ? "es" : ""
-                    } · Total ${formatSoles(totalPrice)}`}
+                    {/* Sumar unidades enteras con kilos (venta a granel) en
+                       un solo número no significa nada — si hay algún
+                       ítem por peso en el carrito, se omite el conteo de
+                       "unidades" y solo se muestra la cantidad de
+                       productos distintos + el total. */}
+                    {selectedIds.some((id) => productsById[id]?.ventaPorPeso)
+                      ? `${selectedCount} producto${selectedCount > 1 ? "s" : ""} · Total ${formatSoles(totalPrice)}`
+                      : `${selectedCount} producto${selectedCount > 1 ? "s" : ""} · ${totalItems} unidad${
+                          totalItems > 1 ? "es" : ""
+                        } · Total ${formatSoles(totalPrice)}`}
                   </p>
                   {/* ---- Nombre/WhatsApp generales: el flujo de Fiado maneja
                      su propio cliente (con su propio nombre/WhatsApp) más
@@ -6103,14 +6358,9 @@ export default function App() {
                                 value={checkoutFiadoNewWhatsapp}
                                 onChange={(e) => setCheckoutFiadoNewWhatsapp(e.target.value)}
                               />
-                              <input
-                                type="text"
-                                inputMode="numeric"
-                                className="tz-text-input"
-                                placeholder="PIN (4 a 10 dígitos)"
-                                value={checkoutFiadoNewPin}
-                                onChange={(e) => setCheckoutFiadoNewPin(e.target.value)}
-                              />
+                              <p className="tz-field-hint">
+                                El cliente crea su propio PIN la primera vez que inicia sesión.
+                              </p>
                               <div className="tz-add-entry-actions">
                                 <button
                                   className="tz-camera-cancel"
@@ -6118,7 +6368,6 @@ export default function App() {
                                     setCheckoutFiadoAddingNew(false);
                                     setCheckoutFiadoNewName("");
                                     setCheckoutFiadoNewWhatsapp("");
-                                    setCheckoutFiadoNewPin("");
                                   }}
                                 >
                                   Cancelar
@@ -6426,7 +6675,30 @@ export default function App() {
                     error=""
                   />
 
-                  <label className="tz-field-label">Precio de venta (S/)</label>
+                  <div className="tz-switch-row">
+                    <span className="tz-field-label" style={{ margin: 0 }}>
+                      Venta a Granel / Por Peso
+                    </span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={newProductoVentaPorPeso}
+                      className={`tz-switch ${newProductoVentaPorPeso ? "tz-switch-on" : ""}`}
+                      onClick={() => setNewProductoVentaPorPeso((v) => !v)}
+                    >
+                      <span className="tz-switch-knob" />
+                    </button>
+                  </div>
+                  {newProductoVentaPorPeso && (
+                    <p className="tz-field-hint" style={{ marginTop: -6 }}>
+                      El precio de venta es por Kilo, y el stock/carrito se manejan en kilos
+                      (decimales) en vez de unidades enteras.
+                    </p>
+                  )}
+
+                  <label className="tz-field-label">
+                    Precio de venta {newProductoVentaPorPeso ? "por Kilo (S/)" : "(S/)"}
+                  </label>
                   <input
                     type="number"
                     min="0"
@@ -6438,14 +6710,19 @@ export default function App() {
                   />
 
                   <p className="tz-field-label" style={{ marginTop: 8 }}>
-                    Stock inicial (para el Costo Promedio Ponderado desde el día 1)
+                    Stock inicial (define el Costo de Reposición desde el día 1)
                   </p>
                   <div className="tz-stock-cost-inputs">
                     <label className="tz-stock-cost-field">
-                      <span>Unidades que ingresan</span>
+                      <span>
+                        {newProductoVentaPorPeso
+                          ? "Cantidad de Kilos (Kg) que ingresan"
+                          : "Unidades que ingresan"}
+                      </span>
                       <input
                         type="number"
                         min="0"
+                        step={newProductoVentaPorPeso ? "0.001" : "1"}
                         placeholder="0"
                         value={newProductoUnidades}
                         onChange={(e) => setNewProductoUnidades(e.target.value)}
@@ -6473,7 +6750,8 @@ export default function App() {
                     return (
                       costoUnitario != null && (
                         <p className="tz-stock-cost-hint">
-                          Costo unitario: {formatSoles(costoUnitario)}
+                          {newProductoVentaPorPeso ? "Costo por Kilo" : "Costo unitario"}:{" "}
+                          {formatSoles(costoUnitario)}
                         </p>
                       )
                     );
@@ -6687,19 +6965,29 @@ export default function App() {
                                   </span>
                                   <span className="tz-stock-row-current">
                                     Stock actual: {stock[key] ?? 0}
+                                    {item.ventaPorPeso ? " Kg" : ""}
                                     {costoActual != null &&
-                                      ` · Costo actual: ${formatSoles(costoActual)}/u`}
+                                      ` · Costo actual: ${formatSoles(costoActual)}${
+                                        item.ventaPorPeso ? "/Kg" : "/u"
+                                      }`}
                                   </span>
                                 </div>
                                 <div className="tz-stock-cost-inputs">
                                   <label className="tz-stock-cost-field">
-                                    <span>Unidades que ingresan</span>
+                                    <span>
+                                      {item.ventaPorPeso
+                                        ? "Cantidad de Kilos (Kg) que ingresan"
+                                        : "Unidades que ingresan"}
+                                    </span>
                                     <input
                                       type="number"
                                       min="0"
+                                      step={item.ventaPorPeso ? "0.001" : "1"}
                                       placeholder="0"
                                       value={stockEdits[key] ?? ""}
-                                      onChange={(e) => handleStockEditChange(key, e.target.value)}
+                                      onChange={(e) =>
+                                        handleStockEditChange(key, e.target.value, item.ventaPorPeso)
+                                      }
                                     />
                                   </label>
                                   <label className="tz-stock-cost-field">
@@ -6716,7 +7004,8 @@ export default function App() {
                                 </div>
                                 {costoUnitarioLote != null && (
                                   <p className="tz-stock-cost-hint">
-                                    Costo unitario de este lote: {formatSoles(costoUnitarioLote)}
+                                    {item.ventaPorPeso ? "Costo por Kilo de este lote" : "Costo unitario de este lote"}:{" "}
+                                    {formatSoles(costoUnitarioLote)}
                                   </p>
                                 )}
                               </div>
@@ -7703,15 +7992,10 @@ export default function App() {
                         value={newClienteWhatsapp}
                         onChange={(e) => setNewClienteWhatsapp(e.target.value)}
                       />
-                      <label className="tz-field-label">PIN (4 a 10 dígitos)</label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="tz-text-input"
-                        placeholder="••••••"
-                        value={newClientePin}
-                        onChange={(e) => setNewClientePin(e.target.value)}
-                      />
+                      <p className="tz-field-hint">
+                        El cliente crea su propio PIN la primera vez que inicia sesión con este
+                        celular.
+                      </p>
                       {clienteError && <p className="tz-error">{clienteError}</p>}
                       <div className="tz-add-entry-actions">
                         <button className="tz-camera-cancel" onClick={resetClienteForm}>
@@ -8494,6 +8778,7 @@ export default function App() {
                         unidadesNum > 0 && !isNaN(costoTotalNum) && costoTotalNum >= 0
                           ? costoTotalNum / unidadesNum
                           : null;
+                      const esPorPeso = gastoItemEsVentaPorPeso(it);
 
                       return (
                         <div key={it.id} className="tz-stock-cost-item">
@@ -8552,7 +8837,7 @@ export default function App() {
 
                           <div className="tz-stock-cost-inputs">
                             <label className="tz-stock-cost-field">
-                              <span>Unidades</span>
+                              <span>{esPorPeso ? "Peso/Kilos (Kg)" : "Unidades"}</span>
                               <input
                                 type="text"
                                 inputMode="decimal"
