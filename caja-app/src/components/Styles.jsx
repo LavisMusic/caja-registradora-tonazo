@@ -2919,10 +2919,23 @@ export default function Styles() {
         accent-color: var(--cyan);
         cursor: pointer;
       }
-      /* Sigue directo a un <p> (el resumen del carrito), no a otro
-         campo de formulario — el margin-top negativo pensado para
-         LoginModal queda muy pegado acá. */
-      .tz-checkout-ruc-toggle { margin-top: 4px; }
+      /* Va en la misma fila que el resumen del carrito (ver
+         '.tz-checkout-summary-row'), ya no debajo — sin margen propio. */
+      .tz-checkout-ruc-toggle { margin: 0; }
+      /* Agrupa el resumen del carrito ("1 producto · Total S/ X") y el
+         checkbox de RUC en una sola fila horizontal — antes cada uno
+         era un hijo directo de '.tz-submitbar-content' (flex-direction:
+         column), así que cada uno caía en su propia línea. 'flex-wrap'
+         solo entra en juego si de verdad no entran en el ancho
+         disponible (pantallas muy angostas). */
+      .tz-checkout-summary-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 16px;
+        width: 100%;
+      }
       .tz-cliente-action-deuda { border-color: rgba(255,84,112,0.4); color: var(--danger); }
       .tz-cliente-action-deuda:hover { background: rgba(255,84,112,0.12); }
       .tz-cliente-action-pago { border-color: rgba(57,255,176,0.4); color: var(--green); }

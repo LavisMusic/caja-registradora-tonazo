@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { flushSync } from "react-dom";
 import {
   Pencil,
   X,
@@ -31,6 +32,7 @@ import {
   DollarSign,
   Trophy,
   Percent,
+  Copy,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
@@ -884,6 +886,16 @@ export default function App() {
   const ticketRef = useRef(null);
   const [boletaSending, setBoletaSending] = useState(false);
   const [boletaError, setBoletaError] = useState("");
+  const [copiandoBoleta, setCopiandoBoleta] = useState(false);
+
+  // Boleta reconstruida desde "Mis Ventas" (historial) para el botón
+  // "Generar Boleta" — ref/estado propios porque 'lastSale'/'ticketRef'
+  // son SOLO para la venta que se acaba de cobrar, no para ventas
+  // pasadas del turno.
+  const historialBoletaRef = useRef(null);
+  const [historialBoletaData, setHistorialBoletaData] = useState(null);
+  const [historialBoletaCopiandoId, setHistorialBoletaCopiandoId] = useState(null);
+  const [historialBoletaError, setHistorialBoletaError] = useState("");
 
   /* ---- checkout: método de pago obligatorio antes de "Enviar Venta" ---- */
   const [checkoutMetodo, setCheckoutMetodo] = useState(null); // 'YAPE'|'PLIN'|'OTROS'|'FIADO'|null
@@ -1145,6 +1157,10 @@ export default function App() {
         metodoPago: row.metodo_pago || null,
         // Auditoría: null en filas anteriores a la migración 0032.
         vendedor: row.vendedor || null,
+        // RUC del cliente de esta venta (migración 0040) — nunca se
+        // muestra en listas/resúmenes, solo se lee al reconstruir la
+        // boleta con "Generar Boleta" en Mis Ventas.
+        ruc: row.ruc || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -1824,6 +1840,7 @@ export default function App() {
       vendedor: row.vendedor ?? vendedorLabel,
       timestamp: Number(row.fecha ?? timestamp),
       ventaPorPeso: row.venta_por_peso ?? newEntries[idx].ventaPorPeso,
+      ruc: row.ruc ?? (checkoutRucEnabled && checkoutMetodo !== "FIADO" ? checkoutRuc.trim() : null),
     }));
 
     setStock(newStock);
@@ -3569,6 +3586,113 @@ export default function App() {
       );
     } finally {
       setBoletaSending(false);
+    }
+  };
+
+  /* ---- respaldo: captura un TicketBoleta oculto con html2canvas y lo
+     copia al portapapeles como imagen (navigator.clipboard.write), sin
+     subir nada a Storage — a diferencia de enviarBoletaPorWhatsApp acá
+     no hace falta un link público, el cajero solo tiene que pegarla
+     (Ctrl+V) en el chat de WhatsApp que corresponda. Reutilizada tanto
+     por el botón "Copiar Boleta" del checkout como por "Generar
+     Boleta" en Mis Ventas — mismo hardening (timeout + scale
+     adaptivo) que enviarBoletaPorWhatsApp. ---- */
+  const copiarBoletaAlPortapapeles = async (nodeRef) => {
+    if (!nodeRef.current) {
+      throw new Error("No se pudo preparar la boleta. Intenta de nuevo.");
+    }
+    if (!navigator.clipboard?.write || typeof window.ClipboardItem !== "function") {
+      throw new Error("Este navegador no permite copiar imágenes al portapapeles.");
+    }
+    try {
+      const isMobile = window.innerWidth < 768;
+      const canvasPromise = html2canvas(nodeRef.current, {
+        scale: isMobile ? 1.5 : 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#f8fafc",
+      });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("TIMEOUT_RENDER")), 12000)
+      );
+      const canvas = await Promise.race([canvasPromise, timeoutPromise]);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("No se pudo generar la imagen de la boleta.");
+      await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
+    } catch (err) {
+      if (err?.message === "TIMEOUT_RENDER") {
+        throw new Error(
+          "No se pudo generar la imagen en este dispositivo (tardó demasiado). Intenta de nuevo."
+        );
+      }
+      throw err;
+    }
+  };
+
+  /* ---- botón de respaldo en la pantalla de venta exitosa: copia la
+     MISMA boleta que ya está montada en 'ticketRef' (la de lastSale),
+     por si el envío directo por WhatsApp falla o el cajero cierra el
+     modal sin querer. ---- */
+  const copiarBoletaCheckout = async () => {
+    if (!lastSale) return;
+    setBoletaError("");
+    setCopiandoBoleta(true);
+    try {
+      await copiarBoletaAlPortapapeles(ticketRef);
+      alert("¡Boleta copiada! Ve a WhatsApp y pégala en el chat");
+    } catch (err) {
+      console.error("Error copiando la boleta al portapapeles:", err);
+      setBoletaError(err?.message || "No se pudo copiar la boleta. Intenta de nuevo.");
+    } finally {
+      setCopiandoBoleta(false);
+    }
+  };
+
+  /* ---- "Generar Boleta" en Mis Ventas: reconstruye visualmente la
+     boleta de una venta YA REGISTRADA (no la última) a partir de
+     'venta.items' y la copia al portapapeles. El nombre del cliente
+     NUNCA se persiste en 'historial' (solo vive de forma efímera en
+     'lastSale', justo después de cobrar) — para una venta pasada no
+     hay forma de recuperarlo, así que cae al mismo "Público General"
+     que ya usa TicketBoleta por defecto. El RUC sí quedó guardado
+     (migración 0040) y se usa acá — leerlo para renderizar el
+     documento de la boleta es exactamente el uso permitido; lo que
+     nunca debe pasar es mostrarlo en un resumen/lista de la interfaz. */
+  const generarBoletaDesdeHistorial = async (venta) => {
+    setHistorialBoletaError("");
+    setHistorialBoletaCopiandoId(venta.purchaseId);
+    const datos = {
+      orden: {
+        id: venta.purchaseId,
+        fecha: formatDate(venta.timestamp),
+        hora: formatTime(venta.timestamp),
+        cajero: venta.items[0]?.vendedor || "-",
+      },
+      cliente: { nombre: "", ruc: venta.items[0]?.ruc || "" },
+      productos: venta.items.map((it) => ({
+        cantidad: formatQty(it.ventaPorPeso, it.qty),
+        ventaPorPeso: !!it.ventaPorPeso,
+        nombre: it.detail ? `${it.name} · ${it.detail}` : it.name,
+        precioUnitario: it.price,
+        subtotal: it.total,
+      })),
+      totales: { totalPagar: venta.total, metodoPago: venta.metodoPago },
+    };
+
+    try {
+      // flushSync fuerza a que el TicketBoleta oculto ya esté pintado
+      // en el DOM con los datos de ESTA venta antes de que
+      // html2canvas lo capture — sin esto, un cambio rápido de venta
+      // podría capturar el estado anterior por la carrera entre el
+      // re-render de React y la lectura del DOM.
+      flushSync(() => setHistorialBoletaData(datos));
+      await copiarBoletaAlPortapapeles(historialBoletaRef);
+      alert("¡Boleta copiada! Ve a WhatsApp y pégala en el chat");
+    } catch (err) {
+      console.error("Error generando la boleta desde el historial:", err);
+      setHistorialBoletaError(err?.message || "No se pudo copiar la boleta. Intenta de nuevo.");
+    } finally {
+      setHistorialBoletaCopiandoId(null);
     }
   };
 
@@ -6020,6 +6144,22 @@ export default function App() {
                           </>
                         )}
                       </button>
+                      <button
+                        type="button"
+                        className="tz-whatsapp-send-btn"
+                        onClick={copiarBoletaCheckout}
+                        disabled={copiandoBoleta}
+                      >
+                        {copiandoBoleta ? (
+                          <>
+                            <Loader2 size={15} className="tz-spin" /> Copiando…
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={15} /> Copiar Boleta
+                          </>
+                        )}
+                      </button>
                       {boletaError && <p className="tz-error">{boletaError}</p>}
 
                       {/* ---- ticket oculto: fuera de pantalla, solo existe
@@ -6073,37 +6213,43 @@ export default function App() {
                       );
                     })}
                   </div>
-                  <p className="tz-submitbar-summary">
-                    <ShoppingCart size={16} />
-                    {/* Sumar unidades enteras con kilos (venta a granel) en
-                       un solo número no significa nada — si hay algún
-                       ítem por peso en el carrito, se omite el conteo de
-                       "unidades" y solo se muestra la cantidad de
-                       productos distintos + el total. */}
-                    {selectedIds.some((id) => productsById[id]?.ventaPorPeso)
-                      ? `${selectedCount} producto${selectedCount > 1 ? "s" : ""} · Total ${formatSoles(totalPrice)}`
-                      : `${selectedCount} producto${selectedCount > 1 ? "s" : ""} · ${totalItems} unidad${
-                          totalItems > 1 ? "es" : ""
-                        } · Total ${formatSoles(totalPrice)}`}
-                  </p>
+                  {/* Resumen del carrito + checkbox de RUC en la misma
+                     fila (ver '.tz-checkout-summary-row') — antes cada
+                     uno caía en su propia línea por heredar el
+                     flex-direction:column de '.tz-submitbar-content'. */}
+                  <div className="tz-checkout-summary-row">
+                    <p className="tz-submitbar-summary">
+                      <ShoppingCart size={16} />
+                      {/* Sumar unidades enteras con kilos (venta a granel) en
+                         un solo número no significa nada — si hay algún
+                         ítem por peso en el carrito, se omite el conteo de
+                         "unidades" y solo se muestra la cantidad de
+                         productos distintos + el total. */}
+                      {selectedIds.some((id) => productsById[id]?.ventaPorPeso)
+                        ? `${selectedCount} producto${selectedCount > 1 ? "s" : ""} · Total ${formatSoles(totalPrice)}`
+                        : `${selectedCount} producto${selectedCount > 1 ? "s" : ""} · ${totalItems} unidad${
+                            totalItems > 1 ? "es" : ""
+                          } · Total ${formatSoles(totalPrice)}`}
+                    </p>
 
-                  {/* RUC del cliente: opcional, solo para boleta con
-                     datos fiscales — el checkbox vive acá (siempre
-                     visible, sin importar el método) pero el input en
-                     sí solo tiene dónde mostrarse junto a Nombre/
-                     WhatsApp (FIADO usa su propio flujo de cliente más
-                     abajo, sin este campo). */}
-                  <label className="tz-checkbox-row tz-checkout-ruc-toggle">
-                    <input
-                      type="checkbox"
-                      checked={checkoutRucEnabled}
-                      onChange={(e) => {
-                        setCheckoutRucEnabled(e.target.checked);
-                        if (!e.target.checked) setCheckoutRuc("");
-                      }}
-                    />
-                    RUC
-                  </label>
+                    {/* RUC del cliente: opcional, solo para boleta con
+                       datos fiscales — el checkbox vive acá (siempre
+                       visible, sin importar el método) pero el input en
+                       sí solo tiene dónde mostrarse junto a Nombre/
+                       WhatsApp (FIADO usa su propio flujo de cliente más
+                       abajo, sin este campo). */}
+                    <label className="tz-checkbox-row tz-checkout-ruc-toggle">
+                      <input
+                        type="checkbox"
+                        checked={checkoutRucEnabled}
+                        onChange={(e) => {
+                          setCheckoutRucEnabled(e.target.checked);
+                          if (!e.target.checked) setCheckoutRuc("");
+                        }}
+                      />
+                      RUC
+                    </label>
+                  </div>
                   {/* ---- Nombre/WhatsApp generales: el flujo de Fiado maneja
                      su propio cliente (con su propio nombre/WhatsApp) más
                      abajo, así que estos dos quedan ocultos ahí para no
@@ -7523,6 +7669,7 @@ export default function App() {
                 un error de tipeo recién hecho.
               </p>
               {anularError && <p className="tz-error">{anularError}</p>}
+              {historialBoletaError && <p className="tz-error">{historialBoletaError}</p>}
 
               {ventasHoyAgrupadas.length === 0 ? (
                 <p className="tz-method-history-empty">
@@ -7553,33 +7700,61 @@ export default function App() {
                         <span>Total</span>
                         <strong>{formatSoles(venta.total)}</strong>
                       </div>
-                      <button
-                        className="tz-cliente-action-btn tz-cliente-action-deuda"
-                        style={{ marginTop: 10, width: "100%", justifyContent: "center" }}
-                        disabled={anulandoVentaId === venta.purchaseId}
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              `¿Anular la venta ${venta.purchaseId} por ${formatSoles(
-                                venta.total
-                              )}? Repone el stock. No se puede deshacer.`
-                            )
-                          ) {
-                            anularVenta(venta.purchaseId);
-                          }
-                        }}
-                      >
-                        {anulandoVentaId === venta.purchaseId ? (
-                          <Loader2 size={13} className="tz-spin" />
-                        ) : (
-                          <Trash2 size={13} />
-                        )}
-                        Anular Venta
-                      </button>
+                      <div className="tz-cliente-actions" style={{ marginTop: 10 }}>
+                        <button
+                          className="tz-cliente-action-btn tz-cliente-action-deuda"
+                          style={{ flex: 1, justifyContent: "center" }}
+                          disabled={anulandoVentaId === venta.purchaseId}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `¿Anular la venta ${venta.purchaseId} por ${formatSoles(
+                                  venta.total
+                                )}? Repone el stock. No se puede deshacer.`
+                              )
+                            ) {
+                              anularVenta(venta.purchaseId);
+                            }
+                          }}
+                        >
+                          {anulandoVentaId === venta.purchaseId ? (
+                            <Loader2 size={13} className="tz-spin" />
+                          ) : (
+                            <Trash2 size={13} />
+                          )}
+                          Anular Venta
+                        </button>
+                        <button
+                          className="tz-cliente-action-btn tz-cliente-action-pago"
+                          style={{ flex: 1, justifyContent: "center" }}
+                          disabled={historialBoletaCopiandoId === venta.purchaseId}
+                          onClick={() => generarBoletaDesdeHistorial(venta)}
+                        >
+                          {historialBoletaCopiandoId === venta.purchaseId ? (
+                            <Loader2 size={13} className="tz-spin" />
+                          ) : (
+                            <Copy size={13} />
+                          )}
+                          Generar Boleta
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
+
+              {/* ---- ticket oculto compartido: reconstruye la boleta de
+                 CUALQUIER venta de esta lista al tocar "Generar Boleta"
+                 (ver generarBoletaDesdeHistorial) — fuera de pantalla,
+                 solo existe para que html2canvas lo capture. ---- */}
+              <div ref={historialBoletaRef} style={{ position: "absolute", left: -9999, top: 0 }}>
+                <TicketBoleta
+                  orden={historialBoletaData?.orden}
+                  cliente={historialBoletaData?.cliente}
+                  productos={historialBoletaData?.productos}
+                  totales={historialBoletaData?.totales}
+                />
+              </div>
             </div>
           </div>
         </div>

@@ -4,8 +4,8 @@
     {
       "name": "caja-app",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "caja-app"],
-      "port": 5173
+      "runtimeArgs": ["run", "dev", "--prefix", "caja-app", "--", "--port", "5180"],
+      "port": 5180
     }
   ]
 }
