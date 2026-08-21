@@ -78,11 +78,29 @@ Deno.serve(async (req) => {
   }
 
   const nombre = (body.nombre || "").trim();
-  const pin = body.pin || "";
+  // Normalización explícita: null, undefined, "" (incluso "   " con
+  // solo espacios) son TODOS "no se mandó PIN" — nunca "se mandó un
+  // PIN inválido". Antes esto ya funcionaba vía 'body.pin || ""'
+  // (undefined/"" ya colapsaban al mismo valor), pero se deja
+  // explícito con .trim() para que tampoco un PIN de puros espacios
+  // cuele como "truthy" por accidente.
+  const pinProvided = typeof body.pin === "string" ? body.pin.trim() : "";
+  const pinWasSent = pinProvided.length > 0;
 
   if (!nombre) return json(400, { error: "Falta el nombre." });
-  if (!/^\d{4,10}$/.test(pin)) {
+
+  // Un cajero SIEMPRE necesita su clave puesta por el admin en el
+  // momento (es personal de confianza, no pasa por el flujo de
+  // "crear tu PIN en el primer login"). Un cliente, en cambio, ahora
+  // puede registrarse SOLO con nombre + teléfono — si no viene 'pin',
+  // la cuenta se crea con un password placeholder aleatorio que nadie
+  // conoce, y 'pin_configurado' queda en false hasta que el cliente
+  // mismo lo reemplace por su PIN real (ver set-initial-pin).
+  if (tipo === "cajero" && !/^\d{4,10}$/.test(pinProvided)) {
     return json(400, { error: "El PIN/clave debe tener entre 4 y 10 dígitos." });
+  }
+  if (tipo === "cliente" && pinWasSent && !/^\d{4,10}$/.test(pinProvided)) {
+    return json(400, { error: "El PIN debe tener entre 4 y 10 dígitos." });
   }
 
   let dummyEmail: string;
@@ -105,10 +123,20 @@ Deno.serve(async (req) => {
     dummyEmail = `${usuario}@tonazo.staff`;
   }
 
+  // Password real de Supabase Auth para esta cuenta: el PIN si vino
+  // (cajero siempre, o un cliente al que el admin igual quiso ponerle
+  // uno de una), o si no un placeholder aleatorio de 32 caracteres
+  // (crypto.randomUUID, NUNCA expuesto ni guardado en ningún otro
+  // lado) — nadie puede loguearse con él porque nadie lo conoce; el
+  // cliente entra recién cuando reemplaza este placeholder por su PIN
+  // real en su primer login.
+  const pinConfigurado = !!pinProvided;
+  const password = pinProvided || crypto.randomUUID().replace(/-/g, "");
+
   // 3) Crear el usuario en Supabase Auth (server-side, con service_role).
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email: dummyEmail,
-    password: pin,
+    password,
     email_confirm: true,
   });
 
@@ -131,7 +159,7 @@ Deno.serve(async (req) => {
   // con clientes_fiado).
   const { error: profInsertErr } = await admin
     .from("profiles")
-    .insert({ id: newUserId, role: tipo, nombre });
+    .insert({ id: newUserId, role: tipo, nombre, pin_configurado: pinConfigurado });
 
   if (profInsertErr) {
     await admin.auth.admin.deleteUser(newUserId);

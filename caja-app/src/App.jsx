@@ -870,6 +870,12 @@ export default function App() {
   const [checkoutWhatsapp, setCheckoutWhatsapp] = useState("");
   const [checkoutNombreSuggestOpen, setCheckoutNombreSuggestOpen] = useState(false);
   const [checkoutWhatsappSuggestOpen, setCheckoutWhatsappSuggestOpen] = useState(false);
+  // RUC (boleta con datos fiscales, opcional): solo se pide/guarda si
+  // el cajero prende el checkbox — nunca se muestra en ningún otro
+  // lado de la interfaz (carrito, dashboard), SOLO en el documento de
+  // la boleta (ver TicketBoleta.jsx).
+  const [checkoutRucEnabled, setCheckoutRucEnabled] = useState(false);
+  const [checkoutRuc, setCheckoutRuc] = useState("");
   const [lastSale, setLastSale] = useState(null); // resumen de la última venta enviada
 
   /* ---- boleta digital por WhatsApp: captura (html2canvas) del
@@ -1512,6 +1518,13 @@ export default function App() {
       setSubmitError("Elige (o crea) un cliente para fiar esta venta.");
       return;
     }
+    // RUC: obligatorio SOLO si el checkbox está prendido. El input en
+    // sí ya filtra a puros dígitos y máximo 20 (ver onChange), así que
+    // acá solo hace falta confirmar que no haya quedado vacío.
+    if (checkoutRucEnabled && checkoutMetodo !== "FIADO" && !checkoutRuc.trim()) {
+      setSubmitError("Ingresa el RUC del cliente (o desmarca el checkbox de RUC).");
+      return;
+    }
     let comprobanteMonto = null;
     if (checkoutMetodo !== "FIADO" && checkoutMetodo !== "EFECTIVO") {
       comprobanteMonto = parseFloat(manualAmount);
@@ -1669,6 +1682,11 @@ export default function App() {
           vendedor: vendedorLabel,
           fecha: timestamp,
           venta_por_peso: e.ventaPorPeso,
+          // RUC del cliente para esta venta (mismo valor duplicado en
+          // cada línea, igual que 'vendedor'/'metodo_pago' — 'historial'
+          // no tiene una fila de "cabecera" propia por purchase_id).
+          // null si el checkbox de RUC no estaba prendido.
+          ruc: checkoutRucEnabled ? checkoutRuc.trim() : null,
         }))
       )
       .select();
@@ -1847,6 +1865,11 @@ export default function App() {
       purchaseId,
       nombre,
       whatsapp,
+      // RUC del cliente (solo si el checkbox estaba prendido — nunca
+      // para FIADO, ese flujo no tiene el campo). Va SOLO acá, para
+      // que TicketBoleta lo pueda renderizar — no se muestra en
+      // ningún otro lado de la interfaz.
+      ruc: checkoutRucEnabled && checkoutMetodo !== "FIADO" ? checkoutRuc.trim() : "",
       items: newEntries,
       total: saleTotal,
       metodoPago: checkoutMetodo,
@@ -1854,6 +1877,8 @@ export default function App() {
     });
     setCheckoutNombre("");
     setCheckoutWhatsapp("");
+    setCheckoutRucEnabled(false);
+    setCheckoutRuc("");
     setCheckoutMetodo(null);
     setCheckoutFiadoClienteId(null);
     setCheckoutFiadoAddingNew(false);
@@ -3465,40 +3490,37 @@ export default function App() {
   };
 
   /* ---- boleta digital: captura el TicketBoleta oculto (ticketRef) con
-     html2canvas y comparte esa imagen — DE VERDAD, como archivo
-     adjunto, no como texto — hacia WhatsApp.
+     html2canvas, la SUBE a Storage (bucket público 'boletas-imagenes')
+     y abre directo el chat de WhatsApp del cliente (wa.me/{numero})
+     con un link a esa imagen en el texto.
 
-     Camino principal: navigator.share({ files: [...] }) — el share
-     sheet nativo del sistema operativo, que en Android/iOS entrega la
-     imagen directo a WhatsApp como adjunto real, sin que el cajero
-     tenga que pegar (Ctrl+V) nada a mano. Ese paso manual era lo que
-     hacía que este botón "se sintiera" como si solo mandara texto —
-     generaba la imagen, sí, pero la entrega dependía de un paso extra
-     fácil de pasar por alto.
-
-     Camino de respaldo (navigator.share no soportado — típicamente
-     desktop/Firefox): vuelve al truco anterior de copiar la imagen al
-     portapapeles + abrir wa.me con el texto, para que el cajero la
-     pegue manualmente — sigue funcionando en esas plataformas, no se
-     perdió nada.
+     Por qué así y no navigator.share: compartir por el share sheet del
+     sistema (lo que había antes) entrega el archivo real, pero el
+     cajero después tiene que elegir a mano el contacto/chat correcto
+     dentro de WhatsApp — no hay forma de que el share sheet abra un
+     chat ESPECÍFICO. wa.me/{numero} sí lo hace, pero solo acepta
+     texto, nunca un archivo adjunto — no es una limitación de este
+     código, es cómo funciona ese link en todas partes. Subir la imagen
+     y mandar su URL es el único camino que logra las dos cosas a la
+     vez: abre el chat correcto Y entrega la boleta (como preview de
+     imagen que WhatsApp arma solo a partir del link).
 
      Fix específico para iOS/Safari (donde "no hacía nada"):
      1) html2canvas corre con un timeout propio (Promise.race): si el
-        navegador se queda "colgado" renderizando (reportado en
-        algunas versiones de WebKit con html2canvas + fuentes/
-        imágenes), antes esto dejaba el botón en "Generando boleta…"
-        para siempre — sin error, sin nada, que es exactamente "falla
-        en silencio". Ahora a los 12s se cancela y se avisa.
-     2) 'scale' es adaptivo: 2 en pantallas grandes, 1.5 en mobile
-        (pantallas angostas) — menos presión de memoria en un celular
-        gama media.
-     3) allowTaint:true además de useCORS:true — si ALGO no se puede
-        cargar vía CORS (logo, ícono), igual se dibuja en vez de
-        abortar. ---- */
+        navegador se queda "colgado" renderizando, antes esto dejaba el
+        botón en "Generando boleta…" para siempre — sin error, sin
+        nada. Ahora a los 12s se cancela y se avisa.
+     2) 'scale' es adaptivo: 2 en pantallas grandes, 1.5 en mobile.
+     3) allowTaint:true además de useCORS:true. ---- */
   const enviarBoletaPorWhatsApp = async () => {
     if (!lastSale) return;
     if (!ticketRef.current) {
       setBoletaError("No se pudo preparar la boleta. Intenta de nuevo.");
+      return;
+    }
+    const numero = toPeruWhatsappNumber(lastSale.whatsapp);
+    if (!numero) {
+      setBoletaError("Ese número de WhatsApp no es válido.");
       return;
     }
 
@@ -3519,59 +3541,31 @@ export default function App() {
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       if (!blob) throw new Error("No se pudo generar la imagen de la boleta.");
 
-      const texto = buildSaleWhatsappMessage(lastSale);
-      const file = new File([blob], `boleta-${lastSale.purchaseId}.png`, { type: "image/png" });
+      const fileName = `${lastSale.purchaseId}-${Date.now()}.png`;
+      const { error: uploadError } = await supabase.storage
+        .from("boletas-imagenes")
+        .upload(fileName, blob, { contentType: "image/png", upsert: false });
+      if (uploadError) throw uploadError;
 
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            text: "Aquí tienes tu boleta",
-          });
-        } catch (shareErr) {
-          // El usuario cerró el share sheet sin elegir nada: no es un
-          // error real, no hay nada que avisar.
-          if (shareErr?.name === "AbortError") return;
-          throw shareErr;
-        }
-        return;
-      }
+      const { data: publicUrlData } = supabase.storage
+        .from("boletas-imagenes")
+        .getPublicUrl(fileName);
+      const imageUrl = publicUrlData?.publicUrl;
+      if (!imageUrl) throw new Error("No se pudo obtener el link de la boleta.");
 
-      // Respaldo sin Web Share API (desktop/Firefox, típicamente): el
-      // portapapeles es la parte más frágil de este camino (permisos
-      // del navegador, contexto no seguro, etc.) — si falla, avisamos
-      // puntualmente y NO abrimos WhatsApp: sin nada copiado, el aviso
-      // de "presiona Ctrl+V" solo confundiría al cajero.
-      const numero = toPeruWhatsappNumber(lastSale.whatsapp);
-      if (!navigator.clipboard || typeof window.ClipboardItem !== "function") {
-        setBoletaError(
-          "Este dispositivo/navegador no soporta compartir ni copiar la imagen — usá 'Enviar resumen por WhatsApp' (solo texto)."
-        );
-        return;
-      }
-      try {
-        await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
-      } catch (clipboardErr) {
-        console.error("Error al copiar la boleta al portapapeles:", clipboardErr);
-        setBoletaError(
-          "No se pudo copiar la imagen al portapapeles (revisa los permisos del navegador para este sitio) — intenta de nuevo."
-        );
-        return;
-      }
-      if (!numero) {
-        setBoletaError(
-          "La imagen se copió al portapapeles, pero ese número de WhatsApp no es válido — pégala (Ctrl+V) manualmente en el chat correcto."
-        );
-        return;
-      }
+      const texto = `Aquí tienes tu boleta:\n${imageUrl}`;
       window.open(`https://wa.me/${numero}?text=${encodeURIComponent(texto)}`, "_blank");
     } catch (err) {
-      console.error("Error generando/compartiendo la boleta:", err);
+      console.error("Error generando/subiendo la boleta:", err);
       const timedOut = err?.message === "TIMEOUT_RENDER";
+      const rawMessage = err?.message || String(err || "");
+      const isBucketMissing = /bucket not found/i.test(rawMessage);
       setBoletaError(
         timedOut
           ? "No se pudo generar la imagen en este dispositivo (tardó demasiado). Intenta de nuevo o usa 'Enviar resumen por WhatsApp'."
-          : "No se pudo generar la imagen en este dispositivo. Intenta de nuevo o usa 'Enviar resumen por WhatsApp'."
+          : isBucketMissing
+            ? "No se pudo subir la boleta: el bucket \"boletas-imagenes\" todavía no existe en Supabase Storage — corre la migración 0040 o créalo manualmente."
+            : "No se pudo generar la imagen en este dispositivo. Intenta de nuevo o usa 'Enviar resumen por WhatsApp'."
       );
     } finally {
       setBoletaSending(false);
@@ -6038,7 +6032,7 @@ export default function App() {
                             hora: formatTime(lastSale.timestamp),
                             cajero: cajeroNombre || (isAdmin ? "Admin" : "Cajero"),
                           }}
-                          cliente={{ nombre: lastSale.nombre }}
+                          cliente={{ nombre: lastSale.nombre, ruc: lastSale.ruc }}
                           productos={lastSale.items.map((it) => ({
                             cantidad: formatQty(it.ventaPorPeso, it.qty),
                             ventaPorPeso: !!it.ventaPorPeso,
@@ -6092,6 +6086,24 @@ export default function App() {
                           totalItems > 1 ? "es" : ""
                         } · Total ${formatSoles(totalPrice)}`}
                   </p>
+
+                  {/* RUC del cliente: opcional, solo para boleta con
+                     datos fiscales — el checkbox vive acá (siempre
+                     visible, sin importar el método) pero el input en
+                     sí solo tiene dónde mostrarse junto a Nombre/
+                     WhatsApp (FIADO usa su propio flujo de cliente más
+                     abajo, sin este campo). */}
+                  <label className="tz-checkbox-row tz-checkout-ruc-toggle">
+                    <input
+                      type="checkbox"
+                      checked={checkoutRucEnabled}
+                      onChange={(e) => {
+                        setCheckoutRucEnabled(e.target.checked);
+                        if (!e.target.checked) setCheckoutRuc("");
+                      }}
+                    />
+                    RUC
+                  </label>
                   {/* ---- Nombre/WhatsApp generales: el flujo de Fiado maneja
                      su propio cliente (con su propio nombre/WhatsApp) más
                      abajo, así que estos dos quedan ocultos ahí para no
@@ -6158,6 +6170,20 @@ export default function App() {
                           </div>
                         )}
                       </div>
+                      {checkoutRucEnabled && (
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          className="tz-text-input tz-checkout-input"
+                          placeholder="RUC del cliente (obligatorio)"
+                          maxLength={20}
+                          value={checkoutRuc}
+                          onChange={(e) => {
+                            const digitsOnly = e.target.value.replace(/\D/g, "").slice(0, 20);
+                            setCheckoutRuc(digitsOnly);
+                          }}
+                        />
+                      )}
                     </div>
                   )}
 

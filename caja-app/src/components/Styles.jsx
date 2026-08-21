@@ -2919,6 +2919,10 @@ export default function Styles() {
         accent-color: var(--cyan);
         cursor: pointer;
       }
+      /* Sigue directo a un <p> (el resumen del carrito), no a otro
+         campo de formulario — el margin-top negativo pensado para
+         LoginModal queda muy pegado acá. */
+      .tz-checkout-ruc-toggle { margin-top: 4px; }
       .tz-cliente-action-deuda { border-color: rgba(255,84,112,0.4); color: var(--danger); }
       .tz-cliente-action-deuda:hover { background: rgba(255,84,112,0.12); }
       .tz-cliente-action-pago { border-color: rgba(57,255,176,0.4); color: var(--green); }

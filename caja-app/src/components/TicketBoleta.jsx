@@ -44,8 +44,14 @@ const rowStyle = {
   lineHeight: 1.5,
 };
 
+// RUC del negocio (emisor) — se deja en blanco a propósito, para
+// completarlo acá una vez que exista el dato real. Un solo lugar:
+// cambiar esto alcanza para que aparezca en TODAS las boletas.
+const EMISOR_RUC = "";
+
 export default function TicketBoleta({ orden, cliente, productos, totales }) {
   const nombreCliente = cliente?.nombre?.trim() ? cliente.nombre.trim() : "Público General";
+  const rucCliente = cliente?.ruc?.trim() || "";
   const items = Array.isArray(productos) ? productos : [];
 
   return (
@@ -64,6 +70,9 @@ export default function TicketBoleta({ orden, cliente, productos, totales }) {
         <img src={logo} alt="TONAZO!" style={{ width: 110, height: "auto", margin: "0 auto" }} />
         <p style={{ margin: "6px 0 0", fontSize: 11, color: COLORS.dim, letterSpacing: 0.4 }}>
           Caja Registradora
+        </p>
+        <p style={{ margin: "2px 0 0", fontSize: 10.5, color: COLORS.dim, letterSpacing: 0.3 }}>
+          RUC: {EMISOR_RUC || "_________________"}
         </p>
       </div>
 
@@ -90,6 +99,12 @@ export default function TicketBoleta({ orden, cliente, productos, totales }) {
         <span>Cliente</span>
         <span>{nombreCliente}</span>
       </div>
+      {rucCliente && (
+        <div style={rowStyle}>
+          <span>RUC Cliente</span>
+          <span>{rucCliente}</span>
+        </div>
+      )}
 
       <div style={dividerStyle} />
 

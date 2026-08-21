@@ -89,6 +89,12 @@ Deno.serve(async (req) => {
     }
     const { error } = await admin.auth.admin.updateUserById(userId, { password: pin });
     if (error) return json(500, { error: error.message || "No se pudo cambiar el PIN." });
+    // Si esta cuenta todavía estaba en su password placeholder (nunca
+    // pasó por "crear tu PIN en el primer login"), el admin acaba de
+    // ponerle un PIN real de una — sin esto, el próximo login seguiría
+    // mostrando la pantalla de "crea tu PIN" y el cliente terminaría
+    // pisando el que el admin recién puso.
+    await admin.from("profiles").update({ pin_configurado: true }).eq("id", userId);
     return json(200, { ok: true });
   }
 
