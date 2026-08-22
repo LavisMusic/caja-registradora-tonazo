@@ -880,11 +880,12 @@ export default function App() {
   const [checkoutRuc, setCheckoutRuc] = useState("");
   const [lastSale, setLastSale] = useState(null); // resumen de la última venta enviada
 
-  /* ---- boleta digital por WhatsApp: captura (html2canvas) del
-     TicketBoleta oculto -> imagen -> portapapeles -> abre wa.me para
-     que el cajero solo tenga que pegar (Ctrl+V) la imagen. ---- */
+  /* ---- boleta digital por WhatsApp: "Copiar Boleta" captura
+     (html2canvas) el TicketBoleta oculto -> imagen -> portapapeles;
+     "Enviar Boleta por WhatsApp" solo abre el chat correcto (wa.me)
+     con un texto fijo, sin imagen ni link — el cajero pega (Ctrl+V) lo
+     que ya copió con el otro botón. ---- */
   const ticketRef = useRef(null);
-  const [boletaSending, setBoletaSending] = useState(false);
   const [boletaError, setBoletaError] = useState("");
   const [copiandoBoleta, setCopiandoBoleta] = useState(false);
 
@@ -3506,87 +3507,26 @@ export default function App() {
     return `https://wa.me/${numero}?text=${encodeURIComponent(message)}`;
   };
 
-  /* ---- boleta digital: captura el TicketBoleta oculto (ticketRef) con
-     html2canvas, la SUBE a Storage (bucket público 'boletas-imagenes')
-     y abre directo el chat de WhatsApp del cliente (wa.me/{numero})
-     con un link a esa imagen en el texto.
-
-     Por qué así y no navigator.share: compartir por el share sheet del
-     sistema (lo que había antes) entrega el archivo real, pero el
-     cajero después tiene que elegir a mano el contacto/chat correcto
-     dentro de WhatsApp — no hay forma de que el share sheet abra un
-     chat ESPECÍFICO. wa.me/{numero} sí lo hace, pero solo acepta
-     texto, nunca un archivo adjunto — no es una limitación de este
-     código, es cómo funciona ese link en todas partes. Subir la imagen
-     y mandar su URL es el único camino que logra las dos cosas a la
-     vez: abre el chat correcto Y entrega la boleta (como preview de
-     imagen que WhatsApp arma solo a partir del link).
-
-     Fix específico para iOS/Safari (donde "no hacía nada"):
-     1) html2canvas corre con un timeout propio (Promise.race): si el
-        navegador se queda "colgado" renderizando, antes esto dejaba el
-        botón en "Generando boleta…" para siempre — sin error, sin
-        nada. Ahora a los 12s se cancela y se avisa.
-     2) 'scale' es adaptivo: 2 en pantallas grandes, 1.5 en mobile.
-     3) allowTaint:true además de useCORS:true. ---- */
-  const enviarBoletaPorWhatsApp = async () => {
+  /* ---- abre directo el chat de WhatsApp del cliente (wa.me/{numero})
+     con un texto fijo, sin link ni adjunto: el flujo ahora es que el
+     cajero ya copió la boleta al portapapeles con "Copiar Boleta" (ver
+     copiarBoletaAlPortapapeles) y la pega a mano (Ctrl+V) en el chat
+     que este botón abre. Antes esto subía la imagen a Storage para
+     poder mandar su URL en el texto (wa.me no admite adjuntar un
+     archivo directo) — ya no hace falta: el portapapeles reemplaza a
+     ese link por completo. ---- */
+  const enviarBoletaPorWhatsApp = () => {
     if (!lastSale) return;
-    if (!ticketRef.current) {
-      setBoletaError("No se pudo preparar la boleta. Intenta de nuevo.");
-      return;
-    }
     const numero = toPeruWhatsappNumber(lastSale.whatsapp);
     if (!numero) {
       setBoletaError("Ese número de WhatsApp no es válido.");
       return;
     }
-
     setBoletaError("");
-    setBoletaSending(true);
-    try {
-      const isMobile = window.innerWidth < 768;
-      const canvasPromise = html2canvas(ticketRef.current, {
-        scale: isMobile ? 1.5 : 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#f8fafc",
-      });
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("TIMEOUT_RENDER")), 12000)
-      );
-      const canvas = await Promise.race([canvasPromise, timeoutPromise]);
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (!blob) throw new Error("No se pudo generar la imagen de la boleta.");
-
-      const fileName = `${lastSale.purchaseId}-${Date.now()}.png`;
-      const { error: uploadError } = await supabase.storage
-        .from("boletas-imagenes")
-        .upload(fileName, blob, { contentType: "image/png", upsert: false });
-      if (uploadError) throw uploadError;
-
-      const { data: publicUrlData } = supabase.storage
-        .from("boletas-imagenes")
-        .getPublicUrl(fileName);
-      const imageUrl = publicUrlData?.publicUrl;
-      if (!imageUrl) throw new Error("No se pudo obtener el link de la boleta.");
-
-      const texto = `Aquí tienes tu boleta:\n${imageUrl}`;
-      window.open(`https://wa.me/${numero}?text=${encodeURIComponent(texto)}`, "_blank");
-    } catch (err) {
-      console.error("Error generando/subiendo la boleta:", err);
-      const timedOut = err?.message === "TIMEOUT_RENDER";
-      const rawMessage = err?.message || String(err || "");
-      const isBucketMissing = /bucket not found/i.test(rawMessage);
-      setBoletaError(
-        timedOut
-          ? "No se pudo generar la imagen en este dispositivo (tardó demasiado). Intenta de nuevo o usa 'Enviar resumen por WhatsApp'."
-          : isBucketMissing
-            ? "No se pudo subir la boleta: el bucket \"boletas-imagenes\" todavía no existe en Supabase Storage — corre la migración 0040 o créalo manualmente."
-            : "No se pudo generar la imagen en este dispositivo. Intenta de nuevo o usa 'Enviar resumen por WhatsApp'."
-      );
-    } finally {
-      setBoletaSending(false);
-    }
+    window.open(
+      `https://wa.me/${numero}?text=${encodeURIComponent("Aquí está tu boleta")}`,
+      "_blank"
+    );
   };
 
   /* ---- respaldo: captura un TicketBoleta oculto con html2canvas y lo
@@ -6132,17 +6072,8 @@ export default function App() {
                         type="button"
                         className="tz-whatsapp-send-btn tz-whatsapp-send-btn-solid"
                         onClick={enviarBoletaPorWhatsApp}
-                        disabled={boletaSending}
                       >
-                        {boletaSending ? (
-                          <>
-                            <Loader2 size={15} className="tz-spin" /> Generando boleta…
-                          </>
-                        ) : (
-                          <>
-                            <MessageCircle size={15} /> Enviar Boleta por WhatsApp
-                          </>
-                        )}
+                        <MessageCircle size={15} /> Enviar Boleta por WhatsApp
                       </button>
                       <button
                         type="button"
