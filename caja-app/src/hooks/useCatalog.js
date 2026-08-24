@@ -75,8 +75,18 @@ function buildSectionsFromRows(categoriaRows, productoRows) {
           variant: p.variante || "",
           presentation: p.presentacion || "",
           color: p.color_variante || null,
+          // Puede quedar null/"" al duplicar un producto ("+ Añadir
+          // Variante") — de ahí sale el botón "Asignar Código de
+          // Barras" en Visibilidad en Catálogo.
+          codigoBarras: p.codigo_barras || null,
           subgrupoRaw: p.subgrupo || null,
           price: Number(p.precio),
+          // Descuento PERMANENTE (migración 0043) — único sistema de
+          // descuento de la app: se configura desde el botón "%" de la
+          // tarjeta y aplica a toda venta futura hasta que se cambie
+          // desde ahí mismo. 0 = sin descuento.
+          valorDescuento: p.valor_descuento != null ? Number(p.valor_descuento) : 0,
+          tipoDescuento: p.tipo_descuento || "fijo",
           cost: p.costo != null ? Number(p.costo) : null,
           consumes: Array.isArray(p.consumos) ? p.consumos : JSON.parse(p.consumos || "[]"),
           visiblePublico: p.visible_publico ?? true,
@@ -203,6 +213,70 @@ export function useCatalog() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  /* ---- Sincronización en tiempo real: cualquier cambio en 'productos'
+     (precio, descuento, visibilidad...), 'stock' (cantidad, costo) o
+     'categorias' — desde OTRA pestaña/dispositivo (un admin editando
+     precios, un cajero registrando una venta, la propia función
+     registrar_venta descontando stock) — dispara un refetch completo
+     acá, así todos los clientes conectados quedan al día sin recargar.
+     Este efecto vive ACÁ (no en App.jsx ni en ningún modal): useCatalog
+     ya es el hook COMPARTIDO que llaman tanto App.jsx (admin Y cajero,
+     ambos roles renderizan el mismo componente) como CatalogPage.jsx
+     (cliente/público) — cualquiera que sea el rol, si su pantalla usa
+     useCatalog(), ya se suscribe acá, sin nada extra que "mover".
+
+     Un refetch completo reutiliza TODA la lógica de armado ya probada
+     en load() en vez de parchear a mano la fila que cambió —
+     sections/productsById/stock siempre terminan construidos igual,
+     disparen por Realtime o por la carga inicial.
+
+     'debounce' junta ráfagas de eventos en un solo refetch: una venta
+     con 3 productos distintos descuenta 3 filas de 'stock' dentro de
+     LA MISMA transacción, y Postgres manda un evento de Realtime por
+     cada una — sin esto, dispararía 3 refetches casi simultáneos
+     pisándose entre sí.
+
+     El callback de '.subscribe()' (status, err) NO es decorativo: sin
+     él, si Realtime no está habilitado para 'productos'/'stock'/
+     'categorias' en el lado de Supabase (Database → Replication, o
+     falta correr la migración 0045), la suscripción falla EN
+     SILENCIO — no hay error de red visible, simplemente nunca llegan
+     eventos y todo sigue viéndose "roto" sin ninguna pista en consola.
+     Con esto, un CHANNEL_ERROR/TIMED_OUT queda registrado, así se
+     puede diferenciar "no está habilitado en la base" de "hay un bug
+     acá". */
+  useEffect(() => {
+    let debounceTimer = null;
+    const scheduleReload = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(load, 400);
+    };
+
+    const channel = supabase
+      .channel(`catalogo-realtime-${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "productos" }, scheduleReload)
+      .on("postgres_changes", { event: "*", schema: "public", table: "stock" }, scheduleReload)
+      .on("postgres_changes", { event: "*", schema: "public", table: "categorias" }, scheduleReload)
+      .subscribe((status, err) => {
+        if (status === "SUBSCRIBED") {
+          console.log("[Realtime] conectado — escuchando productos/stock/categorias.");
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error(
+            "[Realtime] no se pudo conectar (status:",
+            status,
+            "). Revisa que 'productos', 'stock' y 'categorias' estén agregadas a la publicación " +
+              "'supabase_realtime' en Supabase (Database → Replication) — ver migración 0045.",
+            err || ""
+          );
+        }
+      });
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
   }, [load]);
 
   // Alterna si un producto se muestra en el catálogo público (no afecta

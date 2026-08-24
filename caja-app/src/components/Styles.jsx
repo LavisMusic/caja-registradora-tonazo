@@ -207,6 +207,43 @@ export default function Styles() {
         color: var(--text-dim);
         text-align: center;
       }
+      .tz-conn-indicator {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 6px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 10.5px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        border: 1px solid transparent;
+      }
+      .tz-conn-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .tz-conn-online {
+        color: var(--green);
+        background: rgba(57,255,176,0.1);
+        border-color: rgba(57,255,176,0.35);
+      }
+      .tz-conn-online .tz-conn-dot { background: var(--green); box-shadow: 0 0 6px rgba(57,255,176,0.8); }
+      .tz-conn-offline {
+        color: var(--danger);
+        background: rgba(255,84,112,0.1);
+        border-color: rgba(255,84,112,0.4);
+        animation: tz-conn-offline-pulse 1.6s ease-in-out infinite;
+      }
+      .tz-conn-offline .tz-conn-dot { background: var(--danger); box-shadow: 0 0 6px rgba(255,84,112,0.8); }
+      @keyframes tz-conn-offline-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+      }
 
       /* Botones del header (Fiados / Métodos de pago). En móvil (base,
          mobile-first) solo se ve el ícono, para ahorrar espacio.
@@ -336,17 +373,22 @@ export default function Styles() {
          nada. El padding-bottom sí usa la altura real del footer
          (--tz-footer-h), porque esa barra sí es fixed y cambia de
          tamaño según cuántos productos hay seleccionados (o
-         desaparece del todo). */
+         desaparece del todo).
+         SIN overflow-x:hidden a propósito (antes lo tenía): recortaba
+         el resplandor de las tarjetas — Combo, Estrella, recién
+         reactivada — apenas tocaban el borde izquierdo/derecho de la
+         grilla. Mismo criterio que .tz-header más arriba: overflow
+         visible + padding generoso, no un clip. */
       .tz-main {
         width: 100%;
         max-width: 100%;
         box-sizing: border-box;
         margin: 0;
-        padding-left: 12px;
-        padding-right: 12px;
+        padding-left: 16px;
+        padding-right: 16px;
         padding-top: 20px;
         padding-bottom: calc(var(--tz-footer-h, 0px) + 24px);
-        overflow-x: hidden;
+        overflow-x: visible;
       }
 
       /* ---------- STATS ---------- */
@@ -592,7 +634,20 @@ export default function Styles() {
           linear-gradient(var(--panel-solid), var(--panel-solid)) padding-box,
           linear-gradient(135deg, rgba(43,232,255,0.55), rgba(255,47,158,0.5)) border-box;
         border: 1px solid transparent;
-        transition: transform 0.12s ease, box-shadow 0.15s ease;
+        /* 'transform' se queda rápido (hover necesita sentirse
+           inmediato); todo lo relacionado al glow/apagado — sombra,
+           fondo (el degradé del borde), y opacity/filter de
+           .tz-card-disabled — pasa a 0.5s ease-in-out para que
+           agotado <-> disponible (llegue por una venta, una edición
+           del Gestor de Productos, o Realtime desde otra pestaña) se
+           sienta como un fundido, nunca un salto brusco. */
+        transition:
+          transform 0.12s ease,
+          box-shadow 0.5s ease-in-out,
+          background 0.5s ease-in-out,
+          border-color 0.5s ease-in-out,
+          opacity 0.5s ease-in-out,
+          filter 0.5s ease-in-out;
         display: flex;
         flex-direction: column;
         gap: 14px;
@@ -797,6 +852,38 @@ export default function Styles() {
       @keyframes tz-card-combo-glow {
         0%, 100% { box-shadow: 0 0 14px rgba(255,225,0,0.45), 0 0 28px rgba(255,225,0,0.18); }
         50% { box-shadow: 0 0 24px rgba(255,225,0,0.8), 0 0 42px rgba(255,225,0,0.35); }
+      }
+      /* Un combo AGOTADO no debe seguir brillando — sin esto,
+         .tz-card-combo (arriba) sigue animando su borde/box-shadow por
+         encima del apagado de .tz-card-disabled (selector de dos
+         clases: gana por especificidad sin importar el orden). */
+      .tz-card-combo.tz-card-disabled {
+        animation: none;
+        background: none;
+        border-color: var(--border-soft);
+        box-shadow: none;
+      }
+      /* Combo recién reactivado (su stock virtual pasó de 0 a > 0):
+         pulso más intenso y en VERDE, a propósito distinto del
+         amarillo/naranja permanente de .tz-card-combo de arriba, para
+         que "ahora sí hay stock" se note aunque el cajero no estuviera
+         mirando esta tarjeta en el instante exacto. Va DESPUÉS de
+         .tz-card-combo en la hoja: mismo peso de selector, gana el que
+         está más abajo, así que mientras dura tapa el glow normal.
+         JS le quita esta clase a los ~2.5s (ver reactivatedComboIds en
+         App.jsx) — el 'animation-iteration-count: 3' de acá abajo es
+         solo estético, para que el pulso en sí se vea vivo mientras
+         la clase sigue puesta. */
+      .tz-card-reactivated {
+        border-color: transparent;
+        background:
+          linear-gradient(var(--panel-solid), var(--panel-solid)) padding-box,
+          linear-gradient(135deg, rgba(57,255,176,0.95), rgba(43,232,255,0.6)) border-box;
+        animation: tz-card-reactivated-glow 0.8s ease-in-out 3;
+      }
+      @keyframes tz-card-reactivated-glow {
+        0%, 100% { box-shadow: 0 0 16px rgba(57,255,176,0.5), 0 0 30px rgba(57,255,176,0.2); }
+        50% { box-shadow: 0 0 34px rgba(57,255,176,0.95), 0 0 55px rgba(57,255,176,0.5); }
       }
       /* Lista vertical (una fila por ingrediente) — mismo tamaño/peso
          que .tz-card-detail (la descripción de cualquier producto
@@ -1472,7 +1559,36 @@ export default function Styles() {
         border-radius: 0;
         padding: 14px 12px calc(14px + env(safe-area-inset-bottom, 0px));
         box-shadow: 0 -8px 30px rgba(0,0,0,0.4);
+        /* Slide de entrada/salida: SIEMPRE montada mientras dura la
+           animación (ver 'barMounted' en App.jsx) — nunca aparece/
+           desaparece de un salto, un translateY largo y ease-in-out
+           en las dos direcciones. */
+        transition: transform 0.5s ease-in-out;
       }
+      .tz-submitbar-visible { transform: translateY(0); }
+      .tz-submitbar-hidden { transform: translateY(120%); }
+
+      /* "Manija" para ocultar la barra a mano: una lengüeta que
+         sobresale de su borde superior, en vez de un botón más dentro
+         del contenido (ya bastante apretado en móvil). */
+      .tz-submitbar-collapse {
+        position: absolute;
+        top: -30px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 46px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(43,232,255,0.25);
+        border-bottom: none;
+        border-radius: 10px 10px 0 0;
+        background: rgba(15, 10, 30, 0.94);
+        color: var(--text-dim);
+        cursor: pointer;
+      }
+      .tz-submitbar-collapse:hover { color: var(--text); background: rgba(20,14,40,0.98); }
       .tz-submitbar-content {
         display: flex;
         flex-direction: column;
@@ -1532,6 +1648,12 @@ export default function Styles() {
         flex: 0 0 auto;
         color: var(--pink);
         font-weight: 700;
+      }
+      .tz-cart-row-discount-note {
+        display: block;
+        color: var(--green);
+        font-size: 11px;
+        font-weight: 600;
       }
       .tz-cart-row-controls {
         display: flex;
@@ -1767,6 +1889,12 @@ export default function Styles() {
         color: #06131a;
         box-shadow: 0 0 20px rgba(43,232,255,0.4);
       }
+      .tz-footer-btn-productos {
+        background: #2e1065;
+        color: var(--text);
+        border: 1.5px solid var(--yape);
+        box-shadow: 0 0 20px rgba(182,33,255,0.5);
+      }
 
       /* ---------- MODAL ---------- */
       .tz-modal-backdrop {
@@ -1796,6 +1924,118 @@ export default function Styles() {
         scrollbar-color: rgba(43,232,255,0.35) transparent;
       }
       .tz-modal-wide { max-width: 560px; }
+      .tz-modal-fullscreen {
+        max-width: 1400px;
+        width: 96vw;
+        height: 92vh;
+        max-height: 92vh;
+        display: flex;
+        flex-direction: column;
+        overflow-y: hidden;
+      }
+      .tz-pm-header { flex-shrink: 0; }
+      .tz-pm-header-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding-right: 34px;
+      }
+      .tz-pm-export-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+        border: 1px solid rgba(57,255,176,0.4);
+        border-radius: 10px;
+        background: rgba(57,255,176,0.1);
+        color: var(--green);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        padding: 8px 14px;
+        cursor: pointer;
+      }
+      .tz-pm-export-btn:hover { background: rgba(57,255,176,0.2); }
+      .tz-pm-body { flex: 1; overflow-y: auto; margin-top: 8px; }
+      .tz-pm-table-wrap { overflow-x: auto; }
+      .tz-pm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .tz-pm-table th {
+        text-align: left;
+        padding: 8px 10px;
+        color: var(--text-dim);
+        text-transform: uppercase;
+        font-size: 10.5px;
+        letter-spacing: 0.04em;
+        border-bottom: 1px solid var(--border-soft);
+        white-space: nowrap;
+      }
+      .tz-pm-table td {
+        padding: 7px 10px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        white-space: nowrap;
+      }
+      .tz-pm-cell-nombre { white-space: normal; min-width: 180px; }
+      .tz-pm-detail { color: var(--text-dim); font-size: 12px; }
+      .tz-pm-input { width: 90px; padding: 6px 8px; font-size: 12.5px; }
+      /* El de Stock necesita más aire que Costo/Precio: números de más
+         dígitos (y, en 'venta a granel', decimales) se recortaban. */
+      .tz-pm-input-stock { width: 130px; }
+      .tz-pm-margin-positive { color: var(--green); font-weight: 700; }
+      .tz-pm-descuento-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: rgba(255,149,0,0.12);
+        border: 1px solid rgba(255,149,0,0.4);
+        color: var(--orange);
+        font-weight: 700;
+        font-size: 12px;
+      }
+      .tz-pm-descuento-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: middle;
+      }
+      .tz-pm-dot-green { background: var(--green); box-shadow: 0 0 6px rgba(57,255,176,0.8); }
+      .tz-pm-dot-red { background: var(--danger); box-shadow: 0 0 6px rgba(255,84,112,0.6); }
+      .tz-pm-margin-negative { color: var(--danger); font-weight: 700; }
+      /* 'transition' vive en la fila BASE (no en el modificador) para
+         que también anime al SALIR del resplandor: se agrega la clase
+         -highlight sin transición (aparece resaltada de inmediato,
+         apenas se monta ya con foco), y al quitarla ~2s después el
+         navegador anima el regreso a fondo transparente solo. */
+      .tz-pm-row { transition: background-color 1.4s ease; }
+      .tz-pm-row-highlight { background-color: rgba(182,33,255,0.22); }
+      .tz-pm-save-cell { position: relative; }
+      .tz-pm-save-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        border: 1px solid rgba(57,255,176,0.4);
+        background: rgba(57,255,176,0.08);
+        color: var(--green);
+        cursor: pointer;
+      }
+      .tz-pm-save-btn:hover { background: rgba(57,255,176,0.18); }
+      .tz-pm-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+      .tz-pm-row-error {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        white-space: nowrap;
+        margin: 2px 0 0;
+        font-size: 11px;
+        z-index: 1;
+      }
       .tz-modal::-webkit-scrollbar { width: 8px; }
       .tz-modal::-webkit-scrollbar-track { background: transparent; }
       .tz-modal::-webkit-scrollbar-thumb {

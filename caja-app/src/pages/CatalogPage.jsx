@@ -14,12 +14,44 @@ import logo from "../assets/logo.png";
 
 // Copiado tal cual de App.jsx: mismo cálculo, mismo criterio de
 // "disponible" — el catálogo público necesita saber si algo está
-// agotado sin duplicar ninguna lógica de venta real.
-function availabilityFor(product, stock) {
+// agotado sin duplicar ninguna lógica de venta real. Incluye el mismo
+// stock "virtual" para Combos (resuelve 'comboItems' contra la
+// disponibilidad ACTUAL de cada ingrediente, en vez del 'consumos'
+// congelado desde que se creó el combo).
+function availabilityFor(product, stock, productsById) {
+  if (product.esCombo && Array.isArray(product.comboItems) && productsById) {
+    return Math.min(
+      ...product.comboItems.map(({ productoId, cantidad }) => {
+        const ingrediente = productsById[productoId];
+        if (!ingrediente) return 0;
+        const disponibleIngrediente = availabilityFor(ingrediente, stock, productsById);
+        return disponibleIngrediente === Infinity
+          ? Infinity
+          : Math.floor(disponibleIngrediente / cantidad);
+      })
+    );
+  }
+
   if (!product.consumes || product.consumes.length === 0) return Infinity;
   return Math.min(
     ...product.consumes.map((c) => Math.floor((stock[c.key] ?? 0) / c.qty))
   );
+}
+
+// Precio real con el descuento PERMANENTE del producto ya aplicado
+// (migración 0043: 'productos.valor_descuento' + 'tipo_descuento',
+// 'porcentaje' o 'fijo' en soles) — único sistema de descuento de la
+// app, el catálogo público SÍ necesita mostrar este precio: es una
+// rebaja de lista real, configurada desde el botón "%" en /admin.
+function effectivePrice(product) {
+  if (!product) return 0;
+  const valor = product.valorDescuento || 0;
+  if (valor <= 0) return product.price;
+  const raw =
+    product.tipoDescuento === "porcentaje"
+      ? product.price * (1 - Math.min(valor, 100) / 100)
+      : product.price - valor;
+  return Math.max(0, Math.round(raw * 100) / 100);
 }
 
 // Ruta pública "/": mostrador de solo lectura, clon visual exacto del
@@ -160,7 +192,7 @@ export default function CatalogPage() {
                 )}
                 <div className="tz-grid">
                   {group.items.map((item) => {
-                    const avail = availabilityFor(item, stock);
+                    const avail = availabilityFor(item, stock, productsById);
                     const soldOut = avail <= 0;
                     const low = avail > 0 && avail <= 3;
 
@@ -206,7 +238,18 @@ export default function CatalogPage() {
                               <div className="tz-card-priceqty">
                                 <div className="tz-price-block">
                                   <span className="tz-price-label">Precio</span>
-                                  <span className="tz-price">{formatSoles(item.price)}</span>
+                                  {item.valorDescuento > 0 ? (
+                                    <>
+                                      <span className="tz-price-original">
+                                        {formatSoles(item.price)}
+                                      </span>
+                                      <span className="tz-price tz-price-discounted">
+                                        {formatSoles(effectivePrice(item))}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span className="tz-price">{formatSoles(item.price)}</span>
+                                  )}
                                 </div>
                               </div>
                             </div>

@@ -32,6 +32,7 @@ function ProductoRow({
   onDelete,
   onSoftDelete,
   onEditProducto,
+  onAssignBarcode,
   categoriaLabel,
   subgrupoRaw,
   onAddVariante,
@@ -48,6 +49,13 @@ function ProductoRow({
   const [editColor, setEditColor] = useState(producto.color || null);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+
+  // "Asignar Código de Barras": solo aplica si el producto todavía no
+  // tiene uno (típico tras "+ Añadir Variante", que duplica sin
+  // codigo_barras para no chocar con el producto original).
+  const [assigningBarcode, setAssigningBarcode] = useState(false);
+  const [barcodeSaving, setBarcodeSaving] = useState(false);
+  const [barcodeError, setBarcodeError] = useState("");
 
   const [addingVariante, setAddingVariante] = useState(false);
   const [varianteSabor, setVarianteSabor] = useState("");
@@ -118,6 +126,20 @@ function ProductoRow({
       return;
     }
     setEditing(false);
+  };
+
+  const handleAssignBarcode = async (codigo) => {
+    setBarcodeSaving(true);
+    setBarcodeError("");
+    const { error: assignError } = await onAssignBarcode(producto, codigo);
+    setBarcodeSaving(false);
+    if (assignError) {
+      setBarcodeError(
+        assignError.message ? assignError.message : "No se pudo guardar el código de barras."
+      );
+      return;
+    }
+    setAssigningBarcode(false);
   };
 
   /* ---- + Añadir Variante: crea un producto NUEVO (con su propia
@@ -311,6 +333,35 @@ function ProductoRow({
             <X size={13} /> Cancelar
           </button>
         </div>
+
+        {/* Solo aparece si el producto todavía no tiene código — el
+           caso típico es una variante recién duplicada con "+ Añadir
+           Variante", que a propósito deja 'codigo_barras' en null para
+           no chocar con el producto original. */}
+        {!producto.codigoBarras && (
+          <>
+            <button
+              type="button"
+              className="tz-cliente-action-btn"
+              style={{ marginTop: 8 }}
+              onClick={() => {
+                setBarcodeError("");
+                setAssigningBarcode(true);
+              }}
+              disabled={barcodeSaving}
+            >
+              {barcodeSaving ? <Loader2 size={13} className="tz-spin" /> : <ScanLine size={13} />}
+              Asignar Código de Barras
+            </button>
+            {barcodeError && <p className="tz-error">{barcodeError}</p>}
+          </>
+        )}
+        {assigningBarcode && (
+          <BarcodeScannerModal
+            onScan={handleAssignBarcode}
+            onClose={() => setAssigningBarcode(false)}
+          />
+        )}
       </div>
     );
   }
@@ -377,6 +428,7 @@ function SearchableProductList({
   onDelete,
   onSoftDelete,
   onEditProducto,
+  onAssignBarcode,
   categoriaLabel,
   subgrupoRaw,
   onAddVariante,
@@ -452,6 +504,7 @@ function SearchableProductList({
               onDelete={onDelete}
               onSoftDelete={onSoftDelete}
               onEditProducto={onEditProducto}
+              onAssignBarcode={onAssignBarcode}
               categoriaLabel={categoriaLabel}
               subgrupoRaw={subgrupoRaw}
               onAddVariante={onAddVariante}
@@ -480,6 +533,7 @@ function CategoriaAccordion({
   onDelete,
   onSoftDelete,
   onEditProducto,
+  onAssignBarcode,
   onRenameCategoria,
   onRenameSubgrupo,
   onDeleteCategoria,
@@ -714,6 +768,7 @@ function CategoriaAccordion({
               onDelete={onDelete}
               onSoftDelete={onSoftDelete}
               onEditProducto={onEditProducto}
+              onAssignBarcode={onAssignBarcode}
               categoriaLabel={section.label}
               subgrupoRaw={null}
               onAddVariante={onAddVariante}
@@ -814,6 +869,7 @@ function CategoriaAccordion({
                         onDelete={onDelete}
                         onSoftDelete={onSoftDelete}
                         onEditProducto={onEditProducto}
+                        onAssignBarcode={onAssignBarcode}
                         categoriaLabel={section.label}
                         subgrupoRaw={rawSubgrupo(group)}
                         onAddVariante={onAddVariante}
@@ -841,6 +897,7 @@ export default function CatalogVisibilityAccordion({
   onDelete,
   onSoftDelete,
   onEditProducto,
+  onAssignBarcode,
   onRenameCategoria,
   onRenameSubgrupo,
   onDeleteCategoria,
@@ -988,6 +1045,7 @@ export default function CatalogVisibilityAccordion({
           onDelete={onDelete}
           onSoftDelete={onSoftDelete}
           onEditProducto={onEditProducto}
+          onAssignBarcode={onAssignBarcode}
           onRenameCategoria={onRenameCategoria}
           onRenameSubgrupo={onRenameSubgrupo}
           onDeleteCategoria={onDeleteCategoria}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { flushSync } from "react-dom";
 import {
   Pencil,
@@ -33,6 +33,8 @@ import {
   Trophy,
   Percent,
   Copy,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
@@ -59,6 +61,7 @@ import {
 } from "./lib/productLookup";
 import BarcodeScannerModal from "./components/BarcodeScannerModal";
 import CatalogVisibilityAccordion from "./components/CatalogVisibilityAccordion";
+import ProductManagerModal from "./components/ProductManagerModal";
 import ColorPicker from "./components/ColorPicker";
 import LogoEasterEgg from "./components/LogoEasterEgg";
 import TicketBoleta from "./components/TicketBoleta";
@@ -108,6 +111,35 @@ function unitCostFor(product, stockCostos) {
   }
 
   return product.cost != null ? product.cost : product.price * DEFAULT_COST_RATIO;
+}
+
+/* Precio de venta real de un producto/combo, con su descuento
+   PERMANENTE ya aplicado (migración 0043: 'productos.valor_descuento'
+   + 'tipo_descuento', 'porcentaje' o 'fijo' en soles). ÚNICO sistema
+   de descuento de la app — el botón "%" de la tarjeta escribe estos
+   mismos campos directo en Supabase, no hay una capa de sesión aparte
+   por encima. Es la base de todo lo demás: el precio que se muestra en
+   tarjetas/carrito, el que queda congelado en 'historial' al vender, y
+   el Margen Neto del Gestor de Productos. */
+function effectivePrice(product) {
+  if (!product) return 0;
+  const valor = product.valorDescuento || 0;
+  if (valor <= 0) return product.price;
+  const raw =
+    product.tipoDescuento === "porcentaje"
+      ? product.price * (1 - Math.min(valor, 100) / 100)
+      : product.price - valor;
+  return Math.max(0, Math.round(raw * 100) / 100);
+}
+
+/* "-10%" o "-S/ 2.00" según 'tipoDescuento' — null si no hay descuento
+   activo. Un solo lugar que decide el formato para que tarjetas,
+   carrito y Gestor de Productos nunca puedan mostrar cosas distintas
+   entre sí. */
+function formatDescuentoBadge(product) {
+  const valor = product?.valorDescuento || 0;
+  if (valor <= 0) return null;
+  return product.tipoDescuento === "porcentaje" ? `-${valor}%` : `-${formatSoles(valor)}`;
 }
 
 const PAYMENT_METHODS = [
@@ -242,7 +274,30 @@ function startOfDay(ts) {
   return d.getTime();
 }
 
-function availabilityFor(product, stock) {
+// Stock "virtual" de un Combo: NO lee 'product.consumes' (ese aplanado
+// queda congelado desde que se crea el combo — ver migración 0041, el
+// mismo problema de frescura que ya se resolvió para el descuento real
+// al vender). En su lugar resuelve 'comboItems' (la receta:
+// [{productoId, cantidad}]) contra la disponibilidad ACTUAL de cada
+// producto-ingrediente (recursivo: availabilityFor de nuevo sobre ese
+// ingrediente, que ya sabe manejar tanto un producto simple como,
+// en teoría, otro combo). El cuello de botella es
+// Math.floor(disponible_del_ingrediente / cantidad_que_pide_la_receta)
+// — el más bajo de todos manda, igual que con claves de stock.
+function availabilityFor(product, stock, productsById) {
+  if (product.esCombo && Array.isArray(product.comboItems) && productsById) {
+    return Math.min(
+      ...product.comboItems.map(({ productoId, cantidad }) => {
+        const ingrediente = productsById[productoId];
+        if (!ingrediente) return 0;
+        const disponibleIngrediente = availabilityFor(ingrediente, stock, productsById);
+        return disponibleIngrediente === Infinity
+          ? Infinity
+          : Math.floor(disponibleIngrediente / cantidad);
+      })
+    );
+  }
+
   if (!product.consumes || product.consumes.length === 0) return Infinity;
   const raw = Math.min(...product.consumes.map((c) => (stock[c.key] ?? 0) / c.qty));
   // Venta a Granel/Por Peso: el disponible es un decimal de verdad
@@ -259,6 +314,59 @@ function availabilityFor(product, stock) {
 function formatQty(ventaPorPeso, qty) {
   const n = Number(qty) || 0;
   return ventaPorPeso ? `${n.toFixed(2)} Kg` : String(n);
+}
+
+/* ---- Resiliencia offline: cola de ventas que no se pudieron mandar a
+   Supabase por falta de conexión. Cada entrada guarda EXACTAMENTE los
+   parámetros que ya recibiría 'registrar_venta' (más el payload de
+   fiado_items si aplica), así sincronizar más tarde es un replay
+   directo, sin tener que reconstruir nada. Vive en localStorage (no en
+   memoria) para sobrevivir a que el cajero cierre la pestaña/recargue
+   mientras sigue sin señal. ---- */
+const VENTAS_PENDIENTES_KEY = "ventas_pendientes_sync";
+
+function leerVentasPendientes() {
+  try {
+    const raw = localStorage.getItem(VENTAS_PENDIENTES_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error("No se pudo leer la cola de ventas pendientes de localStorage:", err);
+    return [];
+  }
+}
+
+function guardarVentasPendientes(lista) {
+  try {
+    localStorage.setItem(VENTAS_PENDIENTES_KEY, JSON.stringify(lista));
+  } catch (err) {
+    console.error("No se pudo guardar la cola de ventas pendientes en localStorage:", err);
+  }
+}
+
+/* Semáforo de conexión en el header — verde "En línea" / rojo "Sin
+   conexión". 'pendingCount' es opcional: si hay ventas todavía sin
+   sincronizar, se lo suma al title (tooltip) para que quede claro que
+   no se perdieron, solo están esperando señal. El propio App.jsx
+   decide si esto se monta o no (isAdmin/isCajero) — este componente
+   no vuelve a chequear el rol, solo dibuja el estado que le pasan. */
+function ConnectionIndicator({ online, pendingCount }) {
+  return (
+    <span
+      className={`tz-conn-indicator ${online ? "tz-conn-online" : "tz-conn-offline"}`}
+      title={
+        online
+          ? pendingCount > 0
+            ? `En línea — sincronizando ${pendingCount} venta(s) pendiente(s)…`
+            : "En línea"
+          : "Sin conexión — las ventas en Efectivo/Fiado se guardan localmente"
+      }
+    >
+      <span className="tz-conn-dot" />
+      {online ? <Wifi size={13} /> : <WifiOff size={13} />}
+      <span className="tz-conn-label">{online ? "En línea" : "Sin conexión"}</span>
+    </span>
+  );
 }
 
 /* Igual que resolveStockKey() de productLookup.js, pero sobre
@@ -312,13 +420,13 @@ function CartRow({
   qty,
   avail,
   unitPrice,
-  discountPercent,
+  discountLabel,
   onQtyChange,
   onRemove,
   onEditWeight,
 }) {
   const [localQty, setLocalQty] = useState(String(qty));
-  const hasDiscount = discountPercent > 0;
+  const hasDiscount = !!discountLabel;
   const effectiveUnitPrice = unitPrice ?? product.price;
 
   useEffect(() => {
@@ -343,7 +451,7 @@ function CartRow({
           {product.name}
           {product.detail ? ` · ${product.detail}` : ""}
           {hasDiscount && (
-            <span className="tz-discount-badge tz-discount-badge-inline">-{discountPercent}%</span>
+            <span className="tz-discount-badge tz-discount-badge-inline">{discountLabel}</span>
           )}
         </span>
         <span className="tz-cart-row-amount-group">
@@ -353,6 +461,11 @@ function CartRow({
           <span className="tz-cart-row-amount">{formatSoles(effectiveUnitPrice * qty)}</span>
         </span>
       </div>
+      {hasDiscount && (
+        <span className="tz-cart-row-discount-note">
+          Descuento aplicado: {formatSoles((product.price - effectiveUnitPrice) * qty)}
+        </span>
+      )}
       <div className="tz-cart-row-controls">
         {product.ventaPorPeso ? (
           <button
@@ -550,67 +663,91 @@ export default function App() {
   const [activeTab, setActiveTab] = useState(""); // se define al cargar 'sections'
   const [selection, setSelection] = useState({}); // { productId: qty }
 
-  /* ---- Motor de descuentos: SOLO vive acá, en memoria de la sesión de
-     venta actual — nunca toca 'productos.price' (el catálogo). Es la
-     "Blindaje Contable" pedida: 'historial'/'fiado_items' ya guardan el
-     precio de cada línea al momento de vender (mismo patrón que el
-     costo congelado), así que aplicar el descuento acá, antes de armar
-     esas filas, alcanza para que Cierre de Caja/todayStats — que solo
-     leen esas filas, nunca 'productos.price' — cuadren solos sin
-     ningún cambio adicional en sus fórmulas. Se reinicia junto con
-     'selection' después de cada venta (ver submitVenta). ---- */
-  const [discounts, setDiscounts] = useState({}); // { productId: { type: 'percent'|'monto', value: number } }
+  /* ---- Descuentos: UN SOLO sistema, permanente — el botón "%" de la
+     tarjeta es el único lugar para configurarlo, y escribe directo a
+     'productos.valor_descuento'/'tipo_descuento' (migración 0043). Ya
+     no existe un descuento de sesión separado: 'effectivePrice' (ver
+     arriba, HELPERS) es la única fuente de verdad, y como ya lee esos
+     campos desde 'productsById', sobrevive a F5 sin nada más que
+     hacer. Este bloque es solo el estado/lógica del MODAL en sí
+     (abrir/cerrar/guardar), no un motor de cálculo aparte. ---- */
   const [discountModalProduct, setDiscountModalProduct] = useState(null);
-  const [discountModalType, setDiscountModalType] = useState("percent");
+  const [discountModalType, setDiscountModalType] = useState("porcentaje");
   const [discountModalValue, setDiscountModalValue] = useState("");
-
-  const discountedUnitPrice = (product) => {
-    const d = discounts[product.id];
-    if (!d || !(d.value > 0)) return product.price;
-    const raw =
-      d.type === "percent" ? product.price * (1 - d.value / 100) : product.price - d.value;
-    return Math.max(0, Math.round(raw * 100) / 100);
-  };
-
-  const discountPercentOf = (product) => {
-    const finalPrice = discountedUnitPrice(product);
-    if (finalPrice >= product.price || product.price <= 0) return 0;
-    return Math.round((1 - finalPrice / product.price) * 100);
-  };
+  const [discountModalSaving, setDiscountModalSaving] = useState(false);
+  const [discountModalError, setDiscountModalError] = useState("");
 
   const openDiscountModal = (product) => {
-    const existing = discounts[product.id];
-    setDiscountModalType(existing?.type ?? "percent");
-    setDiscountModalValue(existing ? String(existing.value) : "");
+    // Descuentos: poder exclusivo del admin — el botón que llama a esto
+    // ya está oculto para cajero, este chequeo es solo el respaldo por
+    // si algo más llegara a invocar la función directo.
+    if (!isAdmin) return;
+    const activo = product.valorDescuento > 0;
+    setDiscountModalType(activo ? product.tipoDescuento : "porcentaje");
+    setDiscountModalValue(activo ? String(product.valorDescuento) : "");
+    setDiscountModalError("");
     setDiscountModalProduct(product);
   };
 
   const closeDiscountModal = () => {
     setDiscountModalProduct(null);
     setDiscountModalValue("");
+    setDiscountModalError("");
   };
 
-  const saveDiscountModal = () => {
+  const saveDiscountModal = async () => {
+    if (!discountModalProduct) return;
     const value = parseFloat(discountModalValue);
-    if (!discountModalProduct || isNaN(value) || value <= 0) {
+    if (isNaN(value) || value <= 0) {
       closeDiscountModal();
       return;
     }
     const clamped =
-      discountModalType === "percent" ? Math.min(value, 100) : Math.min(value, discountModalProduct.price);
-    setDiscounts((prev) => ({
-      ...prev,
-      [discountModalProduct.id]: { type: discountModalType, value: clamped },
-    }));
+      discountModalType === "porcentaje" ? Math.min(value, 100) : Math.min(value, discountModalProduct.price);
+
+    setDiscountModalSaving(true);
+    setDiscountModalError("");
+    const { data, error } = await supabase
+      .from("productos")
+      .update({ valor_descuento: clamped, tipo_descuento: discountModalType })
+      .eq("id", discountModalProduct.id)
+      .select("id");
+    setDiscountModalSaving(false);
+
+    if (error) {
+      setDiscountModalError(
+        error.message ? `No se pudo guardar: ${error.message}` : "No se pudo guardar el descuento."
+      );
+      return;
+    }
+    if (!data || data.length === 0) {
+      setDiscountModalError(
+        "No se pudo guardar (0 filas afectadas) — revisa los permisos de UPDATE en 'productos'."
+      );
+      return;
+    }
+
+    await refetchCatalog();
     closeDiscountModal();
   };
 
-  const removeDiscount = (productId) => {
-    setDiscounts((prev) => {
-      const next = { ...prev };
-      delete next[productId];
-      return next;
-    });
+  const removeDiscount = async (productId) => {
+    setDiscountModalSaving(true);
+    setDiscountModalError("");
+    const { error } = await supabase
+      .from("productos")
+      .update({ valor_descuento: 0, tipo_descuento: "fijo" })
+      .eq("id", productId);
+    setDiscountModalSaving(false);
+
+    if (error) {
+      setDiscountModalError(
+        error.message ? `No se pudo quitar: ${error.message}` : "No se pudo quitar el descuento."
+      );
+      return;
+    }
+    await refetchCatalog();
+    closeDiscountModal();
   };
 
   const [submitError, setSubmitError] = useState("");
@@ -637,12 +774,6 @@ export default function App() {
   const [stockCostEdits, setStockCostEdits] = useState({});
   const [savingStock, setSavingStock] = useState(false);
 
-  /* ---- edición rápida de precio de venta desde la tarjeta del
-     producto (solo admin) ---- */
-  const [editingPriceProduct, setEditingPriceProduct] = useState(null);
-  const [editingPriceValue, setEditingPriceValue] = useState("");
-  const [editingPriceSaving, setEditingPriceSaving] = useState(false);
-  const [editingPriceError, setEditingPriceError] = useState("");
   const [stockSavedMsg, setStockSavedMsg] = useState("");
   const [visibilityError, setVisibilityError] = useState("");
 
@@ -818,6 +949,15 @@ export default function App() {
   const [anulandoVentaId, setAnulandoVentaId] = useState(null);
   const [anularError, setAnularError] = useState("");
 
+  /* ---- Gestor de Productos: vista jerárquica (Categoría -> Subgrupo
+     -> Producto) de Stock/Costo/Precio/Margen. Solo lectura para
+     cajero; admin edita y guarda por fila (ver guardarFilaProducto). */
+  const [productManagerOpen, setProductManagerOpen] = useState(false);
+  // Id del producto al que hay que hacerle scroll+resaltado apenas se
+  // abre el modal (lápiz "Editar" de una tarjeta) — null cuando se abre
+  // desde el botón del footer, sin ningún producto puntual en mente.
+  const [productManagerFocusId, setProductManagerFocusId] = useState(null);
+
   /* ---- Usuarios (solo admin): alta de cajeros + gestión (cambiar PIN,
      eliminar) de cajeros Y clientes. 'cajeros' guarda ambos roles pese
      al nombre de la variable (viene del panel original "Cajeros",
@@ -934,31 +1074,6 @@ export default function App() {
   const streamRef = useRef(null);
   const fileInputRef = useRef(null);
   const submitBarRef = useRef(null);
-
-  /* ---- la barra de "Enviar Venta" (footer) es fixed y de altura
-     variable (crece con la lista de productos seleccionados, o
-     desaparece por completo si no hay nada seleccionado). Medimos su
-     altura real para que el contenido nunca quede tapado detrás de
-     ella. El header, en cambio, usa un padding-top fijo y generoso en
-     el CSS (no depende de medición por JS) para eliminar cualquier
-     posibilidad de que quede tapando los medidores. ---- */
-  useEffect(() => {
-    const updateFooterOffset = () => {
-      const footerH = submitBarRef.current?.offsetHeight || 0;
-      document.documentElement.style.setProperty("--tz-footer-h", `${footerH}px`);
-    };
-
-    updateFooterOffset();
-    if (!submitBarRef.current) return undefined;
-
-    const ro = new ResizeObserver(updateFooterOffset);
-    ro.observe(submitBarRef.current);
-    window.addEventListener("resize", updateFooterOffset);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", updateFooterOffset);
-    };
-  }, [loading, selection, submitError, successMsg]);
 
   /* ---- cierra el menú "Métodos de Pago" del header al hacer clic afuera ---- */
   useEffect(() => {
@@ -1396,6 +1511,134 @@ export default function App() {
     setActiveTab((prev) => prev || sections[0]?.key || "");
   }, [sections]);
 
+  /* ---- Resiliencia offline: estado de conexión (para el semáforo del
+     header) + sincronización de la cola de 'ventas_pendientes_sync'
+     apenas vuelve el internet. 'syncingRef' evita que dos disparos casi
+     simultáneos (el evento 'online' Y el chequeo al montar, si la app
+     ya cargó con conexión y quedaron pendientes de la sesión anterior)
+     corran la sincronización en paralelo. Se procesa una por una, EN
+     ORDEN, y se borra cada venta de localStorage apenas se confirma
+     sincronizada — si la conexión se corta de nuevo a mitad de la
+     cola, las que ya se mandaron no se vuelven a mandar, y las que
+     faltan quedan guardadas para el próximo intento. ---- */
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [ventasPendientesCount, setVentasPendientesCount] = useState(
+    () => leerVentasPendientes().length
+  );
+  const syncingRef = useRef(false);
+
+  const syncVentasPendientes = useCallback(async () => {
+    if (syncingRef.current) return;
+    const pendientes = leerVentasPendientes();
+    if (pendientes.length === 0) return;
+    syncingRef.current = true;
+
+    let sincronizadas = 0;
+    for (const pendiente of pendientes) {
+      try {
+        const { error: rpcError } = await supabase.rpc("registrar_venta", pendiente.rpcParams);
+        if (rpcError) {
+          console.error(
+            "No se pudo sincronizar una venta pendiente (se reintenta en la próxima reconexión):",
+            rpcError
+          );
+          break;
+        }
+        if (pendiente.fiadoItemsPayload) {
+          const { error: fiadoError } = await supabase
+            .from("fiado_items")
+            .insert(pendiente.fiadoItemsPayload);
+          if (fiadoError) {
+            // La venta en sí ya quedó sincronizada — la deuda de Fiado
+            // que no pudo escribirse es un problema aparte, se avisa
+            // en consola pero no bloquea el resto de la cola.
+            console.error("Venta sincronizada, pero falló su deuda de Fiado:", fiadoError);
+          }
+        }
+        sincronizadas += 1;
+      } catch (err) {
+        console.error("Error inesperado sincronizando una venta pendiente:", err);
+        break;
+      }
+    }
+
+    if (sincronizadas > 0) {
+      const restantes = pendientes.slice(sincronizadas);
+      guardarVentasPendientes(restantes);
+      setVentasPendientesCount(restantes.length);
+      await refetchCatalog();
+    }
+    syncingRef.current = false;
+  }, [refetchCatalog]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      syncVentasPendientes();
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    // Por si la app se abre YA con conexión pero quedaron ventas sin
+    // sincronizar de una sesión offline anterior (la pestaña se cerró
+    // antes de que volviera el internet).
+    if (navigator.onLine) syncVentasPendientes();
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [syncVentasPendientes]);
+
+  /* ---- "iluminación" de productos/combos recién reactivados (patrón
+     usePrevious: un ref guarda el valor ANTERIOR de cada producto para
+     compararlo contra el actual en cada render, sin ser él mismo
+     estado — no dispara re-render al escribirse). Corre cada vez que
+     'stock'/'productsById' cambian: una venta, un guardado en el
+     Gestor de Productos, o ahora también un cambio en OTRA pestaña que
+     llega por Supabase Realtime (ver useCatalog.js) — el efecto no le
+     importa POR QUÉ cambió, solo compara antes/después.
+
+     Si el stock de un producto pasó de exactamente 0 a más de 0, se
+     guarda su id un par de segundos para dispararle el resplandor
+     fuerte en la tarjeta (ver 'tz-card-reactivated' más abajo). El
+     efecto contrario — de disponible a agotado — NO necesita este
+     mecanismo: 'tz-card-disabled' ya se aplica de forma permanente y
+     directa a partir de 'avail <= 0' en el render de la tarjeta, sin
+     necesidad de comparar contra nada.
+
+     En la carga inicial no hay "anterior" todavía (undefined !== 0),
+     así que nada se ilumina solo por abrir la app — tiene que ser un
+     cambio real, en vivo. ---- */
+  const prevAvailRef = useRef({});
+  const [reactivatedProductIds, setReactivatedProductIds] = useState(() => new Set());
+
+  useEffect(() => {
+    const productos = Object.values(productsById);
+    if (productos.length === 0) return;
+
+    const justReactivated = [];
+    const nextPrev = { ...prevAvailRef.current };
+    productos.forEach((product) => {
+      const avail = availabilityFor(product, stock, productsById);
+      if (prevAvailRef.current[product.id] === 0 && avail > 0) {
+        justReactivated.push(product.id);
+      }
+      nextPrev[product.id] = avail;
+    });
+    prevAvailRef.current = nextPrev;
+
+    if (justReactivated.length === 0) return;
+    setReactivatedProductIds((prev) => new Set([...prev, ...justReactivated]));
+    const timer = setTimeout(() => {
+      setReactivatedProductIds((prev) => {
+        const next = new Set(prev);
+        justReactivated.forEach((id) => next.delete(id));
+        return next;
+      });
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [stock, productsById]);
+
   /* ---- Modal Calculadora de Peso: intercepta el agregado al carrito
      de cualquier producto 'ventaPorPeso' — "1 unidad" no tiene sentido
      físico para algo que se vende a granel, así que en vez de sumar un
@@ -1420,7 +1663,7 @@ export default function App() {
 
   /* ---- selección de productos ---- */
   const toggleProduct = (product) => {
-    const avail = availabilityFor(product, stock);
+    const avail = availabilityFor(product, stock, productsById);
     if (avail <= 0) return;
     setSubmitError("");
     // Arrancar una venta nueva limpia al toque el aviso de éxito de la
@@ -1466,7 +1709,7 @@ export default function App() {
      estaba en el carrito (para ajustarlo, no para reemplazarlo a
      ciegas). ---- */
   const selectProductForSale = (product) => {
-    const avail = availabilityFor(product, stock);
+    const avail = availabilityFor(product, stock, productsById);
     if (avail <= 0) return false;
     setSubmitError("");
     clearSuccessIfAny();
@@ -1488,7 +1731,7 @@ export default function App() {
     // discretas) — su cantidad solo se toca reabriendo el modal de
     // peso (ver 'onEditWeight' en la tarjeta/CartRow), nunca acá.
     if (product.ventaPorPeso) return;
-    const avail = availabilityFor(product, stock);
+    const avail = availabilityFor(product, stock, productsById);
     setSelection((prev) => {
       const current = prev[product.id] ?? 1;
       const next = Math.min(Math.max(current + delta, 1), avail);
@@ -1512,9 +1755,83 @@ export default function App() {
   const selectedCount = selectedIds.length;
   const totalItems = selectedIds.reduce((sum, id) => sum + selection[id], 0);
   const totalPrice = selectedIds.reduce(
-    (sum, id) => sum + discountedUnitPrice(productsById[id]) * selection[id],
+    (sum, id) => sum + effectivePrice(productsById[id]) * selection[id],
     0
   );
+
+  /* ---- Barra de envío: ocultable a mano (flechita), con slide suave
+     tanto al aparecer como al desaparecer. 'barShouldShow' es la MISMA
+     condición de siempre (carrito con algo, o un error/éxito para
+     mostrar); 'barDismissed' es la voluntad del cajero de taparla
+     aunque la condición siga siendo cierta (ej. le tapa el pie de
+     página). Se resetea SOLA la próxima vez que 'barShouldShow' pase
+     de false a true (una venta nueva, un carrito nuevo) — así un
+     "ocultar" de hace un rato no deja la barra escondida para siempre.
+
+     'barMounted' existe SOLO para poder animar la SALIDA: si se
+     desmontara junto con la condición (como antes), no habría tiempo
+     de que el transform-slide se vea — el segundo efecto lo deja
+     montado 500ms más (mismo tiempo que la transición CSS) después de
+     que 'barVisible' pasa a false, y recién ahí lo saca del DOM. ---- */
+  const barShouldShow = selectedCount > 0 || !!submitError || !!successMsg;
+  const [barDismissed, setBarDismissed] = useState(false);
+  const barVisible = barShouldShow && !barDismissed;
+  const [barMounted, setBarMounted] = useState(barShouldShow);
+
+  useEffect(() => {
+    if (barShouldShow) setBarDismissed(false);
+  }, [barShouldShow]);
+
+  useEffect(() => {
+    if (barVisible) {
+      setBarMounted(true);
+      return;
+    }
+    if (!barMounted) return;
+    const timer = setTimeout(() => setBarMounted(false), 500);
+    return () => clearTimeout(timer);
+  }, [barVisible, barMounted]);
+
+  const closeSubmitBar = () => {
+    if (successTimer.current) {
+      clearTimeout(successTimer.current);
+      successTimer.current = null;
+    }
+    setBarDismissed(true);
+  };
+
+  /* ---- la barra de "Enviar Venta" (footer) es fixed y de altura
+     variable (crece con la lista de productos seleccionados, o
+     desaparece por completo si no hay nada seleccionado). Medimos su
+     altura real para que el contenido nunca quede tapado detrás de
+     ella. El header, en cambio, usa un padding-top fijo y generoso en
+     el CSS (no depende de medición por JS) para eliminar cualquier
+     posibilidad de que quede tapando los medidores.
+
+     'barVisible' entra en la cuenta a propósito: el nodo sigue MONTADO
+     (con su offsetHeight real) mientras dura la animación de salida
+     (translateY fuera de pantalla), y un ResizeObserver no se entera
+     de ESO — un transform no cambia el tamaño del box. Sin este
+     chequeo, ocultar la barra a mano dejaría un hueco vacío del
+     tamaño de la barra al final de la página hasta que se desmontara
+     de verdad. ---- */
+  useEffect(() => {
+    const updateFooterOffset = () => {
+      const footerH = barVisible ? submitBarRef.current?.offsetHeight || 0 : 0;
+      document.documentElement.style.setProperty("--tz-footer-h", `${footerH}px`);
+    };
+
+    updateFooterOffset();
+    if (!submitBarRef.current) return undefined;
+
+    const ro = new ResizeObserver(updateFooterOffset);
+    ro.observe(submitBarRef.current);
+    window.addEventListener("resize", updateFooterOffset);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", updateFooterOffset);
+    };
+  }, [loading, selection, submitError, successMsg, barVisible]);
 
   /* ---- envío de venta: INSERT a 'historial' + UPDATE/upsert a 'stock' ---- */
   const handleSubmit = async () => {
@@ -1660,7 +1977,7 @@ export default function App() {
       // único que hace falta para que el descuento quede "congelado"
       // en la venta, igual que el costo: 'price'/'total' de acá son
       // los que terminan en 'historial'/'fiado_items'.
-      const unitPrice = discountedUnitPrice(product);
+      const unitPrice = effectivePrice(product);
       return {
         productId: id,
         name: product.name,
@@ -1678,63 +1995,107 @@ export default function App() {
       };
     });
 
-    // 1) INSERT múltiple a 'historial' (incluye metodo_pago: se descuenta
-    //    stock igual sin importar el método — el fiado también sale del
-    //    inventario en el momento de la venta).
-    const { data: insertedRows, error: insertError } = await supabase
-      .from("historial")
-      .insert(
-        newEntries.map((e) => ({
-          purchase_id: purchaseId,
-          producto: e.name,
-          detalle: e.detail,
-          cantidad: e.qty,
-          precio: e.price,
-          total: e.total,
-          costo_unitario: e.costoUnitario,
-          costo_total: e.costoTotal,
-          monto_recibido: montoRecibidoNum,
-          vuelto: vueltoNum,
-          metodo_pago: checkoutMetodo,
-          vendedor: vendedorLabel,
-          fecha: timestamp,
-          venta_por_peso: e.ventaPorPeso,
-          // RUC del cliente para esta venta (mismo valor duplicado en
-          // cada línea, igual que 'vendedor'/'metodo_pago' — 'historial'
-          // no tiene una fila de "cabecera" propia por purchase_id).
-          // null si el checkbox de RUC no estaba prendido.
-          ruc: checkoutRucEnabled ? checkoutRuc.trim() : null,
-        }))
-      )
-      .select();
-
-    if (insertError) {
-      console.error("Error detallado:", insertError);
+    // Resiliencia offline: Yape/Plin/Otros necesitan un comprobante con
+    // foto YA subida a Storage — esa subida pasa ANTES de llegar acá
+    // (al escanear/adjuntar el comprobante) y de por sí requiere red,
+    // así que si de verdad no hay conexión ese método no pudo llegar
+    // hasta acá con una foto válida. Efectivo y Fiado no dependen de
+    // ningún archivo — esos dos sí se pueden encolar enteros y
+    // sincronizar después. (Ver syncVentasPendientes más arriba.)
+    const offline = !navigator.onLine;
+    if (offline && checkoutMetodo !== "EFECTIVO" && checkoutMetodo !== "FIADO") {
       setSubmitError(
-        insertError.message
-          ? `No se pudo registrar la venta: ${insertError.message}`
-          : "No se pudo registrar la venta en Supabase. Intenta de nuevo."
+        "Sin conexión: mientras no vuelva el internet solo se pueden registrar ventas en Efectivo o Fiado."
       );
       return;
     }
 
-    // 2) UPDATE/upsert de 'stock' con las cantidades ya descontadas
-    //    (requiere que 'nombre' sea una columna única / clave en la tabla 'stock')
-    const stockUpdates = Object.keys(needed).map((key) => ({
-      nombre: key,
-      cantidad: newStock[key],
-    }));
+    // 1) Ticket ('historial') + descuento de stock en UNA sola
+    //    transacción del lado de Supabase (función 'registrar_venta',
+    //    migración 0041) — antes eran dos llamadas separadas (INSERT a
+    //    'historial' y upsert a 'stock'); si la segunda fallaba a
+    //    mitad de camino, la venta quedaba registrada con el stock sin
+    //    descontar (el único aviso era un mensaje, nunca se revertía).
+    //    La función también resuelve cada combo contra sus ingredientes
+    //    (combo_items + el 'consumos' ACTUAL de cada uno) en el momento
+    //    de vender, en vez de depender del 'consumos' aplanado que
+    //    quedó congelado cuando se creó el combo — ver comentario
+    //    completo en la migración.
+    const rpcParams = {
+      p_purchase_id: purchaseId,
+      p_items: newEntries.map((e) => ({
+        producto_id: e.productId,
+        nombre: e.name,
+        detalle: e.detail,
+        cantidad: e.qty,
+        precio: e.price,
+        total: e.total,
+        costo_unitario: e.costoUnitario,
+        costo_total: e.costoTotal,
+        venta_por_peso: e.ventaPorPeso,
+      })),
+      p_metodo_pago: checkoutMetodo,
+      p_vendedor: vendedorLabel,
+      p_fecha: timestamp,
+      p_monto_recibido: montoRecibidoNum,
+      p_vuelto: vueltoNum,
+      // RUC del cliente para esta venta (mismo valor duplicado en cada
+      // línea, igual que 'vendedor'/'metodo_pago' — 'historial' no
+      // tiene una fila de "cabecera" propia por purchase_id). null si
+      // el checkbox de RUC no estaba prendido.
+      p_ruc: checkoutRucEnabled ? checkoutRuc.trim() : null,
+    };
 
-    const { error: stockError } = await supabase
-      .from("stock")
-      .upsert(stockUpdates, { onConflict: "nombre" });
+    // Payload de fiado_items armado ACÁ (antes de saber si hay red)
+    // para que tanto el camino online como el offline usen EXACTAMENTE
+    // los mismos datos — offline, este mismo objeto viaja dentro de la
+    // cola y se inserta de verdad recién al sincronizar.
+    const fiadoItemsPayload =
+      checkoutMetodo === "FIADO"
+        ? newEntries.map((e) => ({
+            cliente_id: checkoutFiadoClienteId,
+            purchase_id: purchaseId,
+            producto_nombre: e.name,
+            detalle: e.detail,
+            cantidad: e.qty,
+            precio_unitario: e.price,
+            monto: e.total,
+            saldo_restante: e.total,
+            fecha: timestamp,
+            venta_por_peso: e.ventaPorPeso,
+          }))
+        : null;
 
-    if (stockError) {
-      console.error("Error al actualizar stock:", stockError);
-      setSubmitError(
-        "La venta se registró, pero el stock no se pudo actualizar en Supabase."
-      );
-      // seguimos: el historial ya quedó guardado, no revertimos la venta
+    let insertedRows = null;
+
+    if (offline) {
+      // Sin red: la venta se guarda ENTERA en localStorage y no se
+      // intenta ningún insert a Supabase — así no hay forma de que un
+      // timeout de red deje al cajero esperando. 'insertedRows' queda
+      // null a propósito: el bloque de "reflejar en el estado local"
+      // más abajo ya sabe caer a 'newEntries' cuando no hay filas
+      // reales todavía (mismo fallback que ya usaba para el caso RLS).
+      const pendientes = leerVentasPendientes();
+      pendientes.push({
+        localId: `local-${purchaseId}-${Date.now()}`,
+        purchaseId,
+        rpcParams,
+        fiadoItemsPayload,
+      });
+      guardarVentasPendientes(pendientes);
+      setVentasPendientesCount(pendientes.length);
+    } else {
+      const { data, error: rpcError } = await supabase.rpc("registrar_venta", rpcParams);
+      if (rpcError) {
+        console.error("Error registrando la venta:", rpcError);
+        setSubmitError(
+          rpcError.message
+            ? `No se pudo registrar la venta: ${rpcError.message}`
+            : "No se pudo registrar la venta en Supabase. Intenta de nuevo."
+        );
+        return;
+      }
+      insertedRows = data;
     }
 
     // 2.5) Efecto según método de pago: FIADO crea fiado_items (deuda
@@ -1743,44 +2104,39 @@ export default function App() {
     //    registrada la venta en 'historial'); Yape/Plin/Otros crean UN
     //    comprobante enlazado a esta venta (purchase_id).
     if (checkoutMetodo === "FIADO") {
-      const fiadoItemsPayload = newEntries.map((e) => ({
-        cliente_id: checkoutFiadoClienteId,
-        purchase_id: purchaseId,
-        producto_nombre: e.name,
-        detalle: e.detail,
-        cantidad: e.qty,
-        precio_unitario: e.price,
-        monto: e.total,
-        saldo_restante: e.total,
-        fecha: timestamp,
-        venta_por_peso: e.ventaPorPeso,
-      }));
+      // Offline: 'fiadoItemsPayload' ya quedó guardado dentro de la
+      // cola de arriba — el INSERT real recién pasa al sincronizar. El
+      // estado local (setFiadoItems) se actualiza igual, ya, optimista,
+      // para que la Libreta de Fiados muestre la deuda de inmediato.
+      let insertedFiadoItems = null;
+      if (!offline) {
+        const { data, error: fiadoItemsError } = await supabase
+          .from("fiado_items")
+          .insert(fiadoItemsPayload)
+          .select();
 
-      const { data: insertedFiadoItems, error: fiadoItemsError } = await supabase
-        .from("fiado_items")
-        .insert(fiadoItemsPayload)
-        .select();
-
-      if (fiadoItemsError) {
-        console.error("Error al registrar fiado_items:", fiadoItemsError);
-        setSubmitError(
-          "La venta se registró, pero no se pudo asignar la deuda en la Libreta."
-        );
-      } else {
-        const newFiadoItems = (insertedFiadoItems || fiadoItemsPayload).map((row, idx) => ({
-          id: row.id ?? `${purchaseId}-fi-${idx}`,
-          clienteId: checkoutFiadoClienteId,
-          purchaseId,
-          productoNombre: fiadoItemsPayload[idx].producto_nombre,
-          detalle: fiadoItemsPayload[idx].detalle,
-          cantidad: fiadoItemsPayload[idx].cantidad,
-          precioUnitario: fiadoItemsPayload[idx].precio_unitario,
-          monto: fiadoItemsPayload[idx].monto,
-          saldoRestante: fiadoItemsPayload[idx].saldo_restante,
-          timestamp: Number(row.fecha ?? timestamp),
-        }));
-        setFiadoItems((prev) => [...newFiadoItems, ...prev]);
+        if (fiadoItemsError) {
+          console.error("Error al registrar fiado_items:", fiadoItemsError);
+          setSubmitError(
+            "La venta se registró, pero no se pudo asignar la deuda en la Libreta."
+          );
+        } else {
+          insertedFiadoItems = data;
+        }
       }
+      const newFiadoItems = (insertedFiadoItems || fiadoItemsPayload).map((row, idx) => ({
+        id: row.id ?? `${purchaseId}-fi-${idx}`,
+        clienteId: checkoutFiadoClienteId,
+        purchaseId,
+        productoNombre: fiadoItemsPayload[idx].producto_nombre,
+        detalle: fiadoItemsPayload[idx].detalle,
+        cantidad: fiadoItemsPayload[idx].cantidad,
+        precioUnitario: fiadoItemsPayload[idx].precio_unitario,
+        monto: fiadoItemsPayload[idx].monto,
+        saldoRestante: fiadoItemsPayload[idx].saldo_restante,
+        timestamp: Number(row.fecha ?? timestamp),
+      }));
+      setFiadoItems((prev) => [...newFiadoItems, ...prev]);
     } else if (checkoutMetodo === "EFECTIVO") {
       // Efectivo no genera comprobante: no hay foto ni operación que
       // verificar, la venta ya quedó completa en 'historial'.
@@ -1847,9 +2203,12 @@ export default function App() {
     setStock(newStock);
     setSales((prev) => [...localEntries, ...prev]);
     setSelection({});
-    setDiscounts({});
-    if (!stockError) setSubmitError("");
-    setSuccessMsg(`Venta registrada — ID ${purchaseId}`);
+    setSubmitError("");
+    setSuccessMsg(
+      offline
+        ? "Venta guardada localmente. Se sincronizará al recuperar la conexión."
+        : `Venta registrada — ID ${purchaseId}`
+    );
 
     // CRM básico: se guarda SIEMPRE un resumen de la venta para poder
     // enviarlo por WhatsApp desde la pantalla de éxito — antes esto
@@ -2361,58 +2720,108 @@ export default function App() {
     }
   };
 
-  /* ---- edición rápida de precio de venta (lápiz en la tarjeta del
-     producto, solo admin — el botón mismo ya está gateado por isAdmin
-     en el render, esto es la lógica de guardado). ---- */
-  const openPriceEdit = (item) => {
-    setEditingPriceProduct(item);
-    setEditingPriceValue(String(item.price));
-    setEditingPriceError("");
+  /* ---- asigna un código de barras a un producto que no tenía (típico
+     tras "+ Añadir Variante"/duplicar, que deja 'codigo_barras' en
+     null para no chocar con el producto original). Se usa desde el
+     botón "Asignar Código de Barras" en Visibilidad en Catálogo, que
+     solo aparece cuando el producto no tiene uno todavía. */
+  const asignarCodigoBarras = async (producto, codigo) => {
+    const codigoTrim = String(codigo || "").trim();
+    if (!codigoTrim) return { error: new Error("Código vacío.") };
+    try {
+      const { error } = await supabase
+        .from("productos")
+        .update({ codigo_barras: codigoTrim })
+        .eq("id", producto.id);
+      if (error) {
+        // 23505: violación de UNIQUE — otro producto ya tiene ese código.
+        if (error.code === "23505") {
+          return { error: new Error("Ese código ya está asignado a otro producto.") };
+        }
+        return { error };
+      }
+      await refetchCatalog();
+      return { error: null };
+    } catch (err) {
+      console.error("Error asignando código de barras:", err);
+      return { error: err };
+    }
   };
 
-  const closePriceEdit = () => {
-    setEditingPriceProduct(null);
-    setEditingPriceValue("");
-    setEditingPriceError("");
-  };
+  /* ---- Fase 3 del Gestor de Productos: edición centralizada de
+     Stock/Costo Unitario/Precio de Venta, admin-only, reemplaza el
+     viejo modal suelto de "Editar precio" (el lápiz de la tarjeta
+     ahora abre el Gestor en su lugar — un solo lugar que edita esto).
+     El Descuento Activo NO se toca acá a propósito: es de solo
+     lectura en este modal — se configura EXCLUSIVAMENTE desde el
+     botón "%" de la tarjeta (openDiscountModal/saveDiscountModal más
+     arriba), para que exista un único lugar que lo guarda.
 
-  const savePriceEdit = async () => {
-    if (!editingPriceProduct) return;
-    const nuevoPrecio = parseFloat(editingPriceValue);
-    if (isNaN(nuevoPrecio) || nuevoPrecio <= 0) {
-      setEditingPriceError("Ingresa un precio válido, mayor a 0.");
-      return;
+     Escribe cantidades ABSOLUTAS (no un ingreso que se suma al stock
+     existente, como sí hace "Agregar Unidades al Stock"/saveStockEdits
+     más arriba): 'stock.cantidad' queda exactamente en lo que el admin
+     escribió. Stock/Costo solo se tocan si el producto consume de UNA
+     sola clave (mismo criterio que el resto de la app: un combo no
+     tiene una única clave no ambigua a la que escribirle esos números)
+     — 'precio' de 'productos' sí es siempre editable, sea combo o no.
+     refetchCatalog() al final es lo que hace que toda la app
+     (tarjetas, checkout, dashboard) vea los valores nuevos sin
+     recargar. ---- */
+  const guardarFilaProducto = async (item, { stockValue, costoValue, precioValue }) => {
+    const precio = parseFloat(precioValue);
+    if (isNaN(precio) || precio <= 0) {
+      return { error: new Error("Ingresa un precio de venta válido, mayor a 0.") };
     }
 
-    setEditingPriceSaving(true);
-    setEditingPriceError("");
-
-    const { data, error } = await supabase
-      .from("productos")
-      .update({ precio: nuevoPrecio })
-      .eq("id", editingPriceProduct.id)
-      .select("id");
-
-    setEditingPriceSaving(false);
-
-    if (error) {
-      console.error("Error actualizando precio:", error);
-      setEditingPriceError(
-        error.message ? `No se pudo guardar: ${error.message}` : "No se pudo guardar el precio."
-      );
-      return;
-    }
-    // Mismo blindaje que el resto de la app: RLS puede dejar pasar un
-    // UPDATE sin afectar filas, sin devolver error.
-    if (!data || data.length === 0) {
-      setEditingPriceError(
-        "No se pudo guardar (0 filas afectadas) — revisa los permisos de UPDATE en 'productos'."
-      );
-      return;
+    const singleKey = Array.isArray(item.consumes) && item.consumes.length === 1 && !item.esCombo;
+    let stockPayload = null;
+    if (singleKey) {
+      const key = item.consumes[0].key;
+      const cantidad = parseFloat(stockValue);
+      const costo = parseFloat(costoValue);
+      if (isNaN(cantidad) || cantidad < 0) {
+        return { error: new Error("Ingresa una cantidad de stock válida (0 o más).") };
+      }
+      if (isNaN(costo) || costo < 0) {
+        return { error: new Error("Ingresa un costo unitario válido (0 o más).") };
+      }
+      stockPayload = {
+        nombre: key,
+        cantidad,
+        precio_costo: costo,
+        ultimo_costo_compra: costo,
+        etiqueta: stockLabels[key] ?? key,
+      };
     }
 
-    await refetchCatalog();
-    closePriceEdit();
+    try {
+      if (stockPayload) {
+        const { error: stockError } = await supabase
+          .from("stock")
+          .upsert([stockPayload], { onConflict: "nombre" });
+        if (stockError) return { error: stockError };
+      }
+
+      const { data, error: precioError } = await supabase
+        .from("productos")
+        .update({ precio })
+        .eq("id", item.id)
+        .select("id");
+      if (precioError) return { error: precioError };
+      // Mismo blindaje que el resto de la app: RLS puede dejar pasar un
+      // UPDATE sin afectar filas, sin devolver error.
+      if (!data || data.length === 0) {
+        return {
+          error: new Error("No se pudo guardar (0 filas afectadas) — revisa los permisos de UPDATE en 'productos'."),
+        };
+      }
+
+      await refetchCatalog();
+      return { error: null };
+    } catch (err) {
+      console.error("Error guardando producto desde el Gestor de Productos:", err);
+      return { error: err };
+    }
   };
 
   /* ---- Renombrar categoría SIN tocar el esquema SQL (la FK
@@ -3809,7 +4218,7 @@ export default function App() {
     const filas = [
       headers,
       ...productos.map((p) => {
-        const stockActual = availabilityFor(p, stock);
+        const stockActual = availabilityFor(p, stock, productsById);
         const costoPromedio = unitCostFor(p, stockCostos);
 
         let ultimoCosto = null;
@@ -3844,6 +4253,63 @@ export default function App() {
 
     downloadXLSX(`precios-margenes-${Date.now()}.xlsx`, [
       { nombre: "Precios y Márgenes", filas },
+    ]);
+  };
+
+  /* ---- Exportar a Excel desde el Gestor de Productos: a diferencia
+     del reporte de arriba (lista plana A-Z), esta va agrupada por
+     Categoría/Subgrupo — Categoría y Subgrupo quedan como columnas
+     propias REPETIDAS en cada fila (no filas separadoras), así se
+     puede filtrar/ordenar/pivotear en Excel sin romper el agrupamiento
+     visual. Reutiliza 'sections' tal cual (ya viene en el mismo orden
+     que se ve en el modal) y las mismas availabilityFor/unitCostFor
+     que alimentan cada fila de la tabla, para que el Excel nunca
+     pueda desincronizarse de lo que se ve en pantalla. ---- */
+  const exportarGestorProductosXLSX = () => {
+    const headers = [
+      "Categoría",
+      "Subgrupo",
+      "Nombre",
+      "Stock",
+      "Costo Unitario (S/)",
+      "Precio de Venta (S/)",
+      "Descuento Activo",
+      "Margen Neto (S/)",
+      "Margen (%)",
+    ];
+    const filas = [headers];
+
+    sections.forEach((section) => {
+      section.groups.forEach((group) => {
+        group.items.forEach((item) => {
+          const costo = unitCostFor(item, stockCostos);
+          const precioFinal = effectivePrice(item);
+          const margenSoles = precioFinal - costo;
+          const margenPercent = precioFinal > 0 ? (margenSoles / precioFinal) * 100 : 0;
+          const avail = availabilityFor(item, stock, productsById);
+          const stockCelda = item.esCombo
+            ? "Por ingredientes"
+            : avail === Infinity
+              ? ""
+              : Number(avail.toFixed(2));
+
+          filas.push([
+            section.label,
+            group.title || "",
+            item.detail ? `${item.name} (${item.detail})` : item.name,
+            stockCelda,
+            Number(costo.toFixed(2)),
+            Number(item.price.toFixed(2)),
+            item.valorDescuento > 0 ? formatDescuentoBadge(item) : "Sin descuento",
+            Number(margenSoles.toFixed(2)),
+            Number(margenPercent.toFixed(1)),
+          ]);
+        });
+      });
+    });
+
+    downloadXLSX(`gestor-productos-${new Date().toISOString().slice(0, 10)}.xlsx`, [
+      { nombre: "Gestor de Productos", filas },
     ]);
   };
 
@@ -5443,6 +5909,14 @@ export default function App() {
           <div className="tz-header-center">
             <LogoEasterEgg src={logo} alt="TONAZO!" className="tz-logo" />
             <p className="tz-subtitle">Caja Registradora</p>
+            {/* Semáforo de conexión: exclusivo de admin/cajero — un
+               cliente nunca llega a montar App.jsx (tiene su propia
+               vista, ClienteFiadoView), pero este chequeo se deja
+               explícito igual, para que la regla de rol viva en el
+               código y no dependa solo de cómo enrutan las páginas. */}
+            {(isAdmin || isCajero) && (
+              <ConnectionIndicator online={isOnline} pendingCount={ventasPendientesCount} />
+            )}
           </div>
 
           <div className="tz-header-side tz-header-side-right">
@@ -5672,7 +6146,7 @@ export default function App() {
                 {(sectionEntriesByGi.get(gi) || []).map((entry) => {
                   if (entry.type === "group") {
                     const { baseName, variants } = entry;
-                    const avails = variants.map((v) => availabilityFor(v, stock));
+                    const avails = variants.map((v) => availabilityFor(v, stock, productsById));
                     const totalAvail = avails.reduce((sum, a) => sum + (a > 0 ? a : 0), 0);
                     const allSoldOut = avails.every((a) => a <= 0);
                     // "Crítico a nivel familia": alguna variante tocó 0
@@ -5680,7 +6154,7 @@ export default function App() {
                     // el umbral de poco stock — la tarjeta maestra debe
                     // avisar aunque el TOTAL sumado se vea saludable.
                     const anyCritical = avails.some((a) => a <= LOW_STOCK_THRESHOLD);
-                    const prices = variants.map((v) => v.price);
+                    const prices = variants.map((v) => effectivePrice(v));
                     const minPrice = Math.min(...prices);
                     const maxPrice = Math.max(...prices);
                     const isStar = variants.some((v) => v.id === bestSellerId);
@@ -5713,7 +6187,7 @@ export default function App() {
                           {variants.some((v) => v.color) && (
                             <div className="tz-variant-dots">
                               {variants.slice(0, 8).map((v) => {
-                                const vAvail = availabilityFor(v, stock);
+                                const vAvail = availabilityFor(v, stock, productsById);
                                 const vSoldOut = vAvail <= 0;
                                 return (
                                   <span
@@ -5754,7 +6228,7 @@ export default function App() {
                   }
 
                   const item = entry.item;
-                  const avail = availabilityFor(item, stock);
+                  const avail = availabilityFor(item, stock, productsById);
                   const checked = selection[item.id] != null;
                   const qty = selection[item.id] ?? 1;
                   const soldOut = avail <= 0;
@@ -5765,7 +6239,9 @@ export default function App() {
                       key={item.id}
                       className={`tz-card ${checked ? "tz-card-checked" : ""} ${
                         soldOut ? "tz-card-disabled" : ""
-                      } ${isStar ? "tz-card-star" : ""} ${item.esCombo ? "tz-card-combo" : ""}`}
+                      } ${isStar ? "tz-card-star" : ""} ${item.esCombo ? "tz-card-combo" : ""} ${
+                        reactivatedProductIds.has(item.id) ? "tz-card-reactivated" : ""
+                      }`}
                       onClick={() => toggleProduct(item)}
                     >
                       {isStar && (
@@ -5796,11 +6272,11 @@ export default function App() {
                               <ComboIngredients item={item} productsById={productsById} />
                             </div>
                             <div className="tz-card-top-actions">
-                              {(isAdmin || isCajero) && (
+                              {isAdmin && (
                                 <button
                                   type="button"
                                   className={`tz-card-discount-btn ${
-                                    discounts[item.id] ? "tz-card-discount-btn-active" : ""
+                                    item.valorDescuento > 0 ? "tz-card-discount-btn-active" : ""
                                   }`}
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -5818,10 +6294,11 @@ export default function App() {
                                   className="tz-card-edit-price-btn"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    openPriceEdit(item);
+                                    setProductManagerFocusId(item.id);
+                                    setProductManagerOpen(true);
                                   }}
-                                  aria-label={`Editar precio de ${item.name}`}
-                                  title="Editar precio"
+                                  aria-label={`Editar ${item.name} en el Gestor de Productos`}
+                                  title="Editar en Gestor de Productos"
                                 >
                                   <Pencil size={13} />
                                 </button>
@@ -5879,7 +6356,7 @@ export default function App() {
                                 <span className="tz-price-label">
                                   Precio{item.ventaPorPeso ? "/Kg" : ""}
                                 </span>
-                                {discounts[item.id] ? (
+                                {item.valorDescuento > 0 ? (
                                   <>
                                     <span className="tz-price-original">
                                       {formatSoles(item.price)}
@@ -5887,12 +6364,12 @@ export default function App() {
                                     <span className="tz-price tz-price-discounted">
                                       {formatSoles(
                                         checked
-                                          ? discountedUnitPrice(item) * qty
-                                          : discountedUnitPrice(item)
+                                          ? effectivePrice(item) * qty
+                                          : effectivePrice(item)
                                       )}
                                     </span>
                                     <span className="tz-discount-badge">
-                                      -{discountPercentOf(item)}%
+                                      {formatDescuentoBadge(item)}
                                     </span>
                                   </>
                                 ) : (
@@ -5917,7 +6394,7 @@ export default function App() {
         {pesoModalProduct && (
           <PesoModal
             product={pesoModalProduct}
-            avail={availabilityFor(pesoModalProduct, stock)}
+            avail={availabilityFor(pesoModalProduct, stock, productsById)}
             initialKg={selection[pesoModalProduct.id] ?? null}
             onCancel={closePesoModal}
             onConfirm={confirmPesoModal}
@@ -5946,10 +6423,10 @@ export default function App() {
               <p className="tz-variant-modal-subtitle">¿Qué variante?</p>
               <div className="tz-variant-grid">
                 {variantModalGroup.variants.map((v) => {
-                  const avail = availabilityFor(v, stock);
+                  const avail = availabilityFor(v, stock, productsById);
                   const soldOut = avail <= 0;
                   const qtyInCart = selection[v.id] ?? 0;
-                  const vDiscount = discounts[v.id];
+                  const vDiscount = v.valorDescuento > 0;
                   return (
                     <div
                       key={v.id}
@@ -5977,7 +6454,7 @@ export default function App() {
                           <span className="tz-variant-btn-price">
                             <span className="tz-price-original">{formatSoles(v.price)}</span>{" "}
                             <span className="tz-price-discounted">
-                              {formatSoles(discountedUnitPrice(v))}
+                              {formatSoles(effectivePrice(v))}
                             </span>
                           </span>
                         ) : (
@@ -5986,7 +6463,7 @@ export default function App() {
                         <StockTag avail={avail} />
                       </div>
                       <div className="tz-variant-card-actions">
-                        {(isAdmin || isCajero) && (
+                        {isAdmin && (
                           <button
                             type="button"
                             className={`tz-card-discount-btn ${vDiscount ? "tz-card-discount-btn-active" : ""}`}
@@ -6006,10 +6483,11 @@ export default function App() {
                             className="tz-card-edit-price-btn"
                             onClick={(e) => {
                               e.stopPropagation();
-                              openPriceEdit(v);
+                              setProductManagerFocusId(v.id);
+                              setProductManagerOpen(true);
                             }}
-                            aria-label={`Editar precio de ${v.name}`}
-                            title="Editar precio"
+                            aria-label={`Editar ${v.name} en el Gestor de Productos`}
+                            title="Editar en Gestor de Productos"
                           >
                             <Pencil size={13} />
                           </button>
@@ -6040,10 +6518,25 @@ export default function App() {
         )}
 
         {/* ---------------- BARRA DE ENVÍO ---------------- */}
-        {/* Se oculta por completo cuando no hay nada seleccionado y no hay
-           ningún mensaje de error/éxito que mostrar. */}
-        {(selectedCount > 0 || submitError || successMsg) && (
-          <div className="tz-submitbar" ref={submitBarRef}>
+        {/* Se deja de MONTAR recién cuando termina la animación de
+           salida (ver barMounted) — mientras tanto sigue en el DOM con
+           la clase -hidden, deslizándose hacia abajo/afuera. La
+           flechita (closeSubmitBar) hace exactamente lo mismo que
+           cuando la condición de origen deja de cumplirse sola. */}
+        {barMounted && (
+          <div
+            className={`tz-submitbar ${barVisible ? "tz-submitbar-visible" : "tz-submitbar-hidden"}`}
+            ref={submitBarRef}
+          >
+            <button
+              type="button"
+              className="tz-submitbar-collapse"
+              onClick={closeSubmitBar}
+              aria-label="Ocultar barra"
+              title="Ocultar"
+            >
+              <ChevronDown size={16} />
+            </button>
             <div className="tz-submitbar-content">
               {submitError && !successMsg && (
                 <p className="tz-error tz-submitbar-message">
@@ -6126,15 +6619,15 @@ export default function App() {
                     {selectedIds.map((id) => {
                       const product = productsById[id];
                       const qty = selection[id];
-                      const avail = availabilityFor(product, stock);
+                      const avail = availabilityFor(product, stock, productsById);
                       return (
                         <CartRow
                           key={id}
                           product={product}
                           qty={qty}
                           avail={avail}
-                          unitPrice={discountedUnitPrice(product)}
-                          discountPercent={discountPercentOf(product)}
+                          unitPrice={effectivePrice(product)}
+                          discountLabel={formatDescuentoBadge(product)}
                           onQtyChange={(newQty) =>
                             setSelection((prev) => ({ ...prev, [id]: newQty }))
                           }
@@ -6692,7 +7185,38 @@ export default function App() {
           <Receipt size={18} />
           Mis Ventas
         </button>
+        <button
+          className="tz-footer-btn tz-footer-btn-productos"
+          onClick={() => {
+            setProductManagerFocusId(null);
+            setProductManagerOpen(true);
+          }}
+        >
+          <Package size={18} />
+          Productos
+        </button>
       </footer>
+
+      {productManagerOpen && (
+        <ProductManagerModal
+          sections={sections}
+          productsById={productsById}
+          stock={stock}
+          stockCostos={stockCostos}
+          isAdmin={isAdmin}
+          unitCostFor={unitCostFor}
+          availabilityFor={availabilityFor}
+          formatQty={formatQty}
+          formatDescuentoBadge={formatDescuentoBadge}
+          onSaveRow={guardarFilaProducto}
+          onExportExcel={exportarGestorProductosXLSX}
+          focusProductId={productManagerFocusId}
+          onClose={() => {
+            setProductManagerOpen(false);
+            setProductManagerFocusId(null);
+          }}
+        />
+      )}
 
       {/* ---------------- MODAL EDICIÓN DE STOCK ---------------- */}
       {editOpen && (
@@ -7237,6 +7761,7 @@ export default function App() {
                     onDelete={eliminarProductoDefinitivo}
                     onSoftDelete={desactivarProductoCatalogo}
                     onEditProducto={editarProductoNombreDetalle}
+                    onAssignBarcode={asignarCodigoBarras}
                     onRenameCategoria={renombrarCategoria}
                     onRenameSubgrupo={renombrarSubgrupo}
                     onDeleteCategoria={eliminarCategoria}
@@ -7436,52 +7961,6 @@ export default function App() {
         <BarcodeScannerModal onScan={handleGlobalScan} onClose={() => setGlobalScannerOpen(false)} />
       )}
 
-      {/* ---------------- MODAL: EDITAR PRECIO (solo admin) ---------------- */}
-      {editingPriceProduct && (
-        <div className="tz-modal-backdrop" onClick={closePriceEdit}>
-          <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
-            <button className="tz-modal-close" onClick={closePriceEdit} aria-label="Cerrar">
-              <X size={18} />
-            </button>
-            <div className="tz-add-entry">
-              <h2>Editar precio</h2>
-              <p className="tz-stock-editor-sub">{editingPriceProduct.name}</p>
-              <label className="tz-field-label">Precio de venta (S/)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.10"
-                autoFocus
-                className="tz-text-input"
-                value={editingPriceValue}
-                onChange={(e) => setEditingPriceValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") savePriceEdit();
-                }}
-              />
-              {editingPriceError && <p className="tz-error">{editingPriceError}</p>}
-              <div className="tz-add-entry-actions">
-                <button className="tz-camera-cancel" onClick={closePriceEdit}>
-                  Cancelar
-                </button>
-                <button
-                  className="tz-pw-submit tz-payment-save"
-                  onClick={savePriceEdit}
-                  disabled={editingPriceSaving}
-                >
-                  {editingPriceSaving ? (
-                    <Loader2 size={16} className="tz-spin" />
-                  ) : (
-                    <Save size={16} />
-                  )}
-                  Guardar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ---------------- MODAL: DESCUENTO (solo admin) ---------------- */}
       {discountModalProduct && (
         <div className="tz-modal-backdrop" onClick={closeDiscountModal}>
@@ -7498,32 +7977,36 @@ export default function App() {
                 {discountModalProduct.detail ? ` · ${discountModalProduct.detail}` : ""} — precio
                 de catálogo {formatSoles(discountModalProduct.price)}
               </p>
+              <p className="tz-field-hint">
+                Descuento permanente: aplica a toda venta futura de este producto hasta que lo
+                cambies acá — no es puntual para una sola venta.
+              </p>
 
               <div className="tz-discount-type-toggle">
                 <button
                   type="button"
-                  className={`tz-tab ${discountModalType === "percent" ? "tz-tab-active" : ""}`}
-                  onClick={() => setDiscountModalType("percent")}
+                  className={`tz-tab ${discountModalType === "porcentaje" ? "tz-tab-active" : ""}`}
+                  onClick={() => setDiscountModalType("porcentaje")}
                 >
                   % Porcentaje
                 </button>
                 <button
                   type="button"
-                  className={`tz-tab ${discountModalType === "monto" ? "tz-tab-active" : ""}`}
-                  onClick={() => setDiscountModalType("monto")}
+                  className={`tz-tab ${discountModalType === "fijo" ? "tz-tab-active" : ""}`}
+                  onClick={() => setDiscountModalType("fijo")}
                 >
                   S/ Monto fijo
                 </button>
               </div>
 
               <label className="tz-field-label">
-                {discountModalType === "percent" ? "Porcentaje de descuento (%)" : "Monto a descontar (S/)"}
+                {discountModalType === "porcentaje" ? "Porcentaje de descuento (%)" : "Monto a descontar (S/)"}
               </label>
               <input
                 type="number"
                 min="0"
-                max={discountModalType === "percent" ? 100 : discountModalProduct.price}
-                step={discountModalType === "percent" ? "1" : "0.10"}
+                max={discountModalType === "porcentaje" ? 100 : discountModalProduct.price}
+                step={discountModalType === "porcentaje" ? "1" : "0.10"}
                 autoFocus
                 className="tz-text-input"
                 value={discountModalValue}
@@ -7538,7 +8021,7 @@ export default function App() {
                   Precio final:{" "}
                   <strong>
                     {formatSoles(
-                      discountModalType === "percent"
+                      discountModalType === "porcentaje"
                         ? Math.max(
                             0,
                             discountModalProduct.price *
@@ -7554,23 +8037,31 @@ export default function App() {
                 </p>
               )}
 
+              {discountModalError && <p className="tz-error">{discountModalError}</p>}
+
               <div className="tz-add-entry-actions">
-                {discounts[discountModalProduct.id] && (
+                {discountModalProduct.valorDescuento > 0 && (
                   <button
                     className="tz-camera-cancel"
-                    onClick={() => {
-                      removeDiscount(discountModalProduct.id);
-                      closeDiscountModal();
-                    }}
+                    onClick={() => removeDiscount(discountModalProduct.id)}
+                    disabled={discountModalSaving}
                   >
                     Quitar descuento
                   </button>
                 )}
-                <button className="tz-camera-cancel" onClick={closeDiscountModal}>
+                <button
+                  className="tz-camera-cancel"
+                  onClick={closeDiscountModal}
+                  disabled={discountModalSaving}
+                >
                   Cancelar
                 </button>
-                <button className="tz-pw-submit tz-payment-save" onClick={saveDiscountModal}>
-                  <Save size={16} />
+                <button
+                  className="tz-pw-submit tz-payment-save"
+                  onClick={saveDiscountModal}
+                  disabled={discountModalSaving}
+                >
+                  {discountModalSaving ? <Loader2 size={16} className="tz-spin" /> : <Save size={16} />}
                   Aplicar
                 </button>
               </div>
