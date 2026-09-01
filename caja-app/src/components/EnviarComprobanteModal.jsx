@@ -12,6 +12,13 @@ export default function EnviarComprobanteModal({
   tipo, // 'restar' | 'cancelar'
   clienteId,
   saldoTotal,
+  // Multi-Sucursal (migración 0049): la sucursal/caja a la que
+  // pertenece la deuda de ESTE cliente (de su propia fila en
+  // 'clientes_fiado', pasada por ClienteFiadoView) — se estampa en el
+  // 'pagos_pendientes' que se inserta acá, para que el admin pueda
+  // filtrarlo por sucursal al aprobarlo.
+  sucursalId,
+  cajaId,
   onClose,
   onSubmitted,
 }) {
@@ -83,6 +90,8 @@ export default function EnviarComprobanteModal({
         tipo,
         url_comprobante: confirmedPath,
         estado: "pendiente",
+        sucursal_id: sucursalId || null,
+        caja_id: cajaId || null,
       });
 
       if (insertError) {

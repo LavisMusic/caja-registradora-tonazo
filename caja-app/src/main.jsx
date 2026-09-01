@@ -5,24 +5,27 @@ import './index.css'
 import { AuthProvider } from './contexts/AuthContext'
 import CatalogPage from './pages/CatalogPage'
 import RequireAdmin from './components/RequireAdmin'
+import ErrorBoundary from './components/ErrorBoundary'
 import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<CatalogPage />} />
-          <Route
-            path="/admin"
-            element={
-              <RequireAdmin>
-                <App />
-              </RequireAdmin>
-            }
-          />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<CatalogPage />} />
+            <Route
+              path="/admin"
+              element={
+                <RequireAdmin>
+                  <App />
+                </RequireAdmin>
+              }
+            />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )

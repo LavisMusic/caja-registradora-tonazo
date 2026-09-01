@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
 
     supabase
       .from("profiles")
-      .select("role, nombre")
+      .select("role, nombre, sucursal_id, caja_id")
       .eq("id", session.user.id)
       .single()
       .then(({ data, error }) => {
@@ -68,6 +68,13 @@ export function AuthProvider({ children }) {
     session,
     role: profile?.role ?? null,
     nombre: profile?.nombre ?? null,
+    // Arquitectura Multi-Sucursal (migración 0048): la sucursal/caja
+    // asignada a ESTE usuario (solo tiene sentido para un cajero — un
+    // admin/cliente siempre trae null acá). Es la fuente de verdad que
+    // usa App.jsx para saber "cuál fila de la tabla 'cajas' es LA MÍA",
+    // en vez de depender de la vieja fila global 'estado_caja'.
+    sucursalId: profile?.sucursal_id ?? null,
+    cajaId: profile?.caja_id ?? null,
     loading,
     isAdmin: profile?.role === "admin",
     isCliente: profile?.role === "cliente",

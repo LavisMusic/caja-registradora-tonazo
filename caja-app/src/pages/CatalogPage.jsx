@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BookOpen, LogIn, LogOut, Loader2 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCatalog } from "../hooks/useCatalog";
+import { supabase } from "../supabaseClient";
 import LoginModal from "../components/LoginModal";
 import ClienteFiadoView from "./ClienteFiadoView";
 import Styles from "../components/Styles";
@@ -61,7 +62,85 @@ function effectivePrice(product) {
 // checkbox, sin selector de cantidad (ver .tz-card-readonly abajo).
 export default function CatalogPage() {
   const { session, loading: authLoading, signOut } = useAuth();
-  const { sections, productsById, stock, loading: catalogLoading, error } = useCatalog();
+
+  /* ---- Filtro Público de Sucursales: el cliente elige en qué
+     Localidad/Sucursal quiere comprar — el catálogo (productos Y
+     stock) se recarga solo al cambiar, vía 'useCatalog(publicSucursalId)'
+     más abajo (ya reactivo a ese parámetro). La selección se guarda en
+     localStorage: un cliente que siempre compra en la misma sucursal no
+     debería tener que re-elegirla cada visita.
+
+     Localidades/sucursales se cargan UNA vez (lista completa, activas)
+     — es una lista chica, no hace falta lazy/paginado. Mientras carga,
+     si lo persistido ya no existe (o nunca hubo nada guardado), cae a
+     "Santa Rosa 6.50" como default razonable (la única sucursal
+     realmente operando hasta ahora), y si ni esa existe, a la primera
+     sucursal disponible — así el catálogo público NUNCA se queda sin
+     stock que mostrar por falta de selección. ---- */
+  const [publicLocalidades, setPublicLocalidades] = useState([]);
+  const [publicSucursales, setPublicSucursales] = useState([]);
+  const [publicLocalesLoading, setPublicLocalesLoading] = useState(true);
+  const [publicLocalidadId, setPublicLocalidadId] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("tz_public_localidad_id") || "" : ""
+  );
+  const [publicSucursalId, setPublicSucursalId] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("tz_public_sucursal_id") || "" : ""
+  );
+
+  useEffect(() => {
+    let active = true;
+    async function loadLocales() {
+      const [{ data: locRows, error: locErr }, { data: sucRows, error: sucErr }] = await Promise.all([
+        supabase.from("localidades").select("id, nombre").eq("activo", true).order("nombre"),
+        supabase
+          .from("sucursales")
+          .select("id, nombre, localidad_id")
+          .eq("activo", true)
+          .order("nombre"),
+      ]);
+      if (!active) return;
+      if (locErr) console.error("[CatalogPage] Error cargando localidades:", locErr);
+      if (sucErr) console.error("[CatalogPage] Error cargando sucursales:", sucErr);
+      setPublicLocalidades(locRows || []);
+      setPublicSucursales(sucRows || []);
+      setPublicLocalesLoading(false);
+    }
+    loadLocales();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (publicLocalesLoading) return;
+    // Ya hay una sucursal elegida (persistida o recién seleccionada) y
+    // sigue existiendo — no tocar nada.
+    if (publicSucursalId && publicSucursales.some((s) => s.id === publicSucursalId)) return;
+
+    const preferida =
+      publicSucursales.find((s) => s.nombre === "Santa Rosa 6.50") || publicSucursales[0];
+    if (!preferida) return;
+    setPublicSucursalId(preferida.id);
+    setPublicLocalidadId(preferida.localidad_id);
+  }, [publicLocalesLoading, publicSucursales, publicSucursalId]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem("tz_public_localidad_id", publicLocalidadId || "");
+    localStorage.setItem("tz_public_sucursal_id", publicSucursalId || "");
+  }, [publicLocalidadId, publicSucursalId]);
+
+  const publicSucursalesDeLocalidad = publicSucursales.filter(
+    (s) => s.localidad_id === publicLocalidadId
+  );
+
+  const {
+    sections,
+    productsById,
+    stock,
+    loading: catalogLoading,
+    error,
+  } = useCatalog(publicSucursalId);
   const [activeTab, setActiveTab] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
   const [fiadoOpen, setFiadoOpen] = useState(false);
@@ -152,6 +231,53 @@ export default function CatalogPage() {
           )}
         </div>
       </header>
+
+      {/* ---------------- Filtro Público de Sucursales ---------------- */}
+      {!publicLocalesLoading && publicLocalidades.length > 0 && (
+        <div className="tz-admin-filterbar">
+          <div className="tz-admin-filter-group">
+            <label className="tz-admin-filter-label">Localidad</label>
+            <select
+              className="tz-admin-filter-select"
+              value={publicLocalidadId}
+              onChange={(e) => {
+                const locId = e.target.value;
+                setPublicLocalidadId(locId);
+                // La sucursal elegida puede no pertenecer a la nueva
+                // localidad — se limpia para forzar a elegir una de
+                // verdad, en vez de dejar el catálogo mostrando el
+                // stock de una sucursal que ya no coincide con lo
+                // elegido arriba.
+                const sigueValiendo = publicSucursales.some(
+                  (s) => s.id === publicSucursalId && s.localidad_id === locId
+                );
+                if (!sigueValiendo) setPublicSucursalId("");
+              }}
+            >
+              {publicLocalidades.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="tz-admin-filter-group">
+            <label className="tz-admin-filter-label">Sucursal</label>
+            <select
+              className="tz-admin-filter-select"
+              value={publicSucursalId}
+              onChange={(e) => setPublicSucursalId(e.target.value)}
+            >
+              <option value="">Elige una sucursal…</option>
+              {publicSucursalesDeLocalidad.map((suc) => (
+                <option key={suc.id} value={suc.id}>
+                  {suc.nombre}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
 
       <main className="tz-main">
         {/* ---------------- TABS ---------------- */}

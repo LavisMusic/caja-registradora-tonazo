@@ -271,6 +271,8 @@ export default function ClienteFiadoView({ onClose }) {
         <EnviarComprobanteModal
           tipo={envioTipo}
           clienteId={cliente.id}
+          sucursalId={cliente.sucursal_id}
+          cajaId={cliente.caja_id}
           saldoTotal={info.saldo}
           onClose={() => setEnvioTipo(null)}
           onSubmitted={() => {

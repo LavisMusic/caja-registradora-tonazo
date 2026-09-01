@@ -35,6 +35,8 @@ import {
   Copy,
   Wifi,
   WifiOff,
+  MapPin,
+  Landmark,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
@@ -140,6 +142,41 @@ function formatDescuentoBadge(product) {
   const valor = product?.valorDescuento || 0;
   if (valor <= 0) return null;
   return product.tipoDescuento === "porcentaje" ? `-${valor}%` : `-${formatSoles(valor)}`;
+}
+
+/* Fila cruda de 'cierres_caja' -> forma que usa el Historial de
+   Cierres en el estado de React. Un solo lugar para esto: lo usan
+   TANTO la carga inicial (loadedCierres) COMO el handler de Realtime
+   de más abajo — si vivieran duplicados, un cambio en una columna
+   nueva podría quedar aplicado en un lado y olvidado en el otro, y el
+   Historial mostraría datos distintos según si la tarjeta llegó por
+   carga inicial o por Realtime. */
+function mapCierreRow(row) {
+  return {
+    id: row.id,
+    turnoInicio: Number(row.turno_inicio),
+    recaudadoTotal: Number(row.recaudado_total),
+    productosVendidos: Number(row.productos_vendidos),
+    ventasRegistradas: Number(row.ventas_registradas),
+    gastosTotal: Number(row.gastos_total),
+    gananciaNeta: Number(row.ganancia_neta),
+    gananciaVentas: row.ganancia_ventas != null ? Number(row.ganancia_ventas) : null,
+    gananciaFiados: row.ganancia_fiados != null ? Number(row.ganancia_fiados) : null,
+    ticketGeneral: Number(row.ticket_general),
+    efectivoReal: row.efectivo_real != null ? Number(row.efectivo_real) : null,
+    diferencia: row.diferencia != null ? Number(row.diferencia) : null,
+    ingresoEfectivo: row.ingreso_efectivo != null ? Number(row.ingreso_efectivo) : null,
+    ingresoDigital: row.ingreso_digital != null ? Number(row.ingreso_digital) : null,
+    cajeroNombre: row.cajero_nombre || null,
+    fondoInicial: row.fondo_inicial != null ? Number(row.fondo_inicial) : null,
+    abiertaEn: row.abierta_en != null ? Number(row.abierta_en) : null,
+    // Multi-Sucursal (migración 0049): a qué caja/sucursal pertenece
+    // este cierre — backfillado a Santa Rosa 6.50/Caja 1 para todo lo
+    // anterior a esa migración.
+    cajaId: row.caja_id || null,
+    sucursalId: row.sucursal_id || null,
+    timestamp: Number(row.fecha),
+  };
 }
 
 const PAYMENT_METHODS = [
@@ -632,13 +669,65 @@ function formatMesEs(yearMonthKey) {
 /* ------------------------------------------------------------------ */
 
 export default function App() {
-  const { signOut, session, isAdmin, isCajero, nombre: cajeroNombre } = useAuth();
+  const {
+    signOut,
+    session,
+    isAdmin,
+    isCajero,
+    nombre: cajeroNombre,
+    sucursalId: authSucursalId,
+    cajaId: authCajaId,
+  } = useAuth();
   // Nombre a mostrar para "quién está operando" (p.ej. Cierre de Caja):
   // el nombre real del perfil autenticado si existe, y solo si no hay
   // uno cargado cae al rol genérico.
   const currentUserLabel = cajeroNombre || (isAdmin ? "Admin" : "Cajero");
 
-  /* ---- catálogo dinámico: cargado por el hook compartido useCatalog ---- */
+  /* ---- Parte 3 "Filtros Superiores" (barra de navegación del admin):
+     'localidadFiltroId' es solo un filtro DE UI (angosta las opciones
+     del segundo dropdown), no se guarda como "estado activo" en sí
+     mismo. 'sucursalActivaId'/'cajaActivaId' SÍ son el estado global
+     real que el admin está "viendo" — se fijan juntos al elegir una
+     opción del segundo dropdown (cada caja pertenece a exactamente
+     una sucursal). Persisten en localStorage para sobrevivir un F5.
+     Declarado ACÁ (antes de useCatalog) a propósito: el refactor de
+     Stock necesita saber la sucursal operativa ANTES de pedirle el
+     catálogo a Supabase — 'sucursalOperativaId' es justo lo que
+     useCatalog recibe como parámetro más abajo. ---- */
+  const [localidadFiltroId, setLocalidadFiltroId] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("tz_admin_localidad_filtro") || "" : ""
+  );
+  const [sucursalActivaId, setSucursalActivaId] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("tz_admin_sucursal_activa") || "" : ""
+  );
+  const [cajaActivaId, setCajaActivaId] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("tz_admin_caja_activa") || "" : ""
+  );
+  useEffect(() => {
+    localStorage.setItem("tz_admin_localidad_filtro", localidadFiltroId || "");
+  }, [localidadFiltroId]);
+  useEffect(() => {
+    localStorage.setItem("tz_admin_sucursal_activa", sucursalActivaId || "");
+    localStorage.setItem("tz_admin_caja_activa", cajaActivaId || "");
+  }, [sucursalActivaId, cajaActivaId]);
+
+  /* ---- Partes 4/5 "Segregación Real de Datos" (y ahora también el
+     refactor de Stock): la caja/sucursal "operativa" de ESTA sesión —
+     la que determina qué datos se escriben/leen/venden. Para el
+     cajero SIEMPRE es la suya propia ('authCajaId'/'authSucursalId',
+     de su perfil — nunca elige nada). Para el admin es la que tenga
+     activa arriba en los dropdowns — sin selección, 'tieneVistaActiva'
+     es false y tanto el dashboard como el catálogo (stock) piden
+     elegir una sucursal en vez de mezclarlas. ---- */
+  const cajaOperativaId = isCajero ? authCajaId : cajaActivaId;
+  const sucursalOperativaId = isCajero ? authSucursalId : sucursalActivaId;
+  const tieneVistaActiva = isCajero ? !!authCajaId : !!cajaActivaId;
+
+  /* ---- catálogo dinámico: cargado por el hook compartido useCatalog.
+     'sucursalOperativaId' (arriba): el stock ahora se lee de
+     'inventario_sucursales' cruzado por ESTA sucursal — sin ella,
+     useCatalog no tiene de dónde sacar el stock y devuelve todo vacío
+     (ver el propio hook). ---- */
   const {
     sections,
     productsById,
@@ -654,13 +743,14 @@ export default function App() {
     setProductVisibility,
     reorderCategorias,
     refetch: refetchCatalog,
-  } = useCatalog();
+  } = useCatalog(sucursalOperativaId);
   const [restLoading, setRestLoading] = useState(true);
   const loading = catalogLoading || restLoading;
   const loadError = catalogError;
 
   const [sales, setSales] = useState([]);
   const [activeTab, setActiveTab] = useState(""); // se define al cargar 'sections'
+
   const [selection, setSelection] = useState({}); // { productId: qty }
 
   /* ---- Descuentos: UN SOLO sistema, permanente — el botón "%" de la
@@ -970,10 +1060,19 @@ export default function App() {
   const [newCajeroNombre, setNewCajeroNombre] = useState("");
   const [newCajeroUsuario, setNewCajeroUsuario] = useState("");
   const [newCajeroPin, setNewCajeroPin] = useState("");
+  const [newCajeroLocalidadId, setNewCajeroLocalidadId] = useState("");
+  const [newCajeroSucursalId, setNewCajeroSucursalId] = useState("");
   const [cajeroSaving, setCajeroSaving] = useState(false);
   const [cajeroError, setCajeroError] = useState("");
   const [usuarioActionError, setUsuarioActionError] = useState("");
   const [deletingUsuarioId, setDeletingUsuarioId] = useState(null);
+  // Reasignar sucursal a un cajero YA existente (fila por fila, en la
+  // lista de Usuarios) — 'reasignandoId' es el id del cajero cuyo
+  // selector está abierto, null si ninguno.
+  const [reasignandoId, setReasignandoId] = useState(null);
+  const [reasignarLocalidadId, setReasignarLocalidadId] = useState("");
+  const [reasignarSucursalId, setReasignarSucursalId] = useState("");
+  const [reasignarSaving, setReasignarSaving] = useState(false);
 
   /* ---- modal "Cambiar PIN" (dentro del panel de Usuarios) ---- */
   const [pinModalUser, setPinModalUser] = useState(null); // { id, nombre, role } | null
@@ -981,14 +1080,325 @@ export default function App() {
   const [pinModalSaving, setPinModalSaving] = useState(false);
   const [pinModalError, setPinModalError] = useState("");
 
-  /* ---- Fase 1 "Control de Dinero": estado global de la caja
-     (abierta/cerrada + fondo inicial) — fila única en 'estado_caja'.
-     null mientras carga; después siempre {estado, fondoInicial,
-     abiertaPor, abiertaEn, cerradaEn}. ---- */
-  const [estadoCaja, setEstadoCaja] = useState(null);
-  const [fondoInicialInput, setFondoInicialInput] = useState("");
-  const [aperturaSaving, setAperturaSaving] = useState(false);
-  const [aperturaError, setAperturaError] = useState("");
+  /* ---- Arquitectura Multi-Sucursal: jerarquía real (localidades ->
+     sucursales -> cajas, migración 0048) — se carga una sola vez para
+     admin, la reutilizan tanto el formulario de Cajeros (asignar
+     sucursal/caja) como el Gestor de Cajas. 'sucursalesPorLocalidad'/
+     'cajasPorSucursal' son solo lookups derivados, para no repetir
+     '.filter()' en cada punto donde hace falta "las sucursales DE
+     esta localidad". ---- */
+  const [localidades, setLocalidades] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
+  const [cajas, setCajas] = useState([]);
+  const [jerarquiaError, setJerarquiaError] = useState("");
+
+  const refetchJerarquia = useCallback(async () => {
+    const [
+      { data: localidadesRows, error: localidadesErr },
+      { data: sucursalesRows, error: sucursalesErr },
+      { data: cajasRows, error: cajasErr },
+    ] = await Promise.all([
+      supabase.from("localidades").select("*").eq("activo", true).order("nombre"),
+      supabase.from("sucursales").select("*").eq("activo", true).order("nombre"),
+      supabase.from("cajas").select("*").order("nombre"),
+    ]);
+
+    if (localidadesErr || sucursalesErr || cajasErr) {
+      console.error("Error cargando la jerarquía multi-sucursal:", {
+        localidadesErr,
+        sucursalesErr,
+        cajasErr,
+      });
+      setJerarquiaError("No se pudo cargar localidades/sucursales/cajas.");
+      return;
+    }
+
+    setLocalidades(
+      (localidadesRows || []).map((r) => ({ id: r.id, nombre: r.nombre }))
+    );
+    setSucursales(
+      (sucursalesRows || []).map((r) => ({ id: r.id, localidadId: r.localidad_id, nombre: r.nombre }))
+    );
+    setCajas(
+      (cajasRows || []).map((r) => ({
+        id: r.id,
+        sucursalId: r.sucursal_id,
+        nombre: r.nombre,
+        estado: r.estado,
+        montoInicial: r.monto_inicial != null ? Number(r.monto_inicial) : 0,
+        abiertaPor: r.abierta_por || null,
+        abiertaEn: r.abierta_en != null ? Number(r.abierta_en) : null,
+        cerradaEn: r.cerrada_en != null ? Number(r.cerrada_en) : null,
+      }))
+    );
+    setJerarquiaError("");
+  }, []);
+
+  // Antes solo el admin cargaba la jerarquía (la usaba para los
+  // formularios de Cajeros). Ahora el CAJERO también la necesita: su
+  // fila individual en 'cajas' (ver 'miCaja' más abajo) es la que
+  // reemplaza a la vieja 'estado_caja' global, y esa fila vive
+  // justamente dentro de este mismo array 'cajas'.
+  useEffect(() => {
+    if (isAdmin || isCajero) refetchJerarquia();
+  }, [isAdmin, isCajero, refetchJerarquia]);
+
+  const sucursalesPorLocalidad = (localidadId) =>
+    sucursales.filter((s) => s.localidadId === localidadId);
+  const cajasPorSucursal = (sucursalId) => cajas.filter((c) => c.sucursalId === sucursalId);
+
+  const elegirCajaActiva = (cajaId) => {
+    setCajaActivaId(cajaId);
+    const caja = cajas.find((c) => c.id === cajaId);
+    setSucursalActivaId(caja?.sucursalId || "");
+  };
+
+  /* ---- Creación dinámica de Localidades/Sucursales: un prompt() nativo
+     alcanza (pidió "un prompt o un modal rápido" — esto evita construir
+     todo un modal nuevo para un caso de uso de una sola línea de texto).
+     Ambas funciones devuelven el id creado (o null si se canceló/falló)
+     para que quien las llame pueda auto-seleccionar lo recién creado en
+     su propio dropdown, sin obligar al admin a buscarlo de nuevo en la
+     lista. 'is_admin()' ya exige esto en RLS (migración 0048) — estos
+     botones solo existen en pantallas admin-only, pero igual nunca está
+     de más que el backend lo haga cumplir también. ---- */
+  const crearLocalidadRapida = async () => {
+    const nombre = (window.prompt("Nombre de la nueva localidad:") || "").trim();
+    if (!nombre) return null;
+
+    const { data, error } = await supabase
+      .from("localidades")
+      .insert([{ nombre, activo: true }])
+      .select()
+      .single();
+
+    if (error) {
+      alert(`No se pudo crear la localidad: ${error.message || "error desconocido"}`);
+      return null;
+    }
+
+    await refetchJerarquia();
+    return data.id;
+  };
+
+  const crearSucursalRapida = async (localidadId) => {
+    if (!localidadId) {
+      alert("Elige primero una localidad.");
+      return null;
+    }
+    const nombre = (window.prompt("Nombre de la nueva sucursal:") || "").trim();
+    if (!nombre) return null;
+
+    const { data: sucursalData, error } = await supabase
+      .from("sucursales")
+      .insert([{ localidad_id: localidadId, nombre, activo: true }])
+      .select()
+      .single();
+
+    if (error) {
+      alert(`No se pudo crear la sucursal: ${error.message || "error desconocido"}`);
+      return null;
+    }
+
+    // Toda sucursal necesita al menos una caja para poder operar (abrir
+    // turno, vender) — se crea "Caja 1" automáticamente, mismo criterio
+    // que ya usa el resto del sistema (una caja por sucursal).
+    const { data: cajaData, error: cajaError } = await supabase
+      .from("cajas")
+      .insert([{ sucursal_id: sucursalData.id, nombre: "Caja 1", estado: "cerrada" }])
+      .select()
+      .single();
+
+    if (cajaError) {
+      alert(
+        `La sucursal se creó, pero no se pudo crear su caja: ${cajaError.message || "error desconocido"}`
+      );
+    }
+
+    await refetchJerarquia();
+    return { sucursalId: sucursalData.id, cajaId: cajaData?.id || null };
+  };
+
+  /* ---- UX Bug 3: renombrar una sucursal desde el Gestor de Cajas
+     (ícono de lápiz junto a su nombre) — edición inline, un solo campo,
+     sin abrir otro modal encima del que ya está abierto. Solo admin
+     (RLS 'sucursales_admin_update', migración 0048, ya lo exige del
+     lado del servidor también). ---- */
+  const [renombrandoSucursalId, setRenombrandoSucursalId] = useState(null);
+  const [renombrarSucursalValor, setRenombrarSucursalValor] = useState("");
+  const [renombrarSucursalSaving, setRenombrarSucursalSaving] = useState(false);
+
+  const startRenombrarSucursal = (sucursal) => {
+    setRenombrandoSucursalId(sucursal.id);
+    setRenombrarSucursalValor(sucursal.nombre);
+    setGestorCajaError("");
+  };
+
+  const cancelRenombrarSucursal = () => {
+    setRenombrandoSucursalId(null);
+    setRenombrarSucursalValor("");
+  };
+
+  const guardarRenombreSucursal = async (sucursal) => {
+    const nombre = renombrarSucursalValor.trim();
+    if (!nombre) {
+      setGestorCajaError("El nombre de la sucursal no puede quedar vacío.");
+      return;
+    }
+    if (nombre === sucursal.nombre) {
+      cancelRenombrarSucursal();
+      return;
+    }
+
+    setRenombrarSucursalSaving(true);
+    setGestorCajaError("");
+
+    const { error } = await supabase
+      .from("sucursales")
+      .update({ nombre })
+      .eq("id", sucursal.id);
+
+    setRenombrarSucursalSaving(false);
+
+    if (error) {
+      console.error("Error al renombrar sucursal:", error);
+      setGestorCajaError(`No se pudo renombrar "${sucursal.nombre}": ${error.message || "error desconocido"}`);
+      return;
+    }
+
+    setSucursales((prev) => prev.map((s) => (s.id === sucursal.id ? { ...s, nombre } : s)));
+    cancelRenombrarSucursal();
+  };
+
+  /* ---- Parte 3 "Gestor de Cajas": panel de control total del admin
+     sobre CUALQUIER caja del sistema — a diferencia de 'abrirCaja'/
+     'ejecutarCierre' (exclusivas del cajero, atadas a 'authCajaId' y
+     con su propio arqueo/snapshot de turno), esto es un control
+     administrativo directo sobre la fila de 'cajas' que se le indique,
+     sin arqueo (todavía no tenemos las estadísticas de un turno
+     segmentadas por caja — eso es Parte 4/5). 'gestorCajaSaving' guarda
+     el id de la caja en la que hay una escritura en curso, para
+     deshabilitar SOLO ese botón y no los demás mientras carga. ---- */
+  const [gestorCajasOpen, setGestorCajasOpen] = useState(false);
+  const [gestorCajaMontoInputs, setGestorCajaMontoInputs] = useState({});
+  const [gestorCajaSaving, setGestorCajaSaving] = useState(null);
+  const [gestorCajaError, setGestorCajaError] = useState("");
+
+  const iniciarCajaDesdeGestor = async (caja) => {
+    const montoStr = gestorCajaMontoInputs[caja.id] ?? "";
+    const monto = parseFloat(montoStr);
+    if (montoStr.trim() === "" || isNaN(monto) || monto < 0) {
+      setGestorCajaError(`Ingresa un fondo inicial válido (0 o más) para "${caja.nombre}".`);
+      return;
+    }
+
+    setGestorCajaSaving(caja.id);
+    setGestorCajaError("");
+    const abiertaEn = Date.now();
+
+    try {
+      const { data, error } = await supabase
+        .from("cajas")
+        .update({
+          estado: "abierta",
+          monto_inicial: monto,
+          abierta_por: cajeroNombre || "Admin",
+          abierta_en: abiertaEn,
+          cerrada_en: null,
+        })
+        .eq("id", caja.id)
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error al abrir caja desde el Gestor:", error);
+        setGestorCajaError(
+          `No se pudo abrir "${caja.nombre}": ${error.message || "error desconocido"}`
+        );
+        return;
+      }
+
+      const fondoLeido = Number(data?.monto_inicial);
+      if (!data || data.estado !== "abierta" || Number.isNaN(fondoLeido)) {
+        console.error("La apertura no se confirmó en Supabase. Fila leída de vuelta:", data);
+        setGestorCajaError(
+          `Supabase no confirmó la apertura de "${caja.nombre}" — revisa la política RLS de UPDATE sobre 'cajas'.`
+        );
+        return;
+      }
+
+      setCajas((prev) =>
+        prev.map((c) =>
+          c.id === caja.id
+            ? {
+                ...c,
+                estado: data.estado,
+                montoInicial: fondoLeido,
+                abiertaPor: data.abierta_por ?? null,
+                abiertaEn: data.abierta_en != null ? Number(data.abierta_en) : abiertaEn,
+                cerradaEn: data.cerrada_en != null ? Number(data.cerrada_en) : null,
+              }
+            : c
+        )
+      );
+      setGestorCajaMontoInputs((prev) => ({ ...prev, [caja.id]: "" }));
+    } catch (err) {
+      console.error("Error inesperado al abrir caja desde el Gestor:", err);
+      setGestorCajaError(`No se pudo conectar con Supabase para abrir "${caja.nombre}".`);
+    } finally {
+      setGestorCajaSaving(null);
+    }
+  };
+
+  /* ---- UX Bug 1: "Cerrar Caja" en el Gestor de Cajas YA NO cierra al
+     toque — el admin perdía el Arqueo Detallado (Turno Actual +
+     Historial de Cierres) que antes veía en el viejo modal de "Cierre
+     de Caja". Ahora: deja esa caja como la "activa" en los dropdowns
+     de arriba (mismo mecanismo que ya usan los selects — así TODO el
+     resto de la pantalla, dashboard incluido, queda mirando esta misma
+     caja) y abre el modal completo (cierreModalOpen), que 'ejecutarCierre'
+     ya sabe cerrar usando 'cajaOperativaId' sin importar si quien lo
+     abrió fue el cajero o el admin. ---- */
+  const abrirArqueoDesdeGestor = (caja) => {
+    elegirCajaActiva(caja.id);
+    setGestorCajasOpen(false);
+    setCierreModalOpen(true);
+    setConfirmCierreOpen(false);
+    setCierreError("");
+    setEfectivoReal("");
+  };
+
+  /* ---- Arquitectura Multi-Sucursal (migración 0048), reescritura del
+     ciclo de vida de caja: la vieja fila global única 'estado_caja'
+     (id=1, compartida por TODOS) queda abandonada. Ahora cada caja
+     tiene su PROPIA fila en 'cajas' — 'miCaja' es la fila de
+     'cajaOperativaId' (la propia del cajero, o la que el admin dejó
+     "activa" al hacer clic en "Cerrar Caja" desde el Gestor de Cajas —
+     UX Bug 1), y 'estadoCaja' se DERIVA de ella (ya no es un estado
+     propio con su propio setter): abrir/cerrar caja ahora significa
+     "escribir en la fila de 'cajas' que corresponde", y ese cambio
+     llega acá solo actualizando el array 'cajas' (setCajas), sea de
+     forma optimista (iniciarCajaDesdeGestor/ejecutarCierre) o por
+     Realtime (más abajo) — 'miCaja'/'estadoCaja' se recalculan solos.
+     Antes esto usaba 'authCajaId' directo (el 'caja_id' del PERFIL) —
+     eso funcionaba para el cajero pero dejaba a 'estadoCaja' siempre
+     en null para el admin (su perfil no tiene caja propia), rompiendo
+     el Fondo Inicial/Turno Actual del Arqueo Detallado apenas el admin
+     entraba a cerrar una caja ajena. */
+  const miCaja = useMemo(
+    () => (cajaOperativaId ? cajas.find((c) => c.id === cajaOperativaId) || null : null),
+    [cajas, cajaOperativaId]
+  );
+  const estadoCaja = useMemo(() => {
+    if (!miCaja) return null;
+    return {
+      estado: miCaja.estado,
+      fondoInicial: miCaja.montoInicial,
+      abiertaPor: miCaja.abiertaPor,
+      abiertaEn: miCaja.abiertaEn,
+      cerradaEn: miCaja.cerradaEn,
+    };
+  }, [miCaja]);
   // Confirmación de turno del cajero: NO vive en la base — es "ya vi
   // el fondo inicial de ESTE turno puntual" y se guarda en
   // localStorage (sobrevive a un F5, a cerrar la pestaña y a volver a
@@ -999,13 +1409,122 @@ export default function App() {
     typeof window !== "undefined" ? localStorage.getItem("tz_turno_confirmado_en") : null
   );
 
+  /* ---- Sincronización en tiempo real de 'cajas': si OTRA
+     pestaña/dispositivo cambia el estado de una caja (ej. el cajero
+     la abre/cierra desde otro dispositivo), este cliente se entera al
+     toque, sin F5 — antes esto escuchaba la vieja fila única
+     'estado_caja'. Sin filtro de fila: parchea CUALQUIER caja que
+     cambie dentro del array local 'cajas', así 'miCaja' (arriba)
+     siempre queda al día para el cajero dueño de esa fila, Y el admin
+     mantiene su lista de 'cajas' fresca para los formularios de
+     Usuarios (asignar/reasignar sucursal). ---- */
+  useEffect(() => {
+    if (!isAdmin && !isCajero) return;
+    const channel = supabase
+      .channel(`cajas-realtime-${Math.random().toString(36).slice(2)}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "cajas" },
+        (payload) => {
+          const row = payload.new;
+          if (!row) return;
+          setCajas((prev) =>
+            prev.map((c) =>
+              c.id === row.id
+                ? {
+                    ...c,
+                    estado: row.estado,
+                    montoInicial: row.monto_inicial != null ? Number(row.monto_inicial) : 0,
+                    abiertaPor: row.abierta_por || null,
+                    abiertaEn: row.abierta_en != null ? Number(row.abierta_en) : null,
+                    cerradaEn: row.cerrada_en != null ? Number(row.cerrada_en) : null,
+                  }
+                : c
+            )
+          );
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error("[Realtime] no se pudo suscribir a cajas:", status, err || "");
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin, isCajero]);
+
   /* ---- módulo de Cierre de Caja (snapshot + recibo) ---- */
   const [cierres, setCierres] = useState([]);
+
+  /* ---- Sincronización en tiempo real del Historial de Cierres: la
+     persona que efectivamente cierra (ejecutarCierre) ya se agrega su
+     propia tarjeta al toque, de forma optimista — esto es para
+     CUALQUIER OTRA pestaña/sesión mirando (típicamente el admin,
+     mientras un cajero cierra el suyo), que antes solo se enteraba
+     recargando la página a mano. Al llegar un INSERT nuevo en
+     'cierres_caja', arma la MISMA forma que ya usa loadedCierres/
+     ejecutarCierre (ver mapCierreRow) y lo mete al principio de la
+     lista — nunca hace falta re-consultar todo el historial de nuevo
+     por un solo cierre nuevo.
+
+     El chequeo 'prev.some(...)' evita la tarjeta duplicada que se
+     vería en la pestaña de quien CERRÓ: Postgres manda el evento de
+     Realtime a TODOS los suscriptores, incluida la sesión que acaba
+     de hacer el INSERT — sin este chequeo, esa persona vería su propio
+     cierre optimista Y la copia que le llega por Realtime, dos
+     tarjetas para la misma fila. */
+  useEffect(() => {
+    const channel = supabase
+      .channel(`cierres-caja-realtime-${Math.random().toString(36).slice(2)}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "cierres_caja" },
+        (payload) => {
+          const row = payload.new;
+          if (!row) return;
+          const nuevoCierre = mapCierreRow(row);
+          setCierres((prev) =>
+            prev.some((c) => c.id === nuevoCierre.id) ? prev : [nuevoCierre, ...prev]
+          );
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === "SUBSCRIBED") {
+          console.log("[Realtime] conectado — escuchando cierres_caja.");
+        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.error("[Realtime] no se pudo suscribir a cierres_caja:", status, err || "");
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const [cierreModalOpen, setCierreModalOpen] = useState(false);
   const [confirmCierreOpen, setConfirmCierreOpen] = useState(false);
   const [cierreSaving, setCierreSaving] = useState(false);
   const [cierreError, setCierreError] = useState("");
   const [efectivoReal, setEfectivoReal] = useState(""); // arqueo de caja
+
+  /* ---- UX Bug (división de modales): "Historial de Cierres" ahora
+     vive en SU PROPIO modal, separado de "Cerrar Caja" (ese quedó
+     únicamente para el arqueo del turno actual). Los filtros de acá
+     son LOCALES a este modal — a propósito, NO reusan
+     'localidadFiltroId'/'cajaActivaId' de arriba: el admin quiere
+     poder auditar el historial de CUALQUIER sucursal sin tener que
+     cambiar la sucursal activa con la que está operando el resto de
+     la pantalla. Sin nada elegido, muestra TODOS los cierres. ---- */
+  const [historialCierresOpen, setHistorialCierresOpen] = useState(false);
+  const [historialCierresLocalidadId, setHistorialCierresLocalidadId] = useState("");
+  const [historialCierresCajaId, setHistorialCierresCajaId] = useState("");
+
+  const cierresFiltradosHistorial = useMemo(() => {
+    if (!historialCierresCajaId) return cierres;
+    return cierres.filter((c) => c.cajaId === historialCierresCajaId);
+  }, [cierres, historialCierresCajaId]);
 
   /* ---- CRM básico (WhatsApp) en el proceso de cobro ---- */
   const [checkoutNombre, setCheckoutNombre] = useState("");
@@ -1049,6 +1568,47 @@ export default function App() {
   /* ---- fiado_items: deuda por producto individual (permite el
      descuento LIFO en "Restar Crédito") ---- */
   const [fiadoItems, setFiadoItems] = useState([]);
+
+  /* ---- Partes 4/5 "Segregación Real de Datos": vistas FILTRADAS por
+     'cajaOperativaId' de cada array de datos "de negocio". Los arrays
+     RAW ('sales', 'cierres', 'clientes', 'fiadoItems', 'movimientos',
+     'pagosPendientes') se dejan EXACTAMENTE como están — todavía los
+     necesitan mecanismos internos que SÍ deben ver todo sin filtrar
+     (ej. nextPurchaseId necesita un correlativo único de negocio
+     completo, no por sucursal). Estas '*Visibles' son SOLO para lo que
+     el admin/cajero efectivamente ve y opera: dashboard, Mis Ventas,
+     Libreta, Top Clientes, Historial de Cierres. Sin 'tieneVistaActiva'
+     (el admin todavía no eligió sucursal), todas quedan vacías a
+     propósito — mejor mostrar "nada" que mezclar sucursales por
+     accidente. ---- */
+  const salesVisibles = useMemo(
+    () => (tieneVistaActiva ? sales.filter((s) => s.cajaId === cajaOperativaId) : []),
+    [sales, cajaOperativaId, tieneVistaActiva]
+  );
+  const cierresVisibles = useMemo(
+    () => (tieneVistaActiva ? cierres.filter((c) => c.cajaId === cajaOperativaId) : []),
+    [cierres, cajaOperativaId, tieneVistaActiva]
+  );
+  const clientesVisibles = useMemo(
+    () => (tieneVistaActiva ? clientes.filter((c) => c.sucursalId === sucursalOperativaId) : []),
+    [clientes, sucursalOperativaId, tieneVistaActiva]
+  );
+  const fiadoItemsVisibles = useMemo(
+    () => (tieneVistaActiva ? fiadoItems.filter((fi) => fi.cajaId === cajaOperativaId) : []),
+    [fiadoItems, cajaOperativaId, tieneVistaActiva]
+  );
+  const movimientosVisibles = useMemo(
+    () => (tieneVistaActiva ? movimientos.filter((m) => m.cajaId === cajaOperativaId) : []),
+    [movimientos, cajaOperativaId, tieneVistaActiva]
+  );
+  const pagosPendientesVisibles = useMemo(
+    () => (tieneVistaActiva ? pagosPendientes.filter((p) => p.cajaId === cajaOperativaId) : []),
+    [pagosPendientes, cajaOperativaId, tieneVistaActiva]
+  );
+  const comprobantesVisibles = useMemo(
+    () => (tieneVistaActiva ? comprobantes.filter((c) => c.cajaId === cajaOperativaId) : []),
+    [comprobantes, cajaOperativaId, tieneVistaActiva]
+  );
   const [cobroFormFor, setCobroFormFor] = useState(null); // { clienteId, tipo: 'RESTAR'|'CANCELAR' } | null
   const [cobroMonto, setCobroMonto] = useState("");
   const [cobroMetodo, setCobroMetodo] = useState(""); // 'EFECTIVO' | 'DIGITAL' | ""
@@ -1277,6 +1837,11 @@ export default function App() {
         // muestra en listas/resúmenes, solo se lee al reconstruir la
         // boleta con "Generar Boleta" en Mis Ventas.
         ruc: row.ruc || null,
+        // Multi-Sucursal (migración 0049): a qué caja/sucursal
+        // pertenece esta línea de venta — backfillada a Santa Rosa
+        // 6.50/Caja 1 para todo lo anterior a esta migración.
+        cajaId: row.caja_id || null,
+        sucursalId: row.sucursal_id || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -1299,6 +1864,8 @@ export default function App() {
         opId: row.comprobante_id || null,
         fotoUrl: row.foto_url || null,
         purchaseId: row.purchase_id || null,
+        cajaId: row.caja_id || null,
+        sucursalId: row.sucursal_id || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -1321,6 +1888,8 @@ export default function App() {
         // usa el ranking de Top Clientes para excluir fiados viejos
         // cargados a mano sin cuenta asociada.
         authUserId: row.auth_user_id || null,
+        sucursalId: row.sucursal_id || null,
+        cajaId: row.caja_id || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -1343,6 +1912,8 @@ export default function App() {
         precioUnitario: Number(row.precio_unitario),
         monto: Number(row.monto),
         saldoRestante: Number(row.saldo_restante),
+        cajaId: row.caja_id || null,
+        sucursalId: row.sucursal_id || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -1363,6 +1934,8 @@ export default function App() {
         descripcion: row.descripcion || "",
         fotoUrl: row.foto_url || null,
         metodoPago: row.metodo_pago || null,
+        cajaId: row.caja_id || null,
+        sucursalId: row.sucursal_id || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -1422,48 +1995,12 @@ export default function App() {
         console.error("Error cargando cierres_caja desde Supabase:", cierreLoadError);
       }
 
-      const loadedCierres = (cierreRows || []).map((row) => ({
-        id: row.id,
-        turnoInicio: Number(row.turno_inicio),
-        recaudadoTotal: Number(row.recaudado_total),
-        productosVendidos: Number(row.productos_vendidos),
-        ventasRegistradas: Number(row.ventas_registradas),
-        gastosTotal: Number(row.gastos_total),
-        gananciaNeta: Number(row.ganancia_neta),
-        gananciaVentas: row.ganancia_ventas != null ? Number(row.ganancia_ventas) : null,
-        gananciaFiados: row.ganancia_fiados != null ? Number(row.ganancia_fiados) : null,
-        ticketGeneral: Number(row.ticket_general),
-        efectivoReal: row.efectivo_real != null ? Number(row.efectivo_real) : null,
-        diferencia: row.diferencia != null ? Number(row.diferencia) : null,
-        ingresoEfectivo: row.ingreso_efectivo != null ? Number(row.ingreso_efectivo) : null,
-        ingresoDigital: row.ingreso_digital != null ? Number(row.ingreso_digital) : null,
-        cajeroNombre: row.cajero_nombre || null,
-        fondoInicial: row.fondo_inicial != null ? Number(row.fondo_inicial) : null,
-        abiertaEn: row.abierta_en != null ? Number(row.abierta_en) : null,
-        timestamp: Number(row.fecha),
-      }));
+      const loadedCierres = (cierreRows || []).map(mapCierreRow);
 
-      // 6.5) ESTADO DE CAJA (fila única — abierta/cerrada + fondo inicial)
-      const { data: estadoCajaRow, error: estadoCajaLoadError } = await supabase
-        .from("estado_caja")
-        .select("*")
-        .eq("id", 1)
-        .maybeSingle();
-
-      if (estadoCajaLoadError) {
-        console.error("Error cargando estado_caja desde Supabase:", estadoCajaLoadError);
-      }
-
-      const loadedEstadoCaja = estadoCajaRow
-        ? {
-            estado: estadoCajaRow.estado,
-            fondoInicial:
-              estadoCajaRow.fondo_inicial != null ? Number(estadoCajaRow.fondo_inicial) : null,
-            abiertaPor: estadoCajaRow.abierta_por || null,
-            abiertaEn: estadoCajaRow.abierta_en != null ? Number(estadoCajaRow.abierta_en) : null,
-            cerradaEn: estadoCajaRow.cerrada_en != null ? Number(estadoCajaRow.cerrada_en) : null,
-          }
-        : { estado: "cerrada", fondoInicial: null, abiertaPor: null, abiertaEn: null, cerradaEn: null };
+      // 'estado_caja' (la vieja fila global única) ya NO se lee acá —
+      // el estado de la caja de cada cajero ahora vive en su propia
+      // fila de 'cajas', cargada por 'refetchJerarquia' y derivada más
+      // arriba como 'estadoCaja' (ver 'miCaja').
 
       // 7) PAGOS PENDIENTES (comprobantes de clientes por aprobar)
       const { data: pagoRows, error: pagoLoadError } = await supabase
@@ -1482,6 +2019,8 @@ export default function App() {
         monto: Number(row.monto),
         tipo: row.tipo,
         urlComprobante: row.url_comprobante,
+        cajaId: row.caja_id || null,
+        sucursalId: row.sucursal_id || null,
         timestamp: new Date(row.created_at).getTime(),
       }));
 
@@ -1494,7 +2033,6 @@ export default function App() {
         setProveedores(loadedProveedores);
         setGastos(loadedGastos);
         setCierres(loadedCierres);
-        setEstadoCaja(loadedEstadoCaja);
         setPagosPendientes(loadedPagosPendientes);
         setRestLoading(false);
       }
@@ -1612,6 +2150,15 @@ export default function App() {
   const prevAvailRef = useRef({});
   const [reactivatedProductIds, setReactivatedProductIds] = useState(() => new Set());
 
+  // Refactor de Stock: cambiar de sucursal activa NO es "el stock
+  // cambió en vivo" — es "estoy mirando un inventario distinto". Sin
+  // este reset, saltar de una sucursal con un producto en 0 a otra
+  // donde SÍ hay stock disparaba el glow de "recién reactivado" como
+  // si acabara de reponerse, cuando en realidad nunca cambió nada.
+  useEffect(() => {
+    prevAvailRef.current = {};
+  }, [sucursalOperativaId]);
+
   useEffect(() => {
     const productos = Object.values(productsById);
     if (productos.length === 0) return;
@@ -1701,8 +2248,9 @@ export default function App() {
      producto con cantidad 1, y si ya estaba en el carrito (típico al
      escanear la misma unidad dos veces, ej. dos gaseosas iguales) le
      suma +1 en vez de dejarlo igual, igual que un POS real. Clampa al
-     stock disponible (mismo límite que ya aplica changeQty) para no
-     vender de más. Devuelve false si no hay stock, para que el
+     stock disponible (mismo límite que ya aplica CartRow al ajustar
+     cantidad desde el carrito) para no vender de más. Devuelve false
+     si no hay stock, para que el
      llamador pueda avisar. Para 'ventaPorPeso' no tiene sentido "sumar
      +1" (no es una unidad discreta) — abre el modal de peso en su
      lugar, con el kg ya cargado si se escanea/busca un producto que YA
@@ -1724,19 +2272,6 @@ export default function App() {
       return { ...prev, [product.id]: Math.min(current + 1, avail) };
     });
     return true;
-  };
-
-  const changeQty = (product, delta) => {
-    // Los productos por peso no incrementan de a 1 (no son unidades
-    // discretas) — su cantidad solo se toca reabriendo el modal de
-    // peso (ver 'onEditWeight' en la tarjeta/CartRow), nunca acá.
-    if (product.ventaPorPeso) return;
-    const avail = availabilityFor(product, stock, productsById);
-    setSelection((prev) => {
-      const current = prev[product.id] ?? 1;
-      const next = Math.min(Math.max(current + delta, 1), avail);
-      return { ...prev, [product.id]: next };
-    });
   };
 
   // Quita un ítem del ticket por completo (botón de basurero en
@@ -1942,6 +2477,22 @@ export default function App() {
   };
 
   const submitVenta = async ({ comprobanteMonto, needed }) => {
+    // Partes 4/5 "Segregación Real de Datos": toda venta tiene que
+    // quedar atada a una caja/sucursal — para el cajero es siempre la
+    // suya (nunca falta); para el admin es la que tenga activa en los
+    // dropdowns de arriba. Sin esto, la venta terminaría con caja_id
+    // null y sería invisible en CUALQUIER vista filtrada por sucursal
+    // (ver 'salesVisibles') — mejor bloquear acá, antes de vender, que
+    // dejar una venta "huérfana".
+    if (!cajaOperativaId) {
+      setSubmitError(
+        isCajero
+          ? "Tu cuenta no tiene una caja asignada. Contacta al admin."
+          : "Selecciona una sucursal/caja activa arriba antes de registrar una venta."
+      );
+      return;
+    }
+
     const newStock = { ...stock };
     Object.keys(needed).forEach((key) => {
       newStock[key] = (newStock[key] ?? 0) - needed[key];
@@ -2044,6 +2595,11 @@ export default function App() {
       // tiene una fila de "cabecera" propia por purchase_id). null si
       // el checkbox de RUC no estaba prendido.
       p_ruc: checkoutRucEnabled ? checkoutRuc.trim() : null,
+      // Multi-Sucursal (migración 0049): a qué caja/sucursal pertenece
+      // esta venta — ver el guard de 'cajaOperativaId' al inicio de
+      // esta función, que garantiza que esto nunca llegue null.
+      p_caja_id: cajaOperativaId,
+      p_sucursal_id: sucursalOperativaId,
     };
 
     // Payload de fiado_items armado ACÁ (antes de saber si hay red)
@@ -2063,6 +2619,8 @@ export default function App() {
             saldo_restante: e.total,
             fecha: timestamp,
             venta_por_peso: e.ventaPorPeso,
+            caja_id: cajaOperativaId,
+            sucursal_id: sucursalOperativaId,
           }))
         : null;
 
@@ -2134,6 +2692,8 @@ export default function App() {
         precioUnitario: fiadoItemsPayload[idx].precio_unitario,
         monto: fiadoItemsPayload[idx].monto,
         saldoRestante: fiadoItemsPayload[idx].saldo_restante,
+        cajaId: fiadoItemsPayload[idx].caja_id,
+        sucursalId: fiadoItemsPayload[idx].sucursal_id,
         timestamp: Number(row.fecha ?? timestamp),
       }));
       setFiadoItems((prev) => [...newFiadoItems, ...prev]);
@@ -2153,6 +2713,8 @@ export default function App() {
             foto_url: scanDetected.photoUrl || null,
             purchase_id: purchaseId,
             fecha: timestamp,
+            caja_id: cajaOperativaId,
+            sucursal_id: sucursalOperativaId,
           },
         ])
         .select();
@@ -2171,6 +2733,8 @@ export default function App() {
           opId: scanDetected.opId || null,
           fotoUrl: scanDetected.photoUrl || null,
           purchaseId,
+          cajaId: cajaOperativaId,
+          sucursalId: sucursalOperativaId,
           timestamp: Number(row?.fecha ?? timestamp),
         };
         setComprobantes((prev) => [newComprobante, ...prev]);
@@ -2198,6 +2762,8 @@ export default function App() {
       timestamp: Number(row.fecha ?? timestamp),
       ventaPorPeso: row.venta_por_peso ?? newEntries[idx].ventaPorPeso,
       ruc: row.ruc ?? (checkoutRucEnabled && checkoutMetodo !== "FIADO" ? checkoutRuc.trim() : null),
+      cajaId: row.caja_id ?? cajaOperativaId,
+      sucursalId: row.sucursal_id ?? sucursalOperativaId,
     }));
 
     setStock(newStock);
@@ -2305,6 +2871,15 @@ export default function App() {
      pide acá — el cliente crea el suyo propio en su primer login (ver
      LoginModal / set-initial-pin). ---- */
   const saveCheckoutFiadoCliente = async () => {
+    if (!cajaOperativaId) {
+      setSubmitError(
+        isCajero
+          ? "Tu cuenta no tiene una caja asignada. Contacta al admin."
+          : "Selecciona una sucursal/caja activa arriba antes de crear un cliente."
+      );
+      return;
+    }
+
     const nombre = checkoutFiadoNewName.trim();
     const celular = checkoutFiadoNewWhatsapp.trim();
 
@@ -2324,7 +2899,16 @@ export default function App() {
     // creando esto) NUNCA debe confundirse con el rol de la cuenta que
     // se está creando — este payload declara "cliente" a propósito,
     // sin importar qué rol tenga la sesión actual del navegador.
-    const payload = { tipo: "cliente", nombre, celular };
+    // 'sucursalId'/'cajaId': la Edge Function los exige para tipo
+    // 'cliente' desde la migración 0049 — un cliente de fiado siempre
+    // nace perteneciendo a una sucursal, nunca "sin dueño".
+    const payload = {
+      tipo: "cliente",
+      nombre,
+      celular,
+      sucursalId: sucursalOperativaId,
+      cajaId: cajaOperativaId,
+    };
     console.log("create-cliente (checkout FIADO) → payload enviado:", payload);
     const { data, error } = await supabase.functions.invoke("create-cliente", {
       body: payload,
@@ -2343,6 +2927,8 @@ export default function App() {
       id: data.id,
       nombre: data.nombre,
       whatsapp: data.whatsapp,
+      sucursalId: data.sucursalId,
+      cajaId: data.cajaId,
       timestamp: Number(data.fecha),
     };
 
@@ -2362,16 +2948,16 @@ export default function App() {
   const checkoutNombreSuggestions = useMemo(() => {
     const q = checkoutNombre.trim().toLowerCase();
     if (!q) return [];
-    return clientes.filter((c) => c.nombre?.toLowerCase().includes(q)).slice(0, 6);
-  }, [checkoutNombre, clientes]);
+    return clientesVisibles.filter((c) => c.nombre?.toLowerCase().includes(q)).slice(0, 6);
+  }, [checkoutNombre, clientesVisibles]);
 
   const checkoutWhatsappSuggestions = useMemo(() => {
     const q = checkoutWhatsapp.replace(/[^\d]/g, "");
     if (!q) return [];
-    return clientes
+    return clientesVisibles
       .filter((c) => c.whatsapp && c.whatsapp.replace(/[^\d]/g, "").includes(q))
       .slice(0, 6);
-  }, [checkoutWhatsapp, clientes]);
+  }, [checkoutWhatsapp, clientesVisibles]);
 
   const selectCheckoutClienteByNombre = (c) => {
     setCheckoutNombre(c.nombre || "");
@@ -2579,6 +3165,10 @@ export default function App() {
       setNewProductoError("Ingresa el costo TOTAL de esta compra.");
       return;
     }
+    if (!sucursalOperativaId) {
+      setNewProductoError("Selecciona una sucursal/caja activa arriba antes de crear un producto.");
+      return;
+    }
 
     setNewProductoSaving(true);
     setNewProductoError("");
@@ -2597,6 +3187,7 @@ export default function App() {
         unidadesIniciales: unidadesNum,
         costoTotalInicial: costoTotalNum,
         ventaPorPeso: newProductoVentaPorPeso,
+        sucursalId: sucursalOperativaId,
       });
 
       const nombreCreado = composeProductoNombre({
@@ -2774,8 +3365,18 @@ export default function App() {
     }
 
     const singleKey = Array.isArray(item.consumes) && item.consumes.length === 1 && !item.esCombo;
-    let stockPayload = null;
+    let stockLabelPayload = null;
+    let inventarioPayload = null;
     if (singleKey) {
+      // Refactor de Stock: la cantidad/costo YA NO se editan en la
+      // tabla global 'stock' — eso editaría el mismo número sin
+      // importar qué sucursal esté mirando el admin. Ahora van a
+      // 'inventario_sucursales', atados a 'sucursalOperativaId'.
+      if (!sucursalOperativaId) {
+        return {
+          error: new Error("Selecciona una sucursal/caja activa arriba antes de editar el stock."),
+        };
+      }
       const key = item.consumes[0].key;
       const cantidad = parseFloat(stockValue);
       const costo = parseFloat(costoValue);
@@ -2785,21 +3386,28 @@ export default function App() {
       if (isNaN(costo) || costo < 0) {
         return { error: new Error("Ingresa un costo unitario válido (0 o más).") };
       }
-      stockPayload = {
-        nombre: key,
-        cantidad,
+      stockLabelPayload = { nombre: key, etiqueta: stockLabels[key] ?? key };
+      inventarioPayload = {
+        producto_id: item.id,
+        sucursal_id: sucursalOperativaId,
+        stock: cantidad,
         precio_costo: costo,
         ultimo_costo_compra: costo,
-        etiqueta: stockLabels[key] ?? key,
       };
     }
 
     try {
-      if (stockPayload) {
+      if (stockLabelPayload) {
         const { error: stockError } = await supabase
           .from("stock")
-          .upsert([stockPayload], { onConflict: "nombre" });
+          .upsert([stockLabelPayload], { onConflict: "nombre" });
         if (stockError) return { error: stockError };
+      }
+      if (inventarioPayload) {
+        const { error: invError } = await supabase
+          .from("inventario_sucursales")
+          .upsert([inventarioPayload], { onConflict: "producto_id,sucursal_id" });
+        if (invError) return { error: invError };
       }
 
       const { data, error: precioError } = await supabase
@@ -3047,6 +3655,9 @@ export default function App() {
      igual hereda el mismo nombre_base compartido, no el nombre
      completo con el sabor viejo pegado. ---- */
   const agregarVariante = async (productoBase, categoriaLabel, subgrupoRaw, { variante, presentacion, color }) => {
+    if (!sucursalOperativaId) {
+      return { error: new Error("Selecciona una sucursal/caja activa arriba antes de crear una variante.") };
+    }
     try {
       await crearProducto({
         nombreBase: productoBase.baseName || productoBase.name,
@@ -3057,6 +3668,7 @@ export default function App() {
         categoria: categoriaLabel,
         subgrupo: subgrupoRaw,
         stockExistente: stock,
+        sucursalId: sucursalOperativaId,
       });
       await refetchCatalog();
       return { error: null };
@@ -3254,8 +3866,30 @@ export default function App() {
     }
   };
 
-  /* ---- guardar unidades extra: UPDATE/upsert a 'stock' ---- */
+  /* ---- Refactor de Stock: 'inventario_sucursales' está indexada por
+     producto (producto_id, sucursal_id), no por clave de stock de
+     texto — este lookup resuelve "clave de stock -> producto dueño"
+     (el único producto no-combo con ESA key como su única consumes) una
+     sola vez, para no recorrer 'productsById' entero cada vez que se
+     guarda stock. ---- */
+  const singleKeyProductByKey = useMemo(() => {
+    const map = {};
+    Object.values(productsById).forEach((p) => {
+      if (Array.isArray(p.consumes) && p.consumes.length === 1 && !p.esCombo) {
+        map[p.consumes[0].key] = p.id;
+      }
+    });
+    return map;
+  }, [productsById]);
+
+  /* ---- guardar unidades extra: UPDATE/upsert a 'inventario_sucursales'
+     (Refactor de Stock) ---- */
   const saveStockEdits = async () => {
+    if (!sucursalOperativaId) {
+      setStockSavedMsg("Selecciona una sucursal/caja activa arriba antes de agregar stock.");
+      return;
+    }
+
     // parseFloat, NO parseInt: una clave de stock 'ventaPorPeso' carga
     // kilos (2.5), no unidades enteras — parseInt truncaba esos
     // decimales en silencio. Para productos normales el comportamiento
@@ -3305,26 +3939,57 @@ export default function App() {
       newStockUltimoCosto[key] = costoUltimaCompra;
     });
 
-    // 'etiqueta' va siempre incluida (no solo cantidad/precio_costo):
-    // si esta clave todavía no tiene fila propia en 'stock' (ej. una
-    // key referenciada por 'consumos' que useCatalog solo mostraba en
-    // 0 localmente, sin fila real en la base — ver el warning en
-    // useCatalog.js), el upsert hace un INSERT nuevo ahí mismo, y sin
-    // 'etiqueta' esa fila nueva podría chocar con un NOT NULL en
-    // Supabase. Para una fila que YA existe, esto solo la reescribe
-    // con el mismo valor que ya tenía (stockLabels[key] se cargó
-    // originalmente desde esa misma columna) — no rompe nada.
-    const stockUpdates = additions.map((key) => ({
+    // 'stock' (global) YA NO guarda cantidad/costo — solo 'etiqueta'
+    // (nombre humano de la clave, no varía por sucursal). Se sigue
+    // incluyendo siempre (no solo a veces): si esta clave todavía no
+    // tiene fila propia en 'stock', el upsert hace un INSERT nuevo ahí
+    // mismo, y sin 'etiqueta' esa fila podría chocar con un NOT NULL.
+    const stockLabelUpserts = additions.map((key) => ({
       nombre: key,
-      cantidad: newStock[key],
-      precio_costo: newStockCostos[key],
-      ultimo_costo_compra: newStockUltimoCosto[key],
       etiqueta: stockLabels[key] ?? key,
     }));
 
-    const { error } = await supabase
+    const { error: labelError } = await supabase
       .from("stock")
-      .upsert(stockUpdates, { onConflict: "nombre" });
+      .upsert(stockLabelUpserts, { onConflict: "nombre" });
+
+    if (labelError) {
+      console.error("Error al actualizar la etiqueta de stock en Supabase:", labelError);
+      setSavingStock(false);
+      setStockSavedMsg(
+        labelError.message
+          ? `No se pudo actualizar el stock: ${labelError.message}`
+          : "No se pudo actualizar el stock en Supabase."
+      );
+      return;
+    }
+
+    // Cantidad/costo de verdad: 'inventario_sucursales', SOLO para la
+    // sucursal activa — cada clave se resuelve a su producto "dueño"
+    // (el único con esa key en 'consumes', ver 'singleKeyProductByKey')
+    // porque esa tabla está indexada por producto, no por clave de texto.
+    const inventarioUpserts = additions
+      .map((key) => {
+        const productoId = singleKeyProductByKey[key];
+        if (!productoId) {
+          console.warn(
+            `No se encontró el producto dueño de la clave de stock "${key}" — no se pudo guardar su cantidad por sucursal.`
+          );
+          return null;
+        }
+        return {
+          producto_id: productoId,
+          sucursal_id: sucursalOperativaId,
+          stock: newStock[key],
+          precio_costo: newStockCostos[key],
+          ultimo_costo_compra: newStockUltimoCosto[key],
+        };
+      })
+      .filter(Boolean);
+
+    const { error } = await supabase
+      .from("inventario_sucursales")
+      .upsert(inventarioUpserts, { onConflict: "producto_id,sucursal_id" });
 
     setSavingStock(false);
 
@@ -3334,7 +3999,7 @@ export default function App() {
       // falta correr la migración de 'precio_costo', o violación de
       // constraint), y el mensaje de la UI ahora la muestra también
       // para no depender de abrir la consola del navegador.
-      console.error("Error al actualizar stock en Supabase:", {
+      console.error("Error al actualizar inventario_sucursales en Supabase:", {
         message: error.message,
         details: error.details,
         hint: error.hint,
@@ -3636,6 +4301,15 @@ export default function App() {
      nadie conoce, y el cliente elige su propio PIN en su primer login
      (ver LoginModal / set-initial-pin). ---- */
   const saveCliente = async () => {
+    if (!cajaOperativaId) {
+      setClienteError(
+        isCajero
+          ? "Tu cuenta no tiene una caja asignada. Contacta al admin."
+          : "Selecciona una sucursal/caja activa arriba antes de crear un cliente."
+      );
+      return;
+    }
+
     const nombre = newClienteName.trim();
     const celular = newClienteWhatsapp.trim();
 
@@ -3653,8 +4327,15 @@ export default function App() {
 
     // 'tipo' explícito por la misma razón que en saveCheckoutFiadoCliente:
     // nunca debe confundirse con el rol de quien está logueado ahora
-    // mismo (admin) creando esta cuenta.
-    const payload = { tipo: "cliente", nombre, celular };
+    // mismo (admin/cajero) creando esta cuenta. 'sucursalId'/'cajaId':
+    // ver el mismo comentario en saveCheckoutFiadoCliente.
+    const payload = {
+      tipo: "cliente",
+      nombre,
+      celular,
+      sucursalId: sucursalOperativaId,
+      cajaId: cajaOperativaId,
+    };
     console.log("create-cliente (Libreta) → payload enviado:", payload);
     const { data, error } = await supabase.functions.invoke("create-cliente", {
       body: payload,
@@ -3673,6 +4354,8 @@ export default function App() {
       id: data.id,
       nombre: data.nombre,
       whatsapp: data.whatsapp,
+      sucursalId: data.sucursalId,
+      cajaId: data.cajaId,
       timestamp: Number(data.fecha),
     };
 
@@ -3766,6 +4449,8 @@ export default function App() {
             foto_url: scanDetected.photoUrl || null,
             metodo_pago: cobroMetodo,
             fecha: timestamp,
+            caja_id: cajaOperativaId,
+            sucursal_id: sucursalOperativaId,
           },
         ])
         .select();
@@ -3781,6 +4466,8 @@ export default function App() {
         descripcion: tipo === "CANCELAR" ? "Cancelar cuenta" : "Restar crédito",
         fotoUrl: scanDetected.photoUrl || null,
         metodoPago: cobroMetodo,
+        cajaId: cajaOperativaId,
+        sucursalId: sucursalOperativaId,
         timestamp: Number(row?.fecha ?? timestamp),
       };
 
@@ -3864,6 +4551,13 @@ export default function App() {
               // existe un camino de aprobación para pagos en efectivo acá.
               metodo_pago: "DIGITAL",
               fecha: timestamp,
+              // La sucursal/caja del PAGO PENDIENTE (ya estampada al
+              // subir el comprobante, ver EnviarComprobanteModal) —no la
+              // que el admin tenga activa en sus dropdowns ahora mismo—
+              // así el movimiento siempre queda en la sucursal real del
+              // cliente, sin importar qué esté mirando el admin.
+              caja_id: pago.cajaId,
+              sucursal_id: pago.sucursalId,
             },
           ])
           .select();
@@ -3878,6 +4572,8 @@ export default function App() {
           descripcion,
           fotoUrl: null,
           metodoPago: "DIGITAL",
+          cajaId: pago.cajaId,
+          sucursalId: pago.sucursalId,
           timestamp: Number(row?.fecha ?? timestamp),
         };
 
@@ -4482,17 +5178,46 @@ export default function App() {
           newStockUltimoCosto[key] = costoUltimaCompra;
           newStock[key] = (newStock[key] ?? 0) + unidades;
         });
-        const stockUpdates = stockKeysToUpdate.map((key) => ({
+        // 'stock' (global): solo la 'etiqueta' — la cantidad/costo real
+        // por sucursal va a 'inventario_sucursales' (Refactor de Stock).
+        const stockLabelUpdates = stockKeysToUpdate.map((key) => ({
           nombre: key,
-          cantidad: newStock[key],
-          precio_costo: newStockCostos[key],
-          ultimo_costo_compra: newStockUltimoCosto[key],
           etiqueta: stockLabels[key] ?? key,
         }));
-        const { error: stockErr } = await supabase
+        const { error: labelErr } = await supabase
           .from("stock")
-          .upsert(stockUpdates, { onConflict: "nombre" });
-        if (stockErr) {
+          .upsert(stockLabelUpdates, { onConflict: "nombre" });
+
+        const inventarioUpdates = sucursalOperativaId
+          ? stockKeysToUpdate
+              .map((key) => {
+                const productoId = singleKeyProductByKey[key];
+                if (!productoId) return null;
+                return {
+                  producto_id: productoId,
+                  sucursal_id: sucursalOperativaId,
+                  stock: newStock[key],
+                  precio_costo: newStockCostos[key],
+                  ultimo_costo_compra: newStockUltimoCosto[key],
+                };
+              })
+              .filter(Boolean)
+          : [];
+
+        const stockErr =
+          labelErr ||
+          (inventarioUpdates.length > 0
+            ? (
+                await supabase
+                  .from("inventario_sucursales")
+                  .upsert(inventarioUpdates, { onConflict: "producto_id,sucursal_id" })
+              ).error
+            : null);
+
+        if (!sucursalOperativaId) {
+          stockWarning =
+            "El gasto se guardó, pero no había una sucursal/caja activa arriba — el stock NO se sumó. Agrégalo a mano desde el Gestor de Productos.";
+        } else if (stockErr) {
           console.error("Error al actualizar stock/costo desde Ingreso de Mercadería:", {
             message: stockErr.message,
             details: stockErr.details,
@@ -4551,16 +5276,21 @@ export default function App() {
      fija, para que un turno que cruza la medianoche (ej. cierra a las
      2am) siga sumando correctamente hasta que se presione "Cerrar
      Caja". */
+  /* ---- Multi-Sucursal: 'cierresVisibles' (ya filtrado por la caja
+     operativa) en vez de 'cierres' — sin esto, el último cierre de
+     CUALQUIER sucursal adelantaba el corte de turno de todas las
+     demás. ---- */
   const turnoCutoff = useMemo(() => {
-    if (cierres.length === 0) return startOfDay(Date.now());
-    return Math.max(...cierres.map((c) => c.timestamp));
-  }, [cierres]);
+    if (cierresVisibles.length === 0) return startOfDay(Date.now());
+    return Math.max(...cierresVisibles.map((c) => c.timestamp));
+  }, [cierresVisibles]);
 
-  /* ---- Mis Ventas (Hoy): agrupa 'sales' (una fila por producto) en
-     una fila por venta (purchaseId), solo del turno actual. ---- */
+  /* ---- Mis Ventas (Hoy): agrupa 'salesVisibles' (ya filtrado por la
+     caja operativa — una fila por producto) en una fila por venta
+     (purchaseId), solo del turno actual. ---- */
   const ventasHoyAgrupadas = useMemo(() => {
     const porId = {};
-    sales
+    salesVisibles
       .filter((s) => s.timestamp > turnoCutoff)
       .forEach((s) => {
         if (!porId[s.purchaseId]) {
@@ -4576,7 +5306,7 @@ export default function App() {
         porId[s.purchaseId].total += s.total;
       });
     return Object.values(porId).sort((a, b) => b.timestamp - a.timestamp);
-  }, [sales, turnoCutoff]);
+  }, [salesVisibles, turnoCutoff]);
 
   /* ---- Anula una venta del turno actual: repone el stock consumido,
      borra sus filas de 'historial' y revierte el efecto de su método
@@ -4623,14 +5353,35 @@ export default function App() {
       });
 
       if (Object.keys(devolver).length > 0) {
-        const stockUpdates = Object.keys(devolver).map((key) => ({
-          nombre: key,
-          cantidad: newStock[key],
-        }));
-        const { error: stockError } = await supabase
-          .from("stock")
-          .upsert(stockUpdates, { onConflict: "nombre" });
-        if (stockError) throw stockError;
+        // Refactor de Stock: repone en 'inventario_sucursales' de la
+        // sucursal operativa (la venta que se está anulando es siempre
+        // de "Mis Ventas", ya filtrada a esta misma sucursal), no en la
+        // vieja tabla global 'stock'.
+        if (!sucursalOperativaId) {
+          throw new Error("Falta la sucursal activa para reponer el stock.");
+        }
+        const inventarioUpdates = Object.keys(devolver)
+          .map((key) => {
+            const productoId = singleKeyProductByKey[key];
+            if (!productoId) {
+              console.warn(
+                `No se encontró el producto dueño de la clave "${key}" al anular — no se repuso su stock.`
+              );
+              return null;
+            }
+            return {
+              producto_id: productoId,
+              sucursal_id: sucursalOperativaId,
+              stock: newStock[key],
+            };
+          })
+          .filter(Boolean);
+        if (inventarioUpdates.length > 0) {
+          const { error: stockError } = await supabase
+            .from("inventario_sucursales")
+            .upsert(inventarioUpdates, { onConflict: "producto_id,sucursal_id" });
+          if (stockError) throw stockError;
+        }
       }
 
       // 2) Borrar la venta de 'historial'.
@@ -4681,7 +5432,7 @@ export default function App() {
 
     supabase
       .from("profiles")
-      .select("id, nombre, role")
+      .select("id, nombre, role, sucursal_id, caja_id")
       .in("role", ["cajero", "cliente"])
       .order("role", { ascending: true })
       .then(({ data, error }) => {
@@ -4689,7 +5440,15 @@ export default function App() {
         if (error) {
           console.error("Error cargando usuarios:", error);
         } else {
-          setCajeros(data || []);
+          setCajeros(
+            (data || []).map((row) => ({
+              id: row.id,
+              nombre: row.nombre,
+              role: row.role,
+              sucursalId: row.sucursal_id || null,
+              cajaId: row.caja_id || null,
+            }))
+          );
         }
         setCajerosLoading(false);
       });
@@ -4765,6 +5524,8 @@ export default function App() {
     setNewCajeroNombre("");
     setNewCajeroUsuario("");
     setNewCajeroPin("");
+    setNewCajeroLocalidadId("");
+    setNewCajeroSucursalId("");
     setCajeroError("");
   };
 
@@ -4785,12 +5546,31 @@ export default function App() {
       setCajeroError("La clave debe tener entre 4 y 10 dígitos.");
       return;
     }
+    if (!newCajeroLocalidadId || !newCajeroSucursalId) {
+      setCajeroError("Elige la localidad y la sucursal del cajero.");
+      return;
+    }
+    // Una caja por sucursal hoy (Caja 1) — se resuelve sola sin
+    // necesitar un tercer select; si mañana una sucursal tiene más de
+    // una caja, este .find() debería pasar a ser un select propio.
+    const caja = cajasPorSucursal(newCajeroSucursalId)[0];
+    if (!caja) {
+      setCajeroError("Esa sucursal todavía no tiene ninguna caja creada.");
+      return;
+    }
 
     setCajeroSaving(true);
     setCajeroError("");
 
     const { data, error } = await supabase.functions.invoke("create-cliente", {
-      body: { tipo: "cajero", nombre, usuario, pin },
+      body: {
+        tipo: "cajero",
+        nombre,
+        usuario,
+        pin,
+        sucursalId: newCajeroSucursalId,
+        cajaId: caja.id,
+      },
     });
 
     setCajeroSaving(false);
@@ -4802,13 +5582,76 @@ export default function App() {
       return;
     }
 
-    setCajeros((prev) => [...prev, { id: data.id, nombre: data.nombre, role: "cajero" }]);
+    setCajeros((prev) => [
+      ...prev,
+      { id: data.id, nombre: data.nombre, role: "cajero", sucursalId: newCajeroSucursalId, cajaId: caja.id },
+    ]);
     resetCajeroForm();
   };
 
-  /* ---- estadísticas del turno actual (antes: "del día") ---- */
+  /* ---- Reasignar sucursal/caja de un cajero YA existente — fila por
+     fila en la lista de Usuarios. Pasa por manage-usuario (service_role)
+     porque 'profiles' no tiene RLS de UPDATE que deje a un admin tocar
+     la fila de otro usuario (mismo motivo que reset-pin/delete). ---- */
+  const startReasignar = (cajero) => {
+    setReasignandoId(cajero.id);
+    const sucursalActual = sucursales.find((s) => s.id === cajero.sucursalId);
+    setReasignarLocalidadId(sucursalActual?.localidadId || "");
+    setReasignarSucursalId(cajero.sucursalId || "");
+    setUsuarioActionError("");
+  };
+
+  const cancelReasignar = () => {
+    setReasignandoId(null);
+    setReasignarLocalidadId("");
+    setReasignarSucursalId("");
+  };
+
+  const guardarReasignacion = async (cajero) => {
+    if (!reasignarSucursalId) {
+      setUsuarioActionError("Elige la sucursal del cajero.");
+      return;
+    }
+    const caja = cajasPorSucursal(reasignarSucursalId)[0];
+    if (!caja) {
+      setUsuarioActionError("Esa sucursal todavía no tiene ninguna caja creada.");
+      return;
+    }
+
+    setReasignarSaving(true);
+    setUsuarioActionError("");
+
+    const { error } = await supabase.functions.invoke("manage-usuario", {
+      body: {
+        action: "set-sucursal",
+        userId: cajero.id,
+        sucursalId: reasignarSucursalId,
+        cajaId: caja.id,
+      },
+    });
+
+    setReasignarSaving(false);
+
+    if (error) {
+      console.error("Error al reasignar sucursal vía Edge Function:", error);
+      const body = await error.context?.json?.().catch(() => null);
+      setUsuarioActionError(body?.error || "No se pudo reasignar la sucursal. Intenta de nuevo.");
+      return;
+    }
+
+    setCajeros((prev) =>
+      prev.map((c) =>
+        c.id === cajero.id ? { ...c, sucursalId: reasignarSucursalId, cajaId: caja.id } : c
+      )
+    );
+    cancelReasignar();
+  };
+
+  /* ---- estadísticas del turno actual (antes: "del día") — Multi-
+     Sucursal: siempre a partir de los arrays *Visibles (ya filtrados
+     por la caja operativa), nunca de los arrays raw. ---- */
   const todayStats = useMemo(() => {
-    const todaySales = sales.filter((s) => s.timestamp > turnoCutoff);
+    const todaySales = salesVisibles.filter((s) => s.timestamp > turnoCutoff);
     // 'total' = TODAS las ventas del turno (fiadas o no) — se sigue
     // usando para Productos Vendidos / Ticket General.
     const total = todaySales.reduce((sum, s) => sum + s.total, 0);
@@ -4841,7 +5684,7 @@ export default function App() {
     const cost = costOf(todaySales);
     const costCash = costOf(cashSalesToday);
 
-    const manualToday = comprobantes
+    const manualToday = comprobantesVisibles
       .filter((c) => c.timestamp > turnoCutoff)
       .reduce((sum, c) => sum + c.amount, 0);
 
@@ -4852,7 +5695,7 @@ export default function App() {
     // mezclada con la de ventas frescas, y sin restarle costo (el
     // costo de esa mercadería ya se pagó cuando se hizo la venta
     // original, sea en este turno o en uno anterior).
-    const cobrosHoy = movimientos.filter((m) => m.timestamp > turnoCutoff && m.tipo === "PAGO");
+    const cobrosHoy = movimientosVisibles.filter((m) => m.timestamp > turnoCutoff && m.tipo === "PAGO");
     const fiadoPagosHoy = cobrosHoy.reduce((sum, m) => sum + m.monto, 0);
 
     // Separación ESTRICTA de dinero físico vs digital — para el arqueo
@@ -4969,7 +5812,7 @@ export default function App() {
       recaudadoTotal,
       avgTicket,
     };
-  }, [sales, comprobantes, gastos, movimientos, turnoCutoff]);
+  }, [salesVisibles, comprobantesVisibles, gastos, movimientosVisibles, turnoCutoff]);
 
   /* ---- 📥 Historial de Gastos (solo admin): una fila por CADA ÍTEM de
      cada gasto (no una fila por gasto) — así el proveedor/comprobante
@@ -5040,7 +5883,7 @@ export default function App() {
     ];
     const filas = [
       headers,
-      ...sales.map((s) => [
+      ...salesVisibles.map((s) => [
         s.purchaseId,
         formatDate(s.timestamp),
         formatTime(s.timestamp),
@@ -5090,7 +5933,7 @@ export default function App() {
     ];
     const filasCierres = [
       headersCierres,
-      ...cierres.map((c) => {
+      ...cierresFiltradosHistorial.map((c) => {
         // Efectivo Esperado no se guarda como columna propia en
         // 'cierres_caja' — se reconstruye algebraicamente de lo que sí
         // se guarda: diferencia = efectivoReal - esperado, así que
@@ -5133,7 +5976,14 @@ export default function App() {
       if (!mensual[key]) mensual[key] = { recaudado: 0, costo: 0, gastos: 0 };
       return mensual[key];
     };
-    sales.forEach((s) => {
+    // Mismo filtro LOCAL de este modal (historialCierresCajaId), no el
+    // 'cajaOperativaId' de arriba — este export vive en el Historial de
+    // Cierres, ya desacoplado de la sucursal activa del resto de la
+    // pantalla.
+    const salesParaResumenMensual = historialCierresCajaId
+      ? sales.filter((s) => s.cajaId === historialCierresCajaId)
+      : sales;
+    salesParaResumenMensual.forEach((s) => {
       const d = new Date(s.timestamp);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const m = getOrInit(key);
@@ -5227,88 +6077,21 @@ export default function App() {
     window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank");
   };
 
-  /* ---- Apertura de Caja (solo admin — el botón que dispara esto ya
-     está gateado por isAdmin en el render): carga el fondo inicial
-     contado a mano y abre la caja para que el POS quede disponible
-     tanto para admin como para cajero. ---- */
-  const abrirCaja = async () => {
-    const fondo = parseFloat(fondoInicialInput);
-    if (isNaN(fondo) || fondo < 0) {
-      setAperturaError("Ingresa el fondo inicial (billetes y monedas contados), 0 o más.");
-      return;
-    }
-
-    setAperturaSaving(true);
-    setAperturaError("");
-
-    const abiertaEn = Date.now();
-    const nombreQuienAbre = cajeroNombre || (isAdmin ? "Admin" : "Cajero");
-
-    // upsert, NO update: un .update().eq('id',1) sobre una fila que no
-    // existe (migración 0028 nunca corrida, o el seed 'insert ... on
-    // conflict do nothing' no se llegó a ejecutar) actualiza CERO filas
-    // y Supabase no lo reporta como error — la apertura "funcionaba"
-    // en la sesión del admin (estado local optimista) pero jamás
-    // quedaba escrita en Supabase, así que cualquier recarga volvía a
-    // pedir la apertura. upsert garantiza que la fila id=1 siempre
-    // termine existiendo, exista antes o no.
-    //
-    // .select().maybeSingle() ADEMÁS del upsert: no basta con "no hubo
-    // error" para confirmar éxito — si falta la policy de RLS de
-    // INSERT (el mismo tipo de bug que ya pasó una vez), Postgres
-    // puede rechazar la fila sin que el cliente de Supabase lo
-    // reporte como 'error' en todos los casos. Leyendo de vuelta lo
-    // que realmente quedó en la tabla, cualquier fila ausente o con
-    // datos que no coinciden se detecta ACÁ, antes de dejar pasar al
-    // admin, en vez de descubrirlo recién en el próximo refresh.
-    const { data, error } = await supabase
-      .from("estado_caja")
-      .upsert(
-        {
-          id: 1,
-          estado: "abierta",
-          fondo_inicial: fondo,
-          abierta_por: nombreQuienAbre,
-          abierta_en: abiertaEn,
-          cerrada_en: null,
-        },
-        { onConflict: "id" }
-      )
-      .select()
-      .maybeSingle();
-
-    setAperturaSaving(false);
-
-    if (error) {
-      console.error("Error al abrir caja:", error);
-      setAperturaError(
-        `No se pudo abrir la caja — ${error.message || "error desconocido"}` +
-          (error.code ? ` (código ${error.code})` : "") +
-          (error.hint ? `. Sugerencia: ${error.hint}` : "") +
-          (error.details ? ` [${error.details}]` : "")
-      );
-      return;
-    }
-
-    if (!data || data.estado !== "abierta" || Number(data.fondo_inicial) !== fondo) {
-      console.error("La apertura de caja no se confirmó en Supabase. Fila leída de vuelta:", data);
-      setAperturaError(
-        "Supabase no confirmó la apertura: la fila de 'estado_caja' no quedó como se esperaba " +
-          "(probablemente falta la política RLS de INSERT — corre la migración " +
-          "0036_fix_estado_caja_insert.sql en el SQL Editor de Supabase). No avances hasta " +
-          "resolver esto: la caja NO está realmente abierta en el sistema."
-      );
-      return;
-    }
-
-    setEstadoCaja({
-      estado: data.estado,
-      fondoInicial: Number(data.fondo_inicial),
-      abiertaPor: data.abierta_por,
-      abiertaEn: Number(data.abierta_en),
-      cerradaEn: data.cerrada_en != null ? Number(data.cerrada_en) : null,
-    });
-    setFondoInicialInput("");
+  /* ---- UX Bug 2: el cajero YA NO abre su propia caja ni escribe un
+     monto — el ADMIN establece 'monto_inicial' y abre la caja desde el
+     Gestor de Cajas (ver 'iniciarCajaDesdeGestor'). El cajero solo
+     confirma (o reporta un mal conteo) — ver 'reportarMalConteo' y la
+     pantalla de "Confirmar Turno" más abajo. La vieja 'abrirCaja'
+     (self-service, con input de fondo inicial) se retiró de acá. ---- */
+  const reportarMalConteo = () => {
+    // Placeholder explícito: todavía no hay un canal de notificación al
+    // admin (eso es trabajo futuro — WhatsApp, un badge, etc.). Por
+    // ahora deja constancia clara para el cajero de que su reporte no
+    // se guardó en ningún lado todavía, en vez de fingir que sí.
+    alert(
+      "Reportado. Por ahora esto no le llega automáticamente al admin — avísale directamente " +
+        "(WhatsApp, en persona) que el conteo de esta caja no coincide con el fondo mostrado."
+    );
   };
 
   /* ---- Confirmación de turno (solo cajero): reconoce el fondo
@@ -5327,6 +6110,20 @@ export default function App() {
      recalcula automáticamente (useMemo depende de 'cierres') y todos
      los medidores de "Hoy" vuelven a cero para el turno nuevo. ---- */
   const ejecutarCierre = async () => {
+    // 'cajaOperativaId' (no 'authCajaId'): el cajero cierra siempre la
+    // suya propia; el admin, desde el Gestor de Cajas, puede cerrar
+    // CUALQUIER caja — al hacer clic ahí, 'elegirCajaActiva' ya dejó
+    // esa caja como la "activa" arriba, así este mismo flujo sirve
+    // para ambos casos sin duplicar código (UX Bug 1).
+    if (!cajaOperativaId) {
+      setCierreError(
+        isCajero
+          ? "Tu cuenta no tiene una caja asignada. Pide al admin que te asigne una."
+          : "Selecciona una sucursal/caja activa arriba antes de cerrarla."
+      );
+      return;
+    }
+
     setCierreSaving(true);
     setCierreError("");
 
@@ -5355,10 +6152,15 @@ export default function App() {
       ingreso_efectivo: todayStats.ingresoEfectivo,
       ingreso_digital: todayStats.ingresoDigital,
       cajero_nombre: cajeroNombre || (isAdmin ? "Admin" : "Cajero"),
-      // Fotografía del estado_caja vigente — fondo inicial y momento
-      // exacto de apertura de ESTE turno que se está cerrando ahora.
+      // Fotografía de la caja vigente — fondo inicial y momento exacto
+      // de apertura de ESTE turno que se está cerrando ahora.
       fondo_inicial: estadoCaja?.fondoInicial ?? null,
       abierta_en: estadoCaja?.abiertaEn ?? null,
+      // Multi-Sucursal (migración 0048): a qué caja/sucursal pertenece
+      // este cierre — antes 'cierres_caja' no distinguía sucursal
+      // porque solo existía UNA caja en todo el sistema.
+      caja_id: cajaOperativaId,
+      sucursal_id: sucursalOperativaId,
       fecha: timestamp,
     };
 
@@ -5405,43 +6207,40 @@ export default function App() {
     setConfirmCierreOpen(false);
     setEfectivoReal("");
 
-    // Fase 1 "Control de Dinero": cerrar caja SIEMPRE marca
-    // estado_caja como 'cerrada', sin importar el rol. El efecto es
-    // distinto según quién cierra: el admin sigue con acceso total
-    // (el gating de estado_caja solo bloquea al cajero); el cajero
-    // queda bloqueado hasta la próxima apertura. No se revierte el
-    // cierre ya guardado si esto falla — mismo criterio que el resto
-    // de la app (el dato importante ya quedó registrado).
-    // Mismo motivo que en abrirCaja: upsert en vez de update para que
-    // nunca sea un no-op silencioso si la fila id=1 no existía, y
-    // .select() para confirmar leyendo de vuelta lo que realmente
-    // quedó guardado en vez de confiar en "no hubo error".
-    const {
-      data: estadoCajaCloseData,
-      error: estadoCajaCloseError,
-    } = await supabase
-      .from("estado_caja")
-      .upsert({ id: 1, estado: "cerrada", cerrada_en: timestamp }, { onConflict: "id" })
+    // Cierra la fila de 'cajaOperativaId' en 'cajas' — la propia (si es
+    // el cajero) o la elegida desde el Gestor de Cajas (si es el
+    // admin). No se revierte el cierre ya guardado en 'cierres_caja' si
+    // esto falla — mismo criterio que el resto de la app (el dato
+    // importante ya quedó registrado). update (no upsert): la fila de
+    // 'cajas' siempre existe de antemano.
+    const { data: cajaCloseData, error: cajaCloseError } = await supabase
+      .from("cajas")
+      .update({ estado: "cerrada", cerrada_en: timestamp })
+      .eq("id", cajaOperativaId)
       .select()
       .maybeSingle();
 
-    if (estadoCajaCloseError) {
-      console.error("Error al cerrar estado_caja:", estadoCajaCloseError);
+    if (cajaCloseError) {
+      console.error("Error al cerrar la caja:", cajaCloseError);
       setCierreError(
         `El cierre se guardó, pero no se pudo actualizar el estado de la caja: ${
-          estadoCajaCloseError.message || "error desconocido"
+          cajaCloseError.message || "error desconocido"
         }. Recarga la página si el bloqueo no aparece.`
       );
-    } else if (!estadoCajaCloseData || estadoCajaCloseData.estado !== "cerrada") {
+    } else if (!cajaCloseData || cajaCloseData.estado !== "cerrada") {
       console.error(
-        "El cierre de estado_caja no se confirmó en Supabase. Fila leída de vuelta:",
-        estadoCajaCloseData
+        "El cierre de la caja no se confirmó en Supabase. Fila leída de vuelta:",
+        cajaCloseData
       );
       setCierreError(
         "El cierre se guardó, pero Supabase no confirmó que la caja quedara 'cerrada'. Recarga la página y verifica antes de asumir que el bloqueo del cajero está activo."
       );
     } else {
-      setEstadoCaja((prev) => (prev ? { ...prev, estado: "cerrada", cerradaEn: timestamp } : prev));
+      setCajas((prev) =>
+        prev.map((c) =>
+          c.id === cajaOperativaId ? { ...c, estado: "cerrada", cerradaEn: timestamp } : c
+        )
+      );
     }
   };
 
@@ -5472,7 +6271,7 @@ export default function App() {
       stats[m.key] = { todayTotal: 0, allTimeTotal: 0, entries: [] };
     });
 
-    comprobantes.forEach((c) => {
+    comprobantesVisibles.forEach((c) => {
       // Normaliza a MAYÚSCULAS: comprobantes viejos pudieron guardarse
       // como 'Yape'/'yape' en vez de 'YAPE' (con qué exactitud se
       // guardó cambió entre versiones del código) — sin esto, esas
@@ -5492,23 +6291,27 @@ export default function App() {
     });
 
     return stats;
-  }, [comprobantes, turnoCutoff]);
+  }, [comprobantesVisibles, turnoCutoff]);
 
   /* ---- saldos por cliente de la Libreta (Fiados): saldo positivo =
-     el cliente debe; saldo negativo = tiene crédito a favor. ---- */
+     el cliente debe; saldo negativo = tiene crédito a favor.
+     Multi-Sucursal: SIEMPRE a partir de las vistas *Visibles — esto
+     alimenta tanto el render de la Libreta como el LIFO de
+     cobrarFiado, así que un cliente/deuda de otra sucursal nunca
+     puede colarse acá. ---- */
   const clienteSaldos = useMemo(() => {
     const map = {};
-    clientes.forEach((c) => {
+    clientesVisibles.forEach((c) => {
       map[c.id] = { saldo: 0, items: [], pagos: [] };
     });
 
-    fiadoItems.forEach((fi) => {
+    fiadoItemsVisibles.forEach((fi) => {
       if (!map[fi.clienteId]) return;
       map[fi.clienteId].items.push(fi);
       map[fi.clienteId].saldo += fi.saldoRestante;
     });
 
-    movimientos.forEach((m) => {
+    movimientosVisibles.forEach((m) => {
       if (!map[m.clienteId]) return;
       if (m.tipo === "DEUDA") {
         // Compatibilidad con cuentas creadas antes de este rediseño
@@ -5525,7 +6328,7 @@ export default function App() {
     });
 
     return map;
-  }, [clientes, fiadoItems, movimientos]);
+  }, [clientesVisibles, fiadoItemsVisibles, movimientosVisibles]);
 
   /* ---- Top Clientes (ranking de fidelidad): SOLO cuentas reales de
      Cliente (authUserId != null — con PIN, nombre y teléfono, creadas
@@ -5543,9 +6346,13 @@ export default function App() {
      cliente, el Top 5 de productos favoritos (por veces comprado en
      fiado_items) y el saldo pendiente (mismo criterio que
      clienteSaldos) para el semáforo de deuda. ---- */
+  /* ---- Multi-Sucursal: ranking construido SIEMPRE a partir de las
+     vistas *Visibles (clientes/fiadoItems/movimientos de la sucursal
+     operativa) — un "Top Cliente" de otra sucursal nunca debe
+     aparecer acá. ---- */
   const topClientesRanking = useMemo(() => {
     const map = {};
-    clientes
+    clientesVisibles
       .filter((c) => c.authUserId)
       .forEach((c) => {
         map[c.id] = {
@@ -5559,7 +6366,7 @@ export default function App() {
         };
       });
 
-    fiadoItems.forEach((fi) => {
+    fiadoItemsVisibles.forEach((fi) => {
       const entry = map[fi.clienteId];
       if (!entry) return;
       entry.totalCompras += fi.monto;
@@ -5569,7 +6376,7 @@ export default function App() {
       entry.productos[label] = (entry.productos[label] || 0) + 1;
     });
 
-    movimientos.forEach((m) => {
+    movimientosVisibles.forEach((m) => {
       const entry = map[m.clienteId];
       if (!entry) return;
       if (m.tipo === "DEUDA") {
@@ -5593,7 +6400,7 @@ export default function App() {
       }))
       .filter((e) => e.totalConsumido > 0 || e.frecuencia > 0)
       .sort((a, b) => b.totalConsumido - a.totalConsumido || b.frecuencia - a.frecuencia);
-  }, [clientes, fiadoItems, movimientos]);
+  }, [clientesVisibles, fiadoItemsVisibles, movimientosVisibles]);
 
   /* ---- WhatsApp 1-click para un cliente del ranking: mensaje fijo,
      sobrio, sin nombre de empresa/branding. ---- */
@@ -5638,7 +6445,7 @@ export default function App() {
       stats[p.id] = { unitsSold: 0, revenue: 0, salesCount: 0 };
     });
 
-    sales.forEach((s) => {
+    salesVisibles.forEach((s) => {
       const match = Object.values(productsById).find(
         (p) => p.name === s.name && (p.detail || "") === (s.detail || "")
       );
@@ -5654,7 +6461,7 @@ export default function App() {
     });
 
     return stats;
-  }, [sales]);
+  }, [salesVisibles]);
 
   const bestSellerId = useMemo(() => {
     let best = null;
@@ -5781,16 +6588,41 @@ export default function App() {
     );
   }
 
-  /* ---- Fase 1 "Control de Dinero y Flujo de Sesión": gating de
-     acceso al POS según estado_caja, SOLO para el rol cajero — el
-     admin nunca queda bloqueado de esta forma, ve un modal de
-     apertura obligatorio en su lugar (más abajo, dentro del return
-     principal). 'estadoCaja' siempre está definido acá (loadedEstadoCaja
-     nunca es null, incluso si la tabla estuviera vacía). ---- */
+  /* ---- Reescritura Multi-Sucursal del "Control de Dinero y Flujo de
+     Sesión": gating de acceso al POS según la fila individual del
+     cajero en 'cajas' ('estadoCaja', derivado de 'miCaja' más arriba),
+     SOLO para el rol cajero. El admin YA NO queda bloqueado por
+     ninguna pantalla de caja en esta pasada — no tiene una caja propia
+     que abrir (ver Parte 3, Gestor de Cajas, para cuando pueda
+     abrir/cerrar la de cualquier sucursal). ---- */
   const cajaAbierta = estadoCaja?.estado === "abierta";
   const turnoYaConfirmado =
     !!estadoCaja?.abiertaEn && turnoConfirmadoEn === String(estadoCaja.abiertaEn);
 
+  // Defensivo: un cajero SIEMPRE debería traer 'caja_id' desde su
+  // perfil (create-cliente lo exige al crearlo) — pero si por lo que
+  // sea no lo trae (perfil viejo, dato corrupto), no tiene sentido
+  // mostrarle "Caja Cerrada, esperando apertura" (nunca podría abrir
+  // nada sin una fila de 'cajas' que le pertenezca): se le avisa
+  // explícitamente en vez de dejarlo atascado sin explicación.
+  if (isCajero && !authCajaId) {
+    return (
+      <div className="tz-root tz-caja-blocked">
+        <Styles />
+        <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
+        <Lock size={44} />
+        <h1>Sin Caja Asignada</h1>
+        <p>Tu cuenta no tiene una sucursal/caja asignada todavía. Pide al admin que te asigne una.</p>
+        <button className="tz-header-btn tz-caja-blocked-logout" onClick={signOut}>
+          <LogOut size={16} /> Cerrar sesión
+        </button>
+      </div>
+    );
+  }
+
+  /* ---- UX Bug 2: el cajero YA NO abre su propia caja — el admin la
+     abre (con el fondo inicial correcto) desde el Gestor de Cajas.
+     Esta pantalla vuelve a ser puramente pasiva, sin ningún input. ---- */
   if (isCajero && !cajaAbierta) {
     // Si turnoConfirmadoEn tiene algo guardado, este cajero ya había
     // confirmado un turno (el que justo se cerró) — el texto refleja
@@ -5803,7 +6635,11 @@ export default function App() {
         <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
         <Lock size={44} />
         <h1>{turnoFinalizado ? "Turno Finalizado" : "Caja Cerrada"}</h1>
-        <p>Caja Cerrada — {turnoFinalizado ? "hasta tu próximo turno." : "Esperando apertura."}</p>
+        <p>
+          {turnoFinalizado
+            ? "Tu turno anterior ya cerró — esperando a que el admin abra la caja de nuevo."
+            : "Esperando a que el admin abra tu caja desde el Gestor de Cajas."}
+        </p>
         <button className="tz-header-btn tz-caja-blocked-logout" onClick={signOut}>
           <LogOut size={16} /> Cerrar sesión
         </button>
@@ -5811,6 +6647,11 @@ export default function App() {
     );
   }
 
+  /* ---- UX Bug 2: pantalla de solo lectura — el fondo inicial ya lo
+     fijó el admin (ver 'estadoCaja.fondoInicial', que sale de
+     'miCaja', la fila de 'cajas' de este cajero). Dos botones:
+     "Confirmar Turno" (asume el monto correcto y entra) o "Reportar
+     mal conteo" (por ahora, solo un aviso — ver 'reportarMalConteo'). ---- */
   if (isCajero && cajaAbierta && !turnoYaConfirmado) {
     return (
       <div className="tz-root tz-caja-blocked">
@@ -5820,11 +6661,14 @@ export default function App() {
         <h1>Confirmar Turno</h1>
         <p>Caja abierta por {estadoCaja.abiertaPor || "el admin"}.</p>
         <div className="tz-caja-fondo-readonly">
-          <span>Fondo inicial</span>
+          <span>Fondo inicial (fijado por el admin)</span>
           <strong>{formatSoles(estadoCaja.fondoInicial ?? 0)}</strong>
         </div>
         <button className="tz-submit-btn" onClick={confirmarTurno}>
-          <Check size={16} /> Confirmar e Iniciar Turno
+          <Check size={16} /> Confirmar Turno
+        </button>
+        <button className="tz-caja-blocked-reportar" onClick={reportarMalConteo}>
+          <AlertTriangle size={16} /> Reportar mal conteo
         </button>
         <button className="tz-header-btn tz-caja-blocked-logout" onClick={signOut}>
           <LogOut size={16} /> Cerrar sesión
@@ -5837,57 +6681,35 @@ export default function App() {
     <div className="tz-root">
       <Styles />
 
-      {/* ---------------- MODAL OBLIGATORIO: APERTURA DE CAJA (solo admin) ----------------
-         Sin botón de cerrar ni backdrop clickeable — la caja tiene que
-         abrirse antes de poder hacer cualquier otra cosa. Solo se
-         dispara para isAdmin: el cajero nunca ve esto, para él la caja
-         cerrada es la pantalla de bloqueo de más arriba. */}
-      {isAdmin && !cajaAbierta && (
-        <div className="tz-modal-backdrop tz-caja-apertura-backdrop">
-          <div className="tz-modal">
-            <div className="tz-add-entry">
-              <h2>Apertura de Caja</h2>
-              <p className="tz-stock-editor-sub">
-                Cuenta el efectivo físico (billetes y monedas) con el que arranca el turno antes
-                de habilitar la caja.
-              </p>
-              <label className="tz-field-label">Fondo inicial (S/)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.10"
-                autoFocus
-                className="tz-amount-input"
-                placeholder="0.00"
-                value={fondoInicialInput}
-                onChange={(e) => setFondoInicialInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") abrirCaja();
-                }}
-              />
-              {aperturaError && <p className="tz-error">{aperturaError}</p>}
-              <button
-                className="tz-submit-btn"
-                onClick={abrirCaja}
-                disabled={aperturaSaving}
-                style={{ marginTop: 10 }}
-              >
-                {aperturaSaving ? (
-                  <Loader2 size={16} className="tz-spin" />
-                ) : (
-                  <DollarSign size={16} />
-                )}
-                Abrir Caja
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* El viejo modal obligatorio de "Apertura de Caja" para admin
+         (bloqueaba TODO detrás de un backdrop) fue retirado: el admin
+         ya no tiene una caja global propia que abrir — ver la
+         pantalla de bloqueo del cajero, más arriba, que ahora incluye
+         su propio formulario de apertura. Parte 3 (Gestor de Cajas)
+         le dará al admin su propia forma de abrir/cerrar la caja de
+         cualquier sucursal. */}
 
       {/* ---------------- HEADER ---------------- */}
       <header className="tz-header">
         <div className="tz-header-row">
           <div className="tz-header-side tz-header-side-left">
+            {/* Parte 3 "Gestor de Cajas": control total del admin sobre
+               CUALQUIER caja del sistema — arriba de "Fiados" según lo
+               pedido, exclusivo de admin (el cajero abre/cierra la
+               suya propia desde su pantalla de bloqueo). */}
+            {isAdmin && (
+              <button
+                className="tz-header-btn"
+                onClick={() => {
+                  setGestorCajaError("");
+                  setGestorCajasOpen(true);
+                }}
+                aria-label="Gestor de Cajas"
+              >
+                <Landmark size={19} />
+                <span className="tz-header-btn-label">Gestor de Cajas</span>
+              </button>
+            )}
             <button
               className="tz-header-btn"
               onClick={() => setLibretaOpen(true)}
@@ -5908,7 +6730,17 @@ export default function App() {
 
           <div className="tz-header-center">
             <LogoEasterEgg src={logo} alt="TONAZO!" className="tz-logo" />
-            <p className="tz-subtitle">Caja Registradora</p>
+            {/* UX Bug 3: subtítulo dinámico — el cajero siempre ve el
+               nombre de SU sucursal (fija, de su perfil); el admin ve la
+               que tenga activa en los dropdowns de arriba, o
+               "Administración Global" si todavía no eligió ninguna (en
+               vez de mostrar un texto estático genérico que no dice
+               nada sobre dónde está parado). */}
+            <p className="tz-subtitle">
+              {isCajero
+                ? sucursales.find((s) => s.id === authSucursalId)?.nombre || "Caja Registradora"
+                : sucursales.find((s) => s.id === sucursalActivaId)?.nombre || "Administración Global"}
+            </p>
             {/* Semáforo de conexión: exclusivo de admin/cajero — un
                cliente nunca llega a montar App.jsx (tiene su propia
                vista, ClienteFiadoView), pero este chequeo se deja
@@ -5999,9 +6831,120 @@ export default function App() {
         </div>
       </header>
 
+      {/* ---------------- Parte 3 "Filtros Superiores" (solo admin) ----------------
+         Localidad -> Sucursal/Caja, cascada real contra Supabase (nada
+         de mocks). Fija 'sucursalActivaId'/'cajaActivaId' — el estado
+         "qué sucursal está viendo/operando el admin ahora mismo". El
+         segundo dropdown solo aparece con una localidad elegida. */}
+      {isAdmin && (
+        <div className="tz-admin-filterbar">
+          <div className="tz-admin-filter-group">
+            <label className="tz-admin-filter-label">Localidad</label>
+            <div className="tz-admin-filter-row">
+              <select
+                className="tz-admin-filter-select"
+                value={localidadFiltroId}
+                onChange={(e) => {
+                  setLocalidadFiltroId(e.target.value);
+                  setCajaActivaId("");
+                  setSucursalActivaId("");
+                }}
+              >
+                <option value="">Selecciona localidad…</option>
+                {localidades.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.nombre}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="tz-admin-filter-add-btn"
+                title="Nueva localidad"
+                aria-label="Nueva localidad"
+                onClick={async () => {
+                  const id = await crearLocalidadRapida();
+                  if (id) setLocalidadFiltroId(id);
+                }}
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          </div>
+
+          {localidadFiltroId && (
+            <div className="tz-admin-filter-group">
+              <label className="tz-admin-filter-label">Sucursal / Caja</label>
+              <div className="tz-admin-filter-row">
+                <select
+                  className="tz-admin-filter-select"
+                  value={cajaActivaId}
+                  onChange={(e) => elegirCajaActiva(e.target.value)}
+                >
+                  <option value="">Selecciona sucursal/caja…</option>
+                  {sucursalesPorLocalidad(localidadFiltroId).flatMap((suc) =>
+                    cajasPorSucursal(suc.id).map((caja) => (
+                      <option key={caja.id} value={caja.id}>
+                        {suc.nombre} - {caja.nombre}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <button
+                  type="button"
+                  className="tz-admin-filter-add-btn"
+                  title="Nueva sucursal"
+                  aria-label="Nueva sucursal"
+                  onClick={async () => {
+                    const result = await crearSucursalRapida(localidadFiltroId);
+                    if (result?.cajaId) elegirCajaActiva(result.cajaId);
+                  }}
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {cajaActivaId &&
+            (() => {
+              const cajaSel = cajas.find((c) => c.id === cajaActivaId);
+              const sucSel = sucursales.find((s) => s.id === cajaSel?.sucursalId);
+              if (!cajaSel || !sucSel) return null;
+              return (
+                <span
+                  className={`tz-admin-filter-tag ${
+                    cajaSel.estado === "abierta" ? "is-abierta" : "is-cerrada"
+                  }`}
+                >
+                  <span className="tz-admin-filter-tag-dot" />
+                  {sucSel.nombre} - {cajaSel.nombre} ·{" "}
+                  {cajaSel.estado === "abierta" ? "Abierta" : "Cerrada"}
+                </span>
+              );
+            })()}
+        </div>
+      )}
+
       <main className="tz-main">
+        {/* ---------------- Partes 4/5: sin sucursal/caja activa elegida,
+           el admin no ve NINGÚN dato financiero — mejor "nada" que
+           mezclar sucursales por accidente. El resto del dashboard
+           (stats, historial, libreta, top clientes) solo se muestra con
+           'tieneVistaActiva' en true. ---- */}
+        {isAdmin && !tieneVistaActiva && (
+          <section className="tz-admin-sin-vista">
+            <Landmark size={32} />
+            <h2>Elige una sucursal</h2>
+            <p>
+              Selecciona una Localidad y una Sucursal/Caja arriba para ver su información —
+              ventas, fiados, cierres y catálogo son independientes por sucursal.
+            </p>
+          </section>
+        )}
+
         {/* ---------------- STATS (solo admin: info financiera) ---------------- */}
-        {isAdmin && (
+        {isAdmin && tieneVistaActiva && (
           <section className="tz-stats">
             <div className="tz-stat-chip">
               <span className="tz-stat-label">Recaudado hoy</span>
@@ -6330,27 +7273,18 @@ export default function App() {
                                   </button>
                                 </div>
                               )}
-                              {checked && !item.ventaPorPeso && (
-                                <div
-                                  className="tz-qty-stepper"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <button
-                                    onClick={() => changeQty(item, -1)}
-                                    disabled={qty <= 1}
-                                    aria-label="Disminuir cantidad"
-                                  >
-                                    <Minus size={14} />
-                                  </button>
-                                  <span>{qty}</span>
-                                  <button
-                                    onClick={() => changeQty(item, 1)}
-                                    disabled={qty >= avail}
-                                    aria-label="Aumentar cantidad"
-                                  >
-                                    <Plus size={14} />
-                                  </button>
-                                </div>
+                              {/* UX (limpieza visual de tarjetas): el
+                                 stepper [-][qty][+] que vivía acá se
+                                 retiró — ensuciaba la tarjeta del
+                                 catálogo. La tarjeta ahora SOLO agrega/
+                                 quita del carrito con un clic
+                                 (toggleProduct); ajustar la cantidad es
+                                 exclusivo del resumen del carrito
+                                 (CartRow, más abajo). Si está
+                                 seleccionado, se muestra la cantidad
+                                 como texto simple, sin controles. */}
+                              {checked && !item.ventaPorPeso && qty > 1 && (
+                                <span className="tz-card-qty-display">{qty} en el carrito</span>
                               )}
                               <div className="tz-price-block">
                                 <span className="tz-price-label">
@@ -6909,14 +7843,14 @@ export default function App() {
                     {/* ---- sub-flujo: Fiado (elegir o crear cliente) ---- */}
                     {checkoutMetodo === "FIADO" && (
                       <div className="tz-checkout-fiado">
-                        {clientes.length > 0 && !checkoutFiadoAddingNew && (
+                        {clientesVisibles.length > 0 && !checkoutFiadoAddingNew && (
                           <select
                             className="tz-text-input"
                             value={checkoutFiadoClienteId || ""}
                             onChange={(e) => setCheckoutFiadoClienteId(e.target.value || null)}
                           >
                             <option value="">Elige un cliente…</option>
-                            {clientes.map((c) => (
+                            {clientesVisibles.map((c) => (
                               <option key={c.id} value={c.id}>
                                 {c.nombre}
                               </option>
@@ -6988,7 +7922,7 @@ export default function App() {
                           <p className="tz-checkout-fiado-selected">
                             <Check size={13} /> Se fiará a{" "}
                             <strong>
-                              {clientes.find((c) => c.id === checkoutFiadoClienteId)?.nombre}
+                              {clientesVisibles.find((c) => c.id === checkoutFiadoClienteId)?.nombre}
                             </strong>
                           </p>
                         )}
@@ -7069,7 +8003,7 @@ export default function App() {
             <h2>Historial de Ventas</h2>
           </div>
 
-          {sales.length === 0 ? (
+          {salesVisibles.length === 0 ? (
             <div className="tz-empty">
               <p>Todavía no se registró ninguna venta.</p>
               <p className="tz-empty-sub">
@@ -7098,7 +8032,7 @@ export default function App() {
                        recientes ('sales' ya viene ordenado del más
                        nuevo al más viejo) — evita que este historial
                        empuje el resto del dashboard hacia abajo. */}
-                    {(historialExpanded ? sales : sales.slice(0, 5)).map((s) => (
+                    {(historialExpanded ? salesVisibles : salesVisibles.slice(0, 5)).map((s) => (
                       <tr key={s.saleId}>
                         <td className="tz-id-cell">{s.purchaseId}</td>
                         <td>{s.name}</td>
@@ -7124,7 +8058,7 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
-              {sales.length > 5 && (
+              {salesVisibles.length > 5 && (
                 <button
                   type="button"
                   className="tz-history-toggle-btn"
@@ -7133,7 +8067,7 @@ export default function App() {
                   {historialExpanded ? (
                     <>🔼 Ocultar</>
                   ) : (
-                    <>🔽 Ver historial completo ({sales.length})</>
+                    <>🔽 Ver historial completo ({salesVisibles.length})</>
                   )}
                 </button>
               )}
@@ -7149,18 +8083,26 @@ export default function App() {
          documento, al final de la página — igual que ya se hizo con
          el header — así es estructuralmente imposible que tapen nada. */}
       <footer className="tz-page-footer">
-        <button
-          className="tz-footer-btn tz-footer-btn-cierre"
-          onClick={() => {
-            setCierreModalOpen(true);
-            setConfirmCierreOpen(false);
-            setCierreError("");
-            setEfectivoReal("");
-          }}
-        >
-          <Receipt size={18} />
-          Cerrar Caja
-        </button>
+        {/* "Cerrar Caja" ahora es exclusivo del cajero: cierra SU
+           PROPIA fila en 'cajas' (ver ejecutarCierre). El admin ya no
+           tiene una caja global que cerrar desde acá — Parte 3
+           (Gestor de Cajas) le dará su propia forma de cerrar la caja
+           de cualquier sucursal. El aviso/badge que antes vivía en
+           este botón para el admin se retiró junto con el botón. */}
+        {isCajero && (
+          <button
+            className="tz-footer-btn tz-footer-btn-cierre"
+            onClick={() => {
+              setCierreModalOpen(true);
+              setConfirmCierreOpen(false);
+              setCierreError("");
+              setEfectivoReal("");
+            }}
+          >
+            <Receipt size={18} />
+            Cerrar Caja
+          </button>
+        )}
         <button
           className="tz-footer-btn tz-footer-btn-gastos"
           onClick={() => {
@@ -7196,6 +8138,188 @@ export default function App() {
           Productos
         </button>
       </footer>
+
+      {/* ---------------- MODAL: GESTOR DE CAJAS (Parte 3, solo admin) ----------------
+         Control total sobre TODAS las cajas del sistema, agrupadas por
+         Localidad -> Sucursal. Reutiliza 'localidades'/'sucursales'/
+         'cajas' (mismo array que ya mantiene fresco el useEffect de
+         Realtime sobre 'cajas' — abrir/cerrar desde OTRO dispositivo,
+         incluido el propio cajero cerrando su turno, se refleja acá
+         solo, sin F5). */}
+      {isAdmin && gestorCajasOpen && (
+        <div className="tz-modal-backdrop" onClick={() => setGestorCajasOpen(false)}>
+          <div className="tz-modal tz-modal-wide tz-modal-gestor-cajas" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="tz-modal-close"
+              onClick={() => setGestorCajasOpen(false)}
+              aria-label="Cerrar"
+            >
+              <X size={18} />
+            </button>
+            <div className="tz-gc-header-row">
+              <h2>
+                <Landmark size={17} /> Gestor de Cajas
+              </h2>
+              {/* Reubicado desde el header principal: el admin puede
+                 abrir el Historial de Cierres sin salir del entorno de
+                 gestión de cajas. */}
+              <button
+                type="button"
+                className="tz-csv-btn"
+                onClick={() => {
+                  setGestorCajasOpen(false);
+                  setHistorialCierresOpen(true);
+                }}
+              >
+                <Receipt size={13} /> Historial de Cierres
+              </button>
+            </div>
+            <p className="tz-stock-editor-sub">
+              Abre o cierra la caja de cualquier sucursal. Cerrar acá es un control
+              administrativo directo — no reemplaza el arqueo de cierre del cajero.
+            </p>
+
+            {jerarquiaError && <p className="tz-error">{jerarquiaError}</p>}
+            {gestorCajaError && <p className="tz-error">{gestorCajaError}</p>}
+
+            {localidades.length === 0 && !jerarquiaError && (
+              <p className="tz-stock-editor-sub">Cargando localidades…</p>
+            )}
+
+            <div className="tz-gc-list">
+              {localidades.map((loc) => (
+                <div key={loc.id} className="tz-gc-localidad">
+                  <h3 className="tz-gc-localidad-title">{loc.nombre}</h3>
+                  {sucursalesPorLocalidad(loc.id).map((suc) => (
+                    <div key={suc.id} className="tz-gc-sucursal">
+                      {renombrandoSucursalId === suc.id ? (
+                        <div className="tz-gc-sucursal-rename">
+                          <input
+                            type="text"
+                            className="tz-text-input"
+                            value={renombrarSucursalValor}
+                            autoFocus
+                            onChange={(e) => setRenombrarSucursalValor(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") guardarRenombreSucursal(suc);
+                              if (e.key === "Escape") cancelRenombrarSucursal();
+                            }}
+                          />
+                          <button
+                            type="button"
+                            className="tz-gc-btn tz-gc-btn-abrir"
+                            disabled={renombrarSucursalSaving}
+                            onClick={() => guardarRenombreSucursal(suc)}
+                          >
+                            {renombrarSucursalSaving ? (
+                              <Loader2 size={13} className="tz-spin" />
+                            ) : (
+                              <Check size={13} />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            className="tz-camera-cancel"
+                            onClick={cancelRenombrarSucursal}
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ) : (
+                        <h4 className="tz-gc-sucursal-title">
+                          {suc.nombre}
+                          <button
+                            type="button"
+                            className="tz-gc-sucursal-edit-btn"
+                            title="Renombrar sucursal"
+                            aria-label="Renombrar sucursal"
+                            onClick={() => startRenombrarSucursal(suc)}
+                          >
+                            <Pencil size={12} />
+                          </button>
+                        </h4>
+                      )}
+                      {cajasPorSucursal(suc.id).map((caja) => {
+                        const abierta = caja.estado === "abierta";
+                        const saving = gestorCajaSaving === caja.id;
+                        return (
+                          <div key={caja.id} className="tz-gc-caja-row">
+                            <div className="tz-gc-caja-info">
+                              <span className="tz-gc-caja-nombre">{caja.nombre}</span>
+                              <span
+                                className={`tz-gc-caja-estado ${
+                                  abierta ? "is-abierta" : "is-cerrada"
+                                }`}
+                              >
+                                {abierta ? "Abierta" : "Cerrada"}
+                              </span>
+                              {abierta && (
+                                <span className="tz-gc-caja-meta">
+                                  Fondo {formatSoles(caja.montoInicial)}
+                                  {caja.abiertaPor ? ` · ${caja.abiertaPor}` : ""}
+                                </span>
+                              )}
+                            </div>
+
+                            {abierta ? (
+                              <button
+                                className="tz-gc-btn tz-gc-btn-cerrar"
+                                onClick={() => abrirArqueoDesdeGestor(caja)}
+                              >
+                                <Receipt size={14} />
+                                Cerrar Caja
+                              </button>
+                            ) : (
+                              <div className="tz-gc-abrir-form">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.10"
+                                  placeholder="Fondo inicial (S/)"
+                                  className="tz-text-input tz-gc-monto-input"
+                                  value={gestorCajaMontoInputs[caja.id] ?? ""}
+                                  onChange={(e) =>
+                                    setGestorCajaMontoInputs((prev) => ({
+                                      ...prev,
+                                      [caja.id]: e.target.value,
+                                    }))
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") iniciarCajaDesdeGestor(caja);
+                                  }}
+                                />
+                                <button
+                                  className="tz-gc-btn tz-gc-btn-abrir"
+                                  disabled={saving}
+                                  onClick={() => iniciarCajaDesdeGestor(caja)}
+                                >
+                                  {saving ? (
+                                    <Loader2 size={14} className="tz-spin" />
+                                  ) : (
+                                    <DollarSign size={14} />
+                                  )}
+                                  Iniciar Caja
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            {/* UX Bug 1: el mini "Historial de Cierres" que vivía acá
+               (agregado en la pasada anterior, cuando el admin no tenía
+               NINGÚN acceso al arqueo) se retiró — "Cerrar Caja" de
+               arriba ahora abre el modal completo, con su propio
+               Historial de Cierres detallado (export, WhatsApp, etc.),
+               así que mantener los dos aquí adentro sería duplicado. */}
+          </div>
+        </div>
+      )}
 
       {productManagerOpen && (
         <ProductManagerModal
@@ -8219,44 +9343,143 @@ export default function App() {
                 <p className="tz-method-history-empty">Todavía no hay cajeros ni clientes registrados.</p>
               ) : (
                 <ul className="tz-history-rows">
-                  {cajeros.map((c) => (
-                    <li key={c.id} className="tz-history-row">
-                      <div className="tz-history-row-head" style={{ cursor: "default" }}>
-                        <Users size={14} />
-                        <span>{c.nombre || "(sin nombre)"}</span>
-                        <span
-                          className={`tz-metodo-tag ${
-                            c.role === "cajero" ? "tz-metodo-tag-yape" : "tz-metodo-tag-otros"
-                          }`}
-                          style={{ marginLeft: "auto" }}
-                        >
-                          {c.role === "cajero" ? "Cajero" : "Cliente"}
-                        </span>
-                      </div>
-                      <div className="tz-usuario-row-actions">
-                        <button
-                          type="button"
-                          className="tz-camera-cancel tz-usuario-action-btn"
-                          onClick={() => openPinModal(c)}
-                        >
-                          <Lock size={13} /> Cambiar PIN
-                        </button>
-                        <button
-                          type="button"
-                          className="tz-camera-cancel tz-usuario-action-btn tz-usuario-delete-btn"
-                          onClick={() => eliminarUsuarioAuth(c)}
-                          disabled={deletingUsuarioId === c.id}
-                        >
-                          {deletingUsuarioId === c.id ? (
-                            <Loader2 size={13} className="tz-spin" />
-                          ) : (
-                            <Trash2 size={13} />
+                  {cajeros.map((c) => {
+                    const cSucursal = sucursales.find((s) => s.id === c.sucursalId);
+                    const cCaja = cajas.find((cj) => cj.id === c.cajaId);
+                    return (
+                      <li key={c.id} className="tz-history-row">
+                        <div className="tz-history-row-head" style={{ cursor: "default" }}>
+                          <Users size={14} />
+                          <span>{c.nombre || "(sin nombre)"}</span>
+                          <span
+                            className={`tz-metodo-tag ${
+                              c.role === "cajero" ? "tz-metodo-tag-yape" : "tz-metodo-tag-otros"
+                            }`}
+                            style={{ marginLeft: "auto" }}
+                          >
+                            {c.role === "cajero" ? "Cajero" : "Cliente"}
+                          </span>
+                        </div>
+                        {c.role === "cajero" && (
+                          <p className="tz-stock-editor-sub" style={{ margin: "2px 0 0" }}>
+                            {cSucursal ? `${cSucursal.nombre} · ${cCaja?.nombre ?? "sin caja"}` : "Sin sucursal asignada"}
+                          </p>
+                        )}
+                        {c.role === "cajero" && reasignandoId === c.id && (
+                          <div className="tz-add-entry" style={{ marginTop: 8 }}>
+                            <label className="tz-field-label">Localidad</label>
+                            <div className="tz-admin-filter-row">
+                              <select
+                                className="tz-text-input"
+                                value={reasignarLocalidadId}
+                                onChange={(e) => {
+                                  setReasignarLocalidadId(e.target.value);
+                                  setReasignarSucursalId("");
+                                }}
+                              >
+                                <option value="">Elige una localidad…</option>
+                                {localidades.map((l) => (
+                                  <option key={l.id} value={l.id}>
+                                    {l.nombre}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                className="tz-admin-filter-add-btn"
+                                title="Nueva localidad"
+                                aria-label="Nueva localidad"
+                                onClick={async () => {
+                                  const id = await crearLocalidadRapida();
+                                  if (id) setReasignarLocalidadId(id);
+                                }}
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                            <label className="tz-field-label">Sucursal</label>
+                            <div className="tz-admin-filter-row">
+                              <select
+                                className="tz-text-input"
+                                value={reasignarSucursalId}
+                                onChange={(e) => setReasignarSucursalId(e.target.value)}
+                                disabled={!reasignarLocalidadId}
+                              >
+                                <option value="">Elige una sucursal…</option>
+                                {sucursalesPorLocalidad(reasignarLocalidadId).map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.nombre}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                className="tz-admin-filter-add-btn"
+                                title="Nueva sucursal"
+                                aria-label="Nueva sucursal"
+                                disabled={!reasignarLocalidadId}
+                                onClick={async () => {
+                                  const result = await crearSucursalRapida(reasignarLocalidadId);
+                                  if (result?.sucursalId) setReasignarSucursalId(result.sucursalId);
+                                }}
+                              >
+                                <Plus size={14} />
+                              </button>
+                            </div>
+                            <div className="tz-add-entry-actions">
+                              <button className="tz-camera-cancel" onClick={cancelReasignar}>
+                                Cancelar
+                              </button>
+                              <button
+                                className="tz-pw-submit tz-payment-save"
+                                onClick={() => guardarReasignacion(c)}
+                                disabled={reasignarSaving}
+                              >
+                                {reasignarSaving ? (
+                                  <Loader2 size={16} className="tz-spin" />
+                                ) : (
+                                  <>
+                                    <Check size={16} /> Guardar
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        <div className="tz-usuario-row-actions">
+                          {c.role === "cajero" && reasignandoId !== c.id && (
+                            <button
+                              type="button"
+                              className="tz-camera-cancel tz-usuario-action-btn"
+                              onClick={() => startReasignar(c)}
+                            >
+                              <MapPin size={13} /> Reasignar Sucursal
+                            </button>
                           )}
-                          Eliminar
-                        </button>
-                      </div>
-                    </li>
-                  ))}
+                          <button
+                            type="button"
+                            className="tz-camera-cancel tz-usuario-action-btn"
+                            onClick={() => openPinModal(c)}
+                          >
+                            <Lock size={13} /> Cambiar PIN
+                          </button>
+                          <button
+                            type="button"
+                            className="tz-camera-cancel tz-usuario-action-btn tz-usuario-delete-btn"
+                            onClick={() => eliminarUsuarioAuth(c)}
+                            disabled={deletingUsuarioId === c.id}
+                          >
+                            {deletingUsuarioId === c.id ? (
+                              <Loader2 size={13} className="tz-spin" />
+                            ) : (
+                              <Trash2 size={13} />
+                            )}
+                            Eliminar
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
 
@@ -8295,6 +9518,68 @@ export default function App() {
                     value={newCajeroPin}
                     onChange={(e) => setNewCajeroPin(e.target.value)}
                   />
+                  <label className="tz-field-label">Localidad</label>
+                  <div className="tz-admin-filter-row">
+                    <select
+                      className="tz-text-input"
+                      value={newCajeroLocalidadId}
+                      onChange={(e) => {
+                        setNewCajeroLocalidadId(e.target.value);
+                        setNewCajeroSucursalId("");
+                      }}
+                    >
+                      <option value="">Elige una localidad…</option>
+                      {localidades.map((l) => (
+                        <option key={l.id} value={l.id}>
+                          {l.nombre}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="tz-admin-filter-add-btn"
+                      title="Nueva localidad"
+                      aria-label="Nueva localidad"
+                      onClick={async () => {
+                        const id = await crearLocalidadRapida();
+                        if (id) setNewCajeroLocalidadId(id);
+                      }}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                  <label className="tz-field-label">Sucursal</label>
+                  <div className="tz-admin-filter-row">
+                    <select
+                      className="tz-text-input"
+                      value={newCajeroSucursalId}
+                      onChange={(e) => setNewCajeroSucursalId(e.target.value)}
+                      disabled={!newCajeroLocalidadId}
+                    >
+                      <option value="">
+                        {newCajeroLocalidadId ? "Elige una sucursal…" : "Elige primero una localidad"}
+                      </option>
+                      {sucursalesPorLocalidad(newCajeroLocalidadId).map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.nombre}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="tz-admin-filter-add-btn"
+                      title="Nueva sucursal"
+                      aria-label="Nueva sucursal"
+                      disabled={!newCajeroLocalidadId}
+                      onClick={async () => {
+                        const result = await crearSucursalRapida(newCajeroLocalidadId);
+                        if (result?.sucursalId) setNewCajeroSucursalId(result.sucursalId);
+                      }}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                  {jerarquiaError && <p className="tz-error">{jerarquiaError}</p>}
                   {cajeroError && <p className="tz-error">{cajeroError}</p>}
                   <div className="tz-add-entry-actions">
                     <button className="tz-camera-cancel" onClick={resetCajeroForm}>
@@ -8503,16 +9788,16 @@ export default function App() {
 
               {/* ---- pagos pendientes: comprobantes subidos por clientes,
                  esperando aprobación. La deuda NO se toca hasta Aprobar. ---- */}
-              {pagosPendientes.length > 0 && (
+              {pagosPendientesVisibles.length > 0 && (
                 <div className="tz-method-history">
                   <span className="tz-method-history-label">
-                    Pagos pendientes de aprobación ({pagosPendientes.length})
+                    Pagos pendientes de aprobación ({pagosPendientesVisibles.length})
                   </span>
                   {pagosPendientesError && <p className="tz-error">{pagosPendientesError}</p>}
                   <ul className="tz-history-rows">
-                    {pagosPendientes.map((pago) => {
+                    {pagosPendientesVisibles.map((pago) => {
                       const clienteNombre =
-                        clientes.find((c) => c.id === pago.clienteId)?.nombre || "Cliente";
+                        clientesVisibles.find((c) => c.id === pago.clienteId)?.nombre || "Cliente";
                       const resolving = resolvingPagoId === pago.id;
                       return (
                         <li key={pago.id} className="tz-history-row">
@@ -8557,7 +9842,7 @@ export default function App() {
                 </div>
               )}
 
-              {clientes.length === 0 && !addClienteOpen ? (
+              {clientesVisibles.length === 0 && !addClienteOpen ? (
                 /* ---- estado vacío ---- */
                 <div className="tz-libreta-empty">
                   <p className="tz-method-history-empty">
@@ -8572,7 +9857,7 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  {clientes.length > 0 && (
+                  {clientesVisibles.length > 0 && (
                     <div className="tz-method-totals">
                       <div className="tz-method-total">
                         <span>Por cobrar</span>
@@ -8580,7 +9865,7 @@ export default function App() {
                       </div>
                       <div className="tz-method-total">
                         <span>Clientes</span>
-                        <strong>{clientes.length}</strong>
+                        <strong>{clientesVisibles.length}</strong>
                       </div>
                     </div>
                   )}
@@ -8641,11 +9926,11 @@ export default function App() {
                   )}
 
                   {/* ---- lista de clientes ---- */}
-                  {clientes.length > 0 && (
+                  {clientesVisibles.length > 0 && (
                   <div className="tz-method-history">
                     <span className="tz-method-history-label">Clientes</span>
                     <ul className="tz-history-rows">
-                      {clientes.map((c) => {
+                      {clientesVisibles.map((c) => {
                         const info = clienteSaldos[c.id] || {
                           saldo: 0,
                           movimientos: [],
@@ -9067,22 +10352,22 @@ export default function App() {
                 <div className="tz-method-total">
                   <span>Histórico</span>
                   <strong>
-                    {formatSoles(movimientos.reduce((sum, m) => sum + m.monto, 0))}
+                    {formatSoles(movimientosVisibles.reduce((sum, m) => sum + m.monto, 0))}
                   </strong>
                 </div>
               </div>
 
               <div className="tz-method-history">
                 <span className="tz-method-history-label">Historial de cobros</span>
-                {movimientos.length === 0 ? (
+                {movimientosVisibles.length === 0 ? (
                   <p className="tz-method-history-empty">
                     Aún no se registró ningún cobro de fiado.
                   </p>
                 ) : (
                   <ul className="tz-history-rows">
-                    {movimientos.map((m) => {
+                    {movimientosVisibles.map((m) => {
                       const clienteNombre =
-                        clientes.find((c) => c.id === m.clienteId)?.nombre || "Cliente";
+                        clientesVisibles.find((c) => c.id === m.clienteId)?.nombre || "Cliente";
                       const rowOpen = expandedFiadoPagoId === m.id;
                       return (
                         <li key={m.id} className="tz-history-row">
@@ -9733,6 +11018,20 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* "Enviar Resumen a WhatsApp" es sobre el TURNO ACTUAL
+                     (todavía no cerrado) — se queda acá, no se movió al
+                     Historial de Cierres junto con la lista de cierres
+                     PASADOS (eso sí es otra cosa, ver el nuevo modal). */}
+                  <div className="tz-export-buttons">
+                    <button
+                      type="button"
+                      className="tz-csv-btn"
+                      onClick={enviarResumenCierrePorWhatsApp}
+                    >
+                      <MessageCircle size={13} /> 📲 Enviar Resumen a WhatsApp
+                    </button>
+                  </div>
+
                   {!confirmCierreOpen ? (
                     <button
                       className="tz-scan-btn tz-add-entry-toggle"
@@ -9784,103 +11083,6 @@ export default function App() {
                           )}
                           Sí, cerrar turno
                         </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ---- historial de cierres pasados, estilo ticket neón —
-                     solo admin: son cifras financieras (recaudado, gastos,
-                     ganancia neta, arqueo), lo mismo que el resto del
-                     desglose de acá arriba. ---- */}
-                  {cierres.length > 0 && (
-                    <div className="tz-method-history">
-                      <span className="tz-method-history-label">Historial de cierres</span>
-                      <div className="tz-export-buttons">
-                        <button
-                          type="button"
-                          className="tz-csv-btn"
-                          onClick={exportHistorialCierresXLSX}
-                        >
-                          <Download size={13} /> 📥 Exportar Historial de Cierres
-                        </button>
-                      </div>
-                      <div className="tz-export-buttons">
-                        <button
-                          type="button"
-                          className="tz-csv-btn"
-                          onClick={enviarResumenCierrePorWhatsApp}
-                        >
-                          <MessageCircle size={13} /> 📲 Enviar Resumen a WhatsApp
-                        </button>
-                      </div>
-                      <div className="tz-cierre-list">
-                        {cierres.map((c) => (
-                          <div key={c.id} className="tz-receipt tz-receipt-compact">
-                            <div className="tz-receipt-header">
-                              <span className="tz-receipt-title">Cierre</span>
-                              <span className="tz-receipt-date">
-                                {formatDate(c.timestamp)} · {formatTime(c.timestamp)}
-                              </span>
-                            </div>
-                            <div className="tz-receipt-divider" />
-                            {c.fondoInicial != null && (
-                              <div className="tz-receipt-row">
-                                <span>Fondo Inicial</span>
-                                <strong>{formatSoles(c.fondoInicial)}</strong>
-                              </div>
-                            )}
-                            <div className="tz-receipt-row">
-                              <span>Recaudado</span>
-                              <strong>{formatSoles(c.recaudadoTotal)}</strong>
-                            </div>
-                            <div className="tz-receipt-row">
-                              <span>Ventas</span>
-                              <strong>{c.ventasRegistradas}</strong>
-                            </div>
-                            <div className="tz-receipt-row">
-                              <span>Gastos</span>
-                              <strong>{formatSoles(c.gastosTotal)}</strong>
-                            </div>
-                            <div className="tz-receipt-divider" />
-                            {c.gananciaVentas != null ? (
-                              <>
-                                <div className="tz-receipt-row">
-                                  <span>Ganancia Neta (Ventas)</span>
-                                  <strong>{formatSoles(c.gananciaVentas)}</strong>
-                                </div>
-                                <div className="tz-receipt-row tz-receipt-total">
-                                  <span>Ganancia Neta (Fiados)</span>
-                                  <strong>{formatSoles(c.gananciaFiados)}</strong>
-                                </div>
-                              </>
-                            ) : (
-                              <div className="tz-receipt-row tz-receipt-total">
-                                <span>Ganancia Neta</span>
-                                <strong>{formatSoles(c.gananciaNeta)}</strong>
-                              </div>
-                            )}
-                            {c.efectivoReal != null && (
-                              <div className="tz-receipt-row">
-                                <span>Arqueo</span>
-                                <strong
-                                  className={
-                                    Math.abs(c.diferencia) <= 0.009
-                                      ? "tz-arqueo-ok"
-                                      : c.diferencia < 0
-                                      ? "tz-arqueo-faltante"
-                                      : "tz-arqueo-sobrante"
-                                  }
-                                >
-                                  {Math.abs(c.diferencia) <= 0.009
-                                    ? "Cuadrada"
-                                    : `${c.diferencia < 0 ? "Faltante" : "Sobrante"} ${formatSoles(
-                                        Math.abs(c.diferencia)
-                                      )}`}
-                                </strong>
-                              </div>
-                            )}
-                          </div>
-                        ))}
                       </div>
                     </div>
                   )}
@@ -9936,6 +11138,164 @@ export default function App() {
                     </button>
                   </div>
                 </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- MODAL: HISTORIAL DE CIERRES (solo admin) ----------------
+         División de UI: separado del "Cierre de Caja" (ese ahora solo
+         hace el arqueo del turno actual) — este es puramente de
+         consulta/auditoría, con SUS PROPIOS filtros de Localidad/
+         Sucursal (independientes de los de arriba, ver el comentario
+         en 'historialCierresOpen'). Alimentado por 'cierres' (el array
+         RAW, sin filtrar) + la suscripción de Realtime a 'cierres_caja'
+         que ya corre desde que se monta App — nunca hace falta F5. */}
+      {isAdmin && historialCierresOpen && (
+        <div className="tz-modal-backdrop" onClick={() => setHistorialCierresOpen(false)}>
+          <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="tz-modal-close"
+              onClick={() => setHistorialCierresOpen(false)}
+              aria-label="Cerrar"
+            >
+              <X size={18} />
+            </button>
+            <div className="tz-payment-modal">
+              <h2>
+                <Receipt size={17} /> Historial de Cierres
+              </h2>
+
+              <div className="tz-admin-filterbar" style={{ padding: 0, background: "none", border: "none" }}>
+                <div className="tz-admin-filter-group">
+                  <label className="tz-admin-filter-label">Localidad</label>
+                  <select
+                    className="tz-admin-filter-select"
+                    value={historialCierresLocalidadId}
+                    onChange={(e) => {
+                      setHistorialCierresLocalidadId(e.target.value);
+                      setHistorialCierresCajaId("");
+                    }}
+                  >
+                    <option value="">Todas</option>
+                    {localidades.map((loc) => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {historialCierresLocalidadId && (
+                  <div className="tz-admin-filter-group">
+                    <label className="tz-admin-filter-label">Sucursal / Caja</label>
+                    <select
+                      className="tz-admin-filter-select"
+                      value={historialCierresCajaId}
+                      onChange={(e) => setHistorialCierresCajaId(e.target.value)}
+                    >
+                      <option value="">Todas</option>
+                      {sucursalesPorLocalidad(historialCierresLocalidadId).flatMap((suc) =>
+                        cajasPorSucursal(suc.id).map((caja) => (
+                          <option key={caja.id} value={caja.id}>
+                            {suc.nombre} - {caja.nombre}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {cierresFiltradosHistorial.length === 0 ? (
+                <p className="tz-method-history-empty">Todavía no hay cierres registrados acá.</p>
+              ) : (
+                <div className="tz-method-history">
+                  <div className="tz-export-buttons">
+                    <button
+                      type="button"
+                      className="tz-csv-btn"
+                      onClick={exportHistorialCierresXLSX}
+                    >
+                      <Download size={13} /> 📥 Exportar Historial de Cierres
+                    </button>
+                  </div>
+                  <div className="tz-cierre-list">
+                    {cierresFiltradosHistorial.map((c) => {
+                      const cajaDeC = cajas.find((cj) => cj.id === c.cajaId);
+                      const sucDeC = sucursales.find((s) => s.id === cajaDeC?.sucursalId);
+                      return (
+                        <div key={c.id} className="tz-receipt tz-receipt-compact">
+                          <div className="tz-receipt-header">
+                            <span className="tz-receipt-title">
+                              Cierre{sucDeC ? ` · ${sucDeC.nombre}` : ""}
+                            </span>
+                            <span className="tz-receipt-date">
+                              {formatDate(c.timestamp)} · {formatTime(c.timestamp)}
+                            </span>
+                          </div>
+                          <div className="tz-receipt-divider" />
+                          {c.fondoInicial != null && (
+                            <div className="tz-receipt-row">
+                              <span>Fondo Inicial</span>
+                              <strong>{formatSoles(c.fondoInicial)}</strong>
+                            </div>
+                          )}
+                          <div className="tz-receipt-row">
+                            <span>Recaudado</span>
+                            <strong>{formatSoles(c.recaudadoTotal)}</strong>
+                          </div>
+                          <div className="tz-receipt-row">
+                            <span>Ventas</span>
+                            <strong>{c.ventasRegistradas}</strong>
+                          </div>
+                          <div className="tz-receipt-row">
+                            <span>Gastos</span>
+                            <strong>{formatSoles(c.gastosTotal)}</strong>
+                          </div>
+                          <div className="tz-receipt-divider" />
+                          {c.gananciaVentas != null ? (
+                            <>
+                              <div className="tz-receipt-row">
+                                <span>Ganancia Neta (Ventas)</span>
+                                <strong>{formatSoles(c.gananciaVentas)}</strong>
+                              </div>
+                              <div className="tz-receipt-row tz-receipt-total">
+                                <span>Ganancia Neta (Fiados)</span>
+                                <strong>{formatSoles(c.gananciaFiados)}</strong>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="tz-receipt-row tz-receipt-total">
+                              <span>Ganancia Neta</span>
+                              <strong>{formatSoles(c.gananciaNeta)}</strong>
+                            </div>
+                          )}
+                          {c.efectivoReal != null && (
+                            <div className="tz-receipt-row">
+                              <span>Arqueo</span>
+                              <strong
+                                className={
+                                  Math.abs(c.diferencia) <= 0.009
+                                    ? "tz-arqueo-ok"
+                                    : c.diferencia < 0
+                                    ? "tz-arqueo-faltante"
+                                    : "tz-arqueo-sobrante"
+                                }
+                              >
+                                {Math.abs(c.diferencia) <= 0.009
+                                  ? "Cuadrada"
+                                  : `${c.diferencia < 0 ? "Faltante" : "Sobrante"} ${formatSoles(
+                                      Math.abs(c.diferencia)
+                                    )}`}
+                              </strong>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
           </div>

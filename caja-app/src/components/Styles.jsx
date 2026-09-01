@@ -134,6 +134,26 @@ export default function Styles() {
       .tz-caja-blocked-logout { margin-top: 14px; }
       .tz-caja-apertura-backdrop { cursor: default; }
       .tz-caja-blocked .tz-submit-btn { width: auto; min-width: 240px; }
+      /* UX Bug 2: "Reportar mal conteo" — secundario, nunca compite
+         visualmente con "Confirmar Turno" (la acción esperada). */
+      .tz-caja-blocked-reportar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 10px;
+        padding: 10px 18px;
+        min-width: 240px;
+        background: transparent;
+        border: 1px solid rgba(255,149,0,0.4);
+        border-radius: 999px;
+        color: var(--orange);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .tz-caja-blocked-reportar:hover { background: rgba(255,149,0,0.1); }
 
       /* ---------- HEADER ---------- */
       /* El logo y el texto ya NO son una barra fija/flotante: viven en el
@@ -391,6 +411,138 @@ export default function Styles() {
         overflow-x: visible;
       }
 
+      /* ---------- FILTROS SUPERIORES (Parte 3, solo admin — y el
+         filtro público de sucursal del catálogo, que reusa esta misma
+         clase) ----------
+         Barra oscura con borde/glow cyan — mismo lenguaje "premium
+         cyberpunk" que ya usa el resto de la app (--panel-solid +
+         var(--cyan)), no un estilo nuevo aislado.
+         Mobile-first (equivalente a 'flex flex-col md:flex-row
+         justify-center items-center gap-4'): en pantallas angostas los
+         filtros caen en una sola columna, cada uno ocupando el ancho
+         disponible (mejor para tocar) — desde 768px (el 'md:' de
+         Tailwind) vuelven a la fila horizontal, siempre CENTRADA (antes
+         quedaba pegada a la izquierda). */
+      .tz-admin-filterbar {
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 14px 16px;
+        background: linear-gradient(180deg, rgba(43,232,255,0.06), rgba(10,7,22,0.4));
+        border-bottom: 1px solid rgba(43,232,255,0.22);
+        box-shadow: 0 4px 24px rgba(43,232,255,0.08) inset;
+      }
+      .tz-admin-filter-group {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        width: 100%;
+        max-width: 360px;
+      }
+      @media (min-width: 768px) {
+        .tz-admin-filterbar {
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-items: flex-end;
+        }
+        .tz-admin-filter-group {
+          width: auto;
+          max-width: none;
+          min-width: 170px;
+        }
+      }
+      .tz-admin-filter-label {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--cyan);
+        text-shadow: 0 0 10px rgba(43,232,255,0.5);
+      }
+      .tz-admin-filter-select {
+        appearance: none;
+        width: 100%;
+        box-sizing: border-box;
+        background: var(--panel-solid);
+        border: 1px solid rgba(43,232,255,0.4);
+        border-radius: 10px;
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        padding: 9px 30px 9px 12px;
+        cursor: pointer;
+        box-shadow: 0 0 14px rgba(43,232,255,0.15);
+        background-image: linear-gradient(45deg, transparent 50%, var(--cyan) 50%),
+          linear-gradient(135deg, var(--cyan) 50%, transparent 50%);
+        background-position: calc(100% - 16px) center, calc(100% - 11px) center;
+        background-size: 5px 5px, 5px 5px;
+        background-repeat: no-repeat;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      .tz-admin-filter-select:hover,
+      .tz-admin-filter-select:focus {
+        outline: none;
+        border-color: var(--cyan);
+        box-shadow: 0 0 20px rgba(43,232,255,0.4);
+      }
+      .tz-admin-filter-select option { background: var(--panel-solid); color: var(--text); }
+      /* Fila select + botón "+" (creación dinámica de Localidad/Sucursal) */
+      .tz-admin-filter-row { display: flex; align-items: center; gap: 6px; }
+      .tz-admin-filter-row .tz-admin-filter-select { flex: 1 1 auto; min-width: 0; }
+      .tz-admin-filter-add-btn {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 999px;
+        background: rgba(43,232,255,0.1);
+        border: 1px solid rgba(43,232,255,0.4);
+        color: var(--cyan);
+        cursor: pointer;
+        transition: background 0.15s ease, box-shadow 0.15s ease;
+      }
+      .tz-admin-filter-add-btn:hover {
+        background: rgba(43,232,255,0.22);
+        box-shadow: 0 0 14px rgba(43,232,255,0.4);
+      }
+      .tz-admin-filter-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        padding: 9px 14px;
+        border-radius: 999px;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 800;
+        font-size: 12px;
+        letter-spacing: 0.02em;
+        white-space: nowrap;
+        border: 1px solid rgba(43,232,255,0.4);
+        color: var(--text);
+        background: rgba(43,232,255,0.08);
+      }
+      .tz-admin-filter-tag-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .tz-admin-filter-tag.is-abierta .tz-admin-filter-tag-dot {
+        background: var(--green);
+        box-shadow: 0 0 8px rgba(57,255,176,0.8);
+      }
+      .tz-admin-filter-tag.is-cerrada .tz-admin-filter-tag-dot {
+        background: var(--danger);
+        box-shadow: 0 0 8px rgba(255,84,112,0.7);
+      }
+
       /* ---------- STATS ---------- */
       /* 6 medidores en 2 filas x 3 columnas, en todo tamaño de pantalla.
          Usamos fracciones (1fr) en vez de minmax(): las columnas siempre
@@ -403,6 +555,36 @@ export default function Styles() {
         grid-template-columns: repeat(3, 1fr);
         gap: 8px;
         margin-bottom: 20px;
+      }
+
+      /* ---- Partes 4/5: placeholder cuando el admin todavía no eligió
+         sucursal/caja arriba — reemplaza TODO el dashboard financiero,
+         nunca lo mezcla. ---- */
+      .tz-admin-sin-vista {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 10px;
+        padding: 48px 20px;
+        margin-bottom: 20px;
+        background: var(--panel);
+        border: 1px dashed rgba(43,232,255,0.35);
+        border-radius: 16px;
+        color: var(--cyan);
+      }
+      .tz-admin-sin-vista h2 {
+        margin: 0;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 15px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .tz-admin-sin-vista p {
+        margin: 0;
+        max-width: 420px;
+        font-size: 13px;
+        color: var(--text-dim);
       }
       .tz-stat-chip {
         min-width: 0;
@@ -1349,6 +1531,16 @@ export default function Styles() {
         text-align: center;
       }
 
+      /* Limpieza visual de tarjetas: reemplaza al viejo stepper [-][+]
+         que vivía en la tarjeta del catálogo — solo texto informativo,
+         sin controles (ajustar cantidad es exclusivo del carrito). */
+      .tz-card-qty-display {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 11.5px;
+        color: var(--cyan);
+      }
+
       @keyframes tz-drop-in {
         from { opacity: 0; transform: translateY(-6px); }
         to { opacity: 1; transform: translateY(0); }
@@ -1851,6 +2043,7 @@ export default function Styles() {
         border-top: 1px solid var(--border-soft);
       }
       .tz-footer-btn {
+        position: relative;
         flex: 1 1 140px;
         max-width: 220px;
         display: flex;
@@ -1869,6 +2062,33 @@ export default function Styles() {
         white-space: nowrap;
       }
       .tz-footer-btn:hover { transform: translateY(-1px); }
+      /* Badge de "un cajero cerró su turno" (Cerrar Caja, solo admin) —
+         esquina superior derecha del botón, con un pulso sutil para que
+         se note sin ser molesto. */
+      .tz-footer-btn-badge {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        border-radius: 999px;
+        background: var(--danger);
+        color: #fff;
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 11px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 2px solid var(--bg-1);
+        box-shadow: 0 0 8px rgba(255,84,112,0.7);
+        animation: tz-footer-badge-pulse 1.4s ease-in-out infinite;
+      }
+      @keyframes tz-footer-badge-pulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.15); }
+      }
       .tz-footer-btn-cierre {
         background: var(--danger);
         color: #2b0006;
@@ -1924,6 +2144,161 @@ export default function Styles() {
         scrollbar-color: rgba(43,232,255,0.35) transparent;
       }
       .tz-modal-wide { max-width: 560px; }
+
+      /* ---------- GESTOR DE CAJAS (Parte 3, solo admin) ---------- */
+      .tz-modal-gestor-cajas { max-width: 720px; }
+      /* Título + botón "Historial de Cierres" (reubicado desde el
+         header principal) en la misma fila — se envuelve en pantallas
+         angostas en vez de apretar el botón contra el título. */
+      .tz-gc-header-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding-right: 30px;
+      }
+      .tz-gc-header-row h2 { margin: 0; }
+      .tz-gc-list {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        margin-top: 14px;
+      }
+      .tz-gc-localidad {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--border-soft);
+      }
+      .tz-gc-localidad:first-child { padding-top: 0; border-top: none; }
+      .tz-gc-localidad-title {
+        margin: 0;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--cyan);
+        text-shadow: 0 0 10px rgba(43,232,255,0.4);
+      }
+      .tz-gc-sucursal {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding-left: 6px;
+        border-left: 2px solid rgba(43,232,255,0.2);
+      }
+      .tz-gc-sucursal-title {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        color: var(--text-dim);
+      }
+      /* UX Bug 3: renombrar sucursal desde el Gestor de Cajas */
+      .tz-gc-sucursal-edit-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        background: transparent;
+        border: 1px solid rgba(255,255,255,0.15);
+        color: var(--text-dim);
+        cursor: pointer;
+      }
+      .tz-gc-sucursal-edit-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+      .tz-gc-sucursal-rename {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .tz-gc-sucursal-rename .tz-text-input { flex: 1 1 auto; min-width: 0; padding: 6px 10px; font-size: 13px; }
+      .tz-gc-caja-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        background: var(--panel);
+        border: 1px solid var(--border-soft);
+        border-radius: 12px;
+        padding: 10px 12px;
+      }
+      .tz-gc-caja-info {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .tz-gc-caja-nombre {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 800;
+        font-size: 14px;
+        color: var(--text);
+      }
+      .tz-gc-caja-estado {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        padding: 3px 9px;
+        border-radius: 999px;
+      }
+      .tz-gc-caja-estado.is-abierta {
+        color: var(--green);
+        background: var(--green-bg);
+        box-shadow: 0 0 8px rgba(57,255,176,0.3);
+      }
+      .tz-gc-caja-estado.is-cerrada {
+        color: var(--danger);
+        background: rgba(255,84,112,0.12);
+      }
+      .tz-gc-caja-meta {
+        font-size: 11.5px;
+        color: var(--text-dim);
+      }
+      .tz-gc-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+        border: none;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 800;
+        font-size: 10.5px;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+      .tz-gc-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+      .tz-gc-btn-cerrar {
+        background: var(--danger);
+        color: #2b0006;
+        box-shadow: 0 0 14px rgba(255,84,112,0.35);
+      }
+      .tz-gc-btn-abrir {
+        background: var(--green);
+        color: #06190f;
+        box-shadow: 0 0 14px rgba(57,255,176,0.35);
+      }
+      .tz-gc-abrir-form {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .tz-gc-monto-input { width: 130px; }
+
       .tz-modal-fullscreen {
         max-width: 1400px;
         width: 96vw;
@@ -1959,8 +2334,21 @@ export default function Styles() {
       }
       .tz-pm-export-btn:hover { background: rgba(57,255,176,0.2); }
       .tz-pm-body { flex: 1; overflow-y: auto; margin-top: 8px; }
-      .tz-pm-table-wrap { overflow-x: auto; }
-      .tz-pm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      /* -webkit-overflow-scrolling: el scroll horizontal a dedo se
+         sentía "trabado" en Safari/iOS sin esto — con touch-action
+         explícito el navegador no duda si el gesto es scroll de la
+         tabla o del modal entero por detrás. */
+      .tz-pm-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; touch-action: pan-x; }
+      /* min-width es LA pieza que faltaba: sin ella, 'width:100%' +
+         table-layout:auto (el default) deja que el navegador COMPRIMA
+         cada columna para que la tabla entera quepa en el ancho
+         angosto del modal en celular — apachurrando los inputs de
+         Stock/Costo/Precio hasta mostrar apenas un caracter ("[").
+         Con un min-width que nunca se negocia, la tabla directamente
+         NO entra en pantallas chicas, y es .tz-pm-table-wrap (arriba)
+         el que se hace cargo con scroll horizontal — que es lo que
+         debía pasar desde el principio. */
+      .tz-pm-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 13px; }
       .tz-pm-table th {
         text-align: left;
         padding: 8px 10px;
@@ -1978,10 +2366,10 @@ export default function Styles() {
       }
       .tz-pm-cell-nombre { white-space: normal; min-width: 180px; }
       .tz-pm-detail { color: var(--text-dim); font-size: 12px; }
-      .tz-pm-input { width: 90px; padding: 6px 8px; font-size: 12.5px; }
+      .tz-pm-input { width: 90px; min-width: 90px; padding: 6px 8px; font-size: 12.5px; }
       /* El de Stock necesita más aire que Costo/Precio: números de más
          dígitos (y, en 'venta a granel', decimales) se recortaban. */
-      .tz-pm-input-stock { width: 130px; }
+      .tz-pm-input-stock { width: 130px; min-width: 130px; }
       .tz-pm-margin-positive { color: var(--green); font-weight: 700; }
       .tz-pm-descuento-badge {
         display: inline-flex;

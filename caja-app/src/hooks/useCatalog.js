@@ -123,7 +123,16 @@ function buildProductsById(sections) {
 // Carga el catálogo (categorías + productos + stock) desde Supabase.
 // Extraído de App.jsx para que la vista pública del catálogo y el POS
 // de /admin compartan la misma fuente de datos sin duplicar el fetch.
-export function useCatalog() {
+//
+// Refactor de Stock (Multi-Sucursal): 'sucursalId' es OBLIGATORIO para
+// que el stock salga poblado — la cantidad real de cada clave ya no
+// vive en la columna 'stock.cantidad' (esa tabla ahora solo guarda la
+// 'etiqueta', el nombre humano de la clave, que no varía por sucursal),
+// sino en 'inventario_sucursales', una fila por (producto, sucursal).
+// Sin 'sucursalId' (el admin todavía no eligió una arriba), el catálogo
+// se arma igual (categorías/productos/precios) pero el stock queda
+// vacío a propósito — mejor "todo en 0" que mezclar sucursales.
+export function useCatalog(sucursalId) {
   const [sections, setSections] = useState([]);
   const [productsById, setProductsById] = useState({});
   const [stock, setStock] = useState({});
@@ -168,38 +177,85 @@ export function useCatalog() {
       );
     }
 
+    // 'stock' (global) ya solo aporta la 'etiqueta' (nombre humano de
+    // cada clave) — no varía por sucursal, así que se sigue leyendo
+    // entera, sin filtro.
     const { data: stockRows, error: stockError } = await supabase
       .from("stock")
-      .select("nombre, cantidad, etiqueta, precio_costo, ultimo_costo_compra");
+      .select("nombre, cantidad, etiqueta");
 
     if (stockError) {
       console.error("Error cargando stock desde Supabase:", stockError);
+    }
+
+    const globalStockByKey = {};
+    (stockRows || []).forEach((row) => {
+      globalStockByKey[row.nombre] = row;
+    });
+
+    // Refactor de Stock: la cantidad/costo REAL, por sucursal, vive en
+    // 'inventario_sucursales' — solo se pide si ya hay una sucursal
+    // activa (sin ella no hay de dónde leer, ver comentario del hook).
+    const invByProductId = {};
+    if (sucursalId) {
+      const { data: invRows, error: invError } = await supabase
+        .from("inventario_sucursales")
+        .select("producto_id, stock, precio_costo, ultimo_costo_compra")
+        .eq("sucursal_id", sucursalId);
+
+      if (invError) {
+        console.error("Error cargando inventario_sucursales desde Supabase:", invError);
+      }
+
+      (invRows || []).forEach((row) => {
+        invByProductId[row.producto_id] = row;
+      });
     }
 
     const loadedStock = {};
     const loadedStockLabels = {};
     const loadedStockCostos = {};
     const loadedStockUltimoCosto = {};
-    (stockRows || []).forEach((row) => {
-      loadedStock[row.nombre] = row.cantidad;
-      loadedStockLabels[row.nombre] = row.etiqueta || row.nombre;
-      loadedStockCostos[row.nombre] = row.precio_costo != null ? Number(row.precio_costo) : null;
-      loadedStockUltimoCosto[row.nombre] =
-        row.ultimo_costo_compra != null ? Number(row.ultimo_costo_compra) : null;
-    });
 
+    // Solo los productos "de stock directo" (una única consumes key, no
+    // combo) tienen fila propia en 'inventario_sucursales' — un combo
+    // JAMÁS tuvo (ni necesita) stock propio: su disponibilidad se
+    // resuelve agregando la de sus ingredientes (availabilityFor en
+    // App.jsx), que a su vez son siempre productos de stock directo.
     Object.values(builtProductsById).forEach((product) => {
-      (product.consumes || []).forEach(({ key }) => {
-        if (loadedStock[key] == null) {
-          console.warn(
-            `La key de stock "${key}" (usada por "${product.name}") no existe todavía en la tabla 'stock'. Se muestra en 0.`
-          );
-          loadedStock[key] = 0;
-          loadedStockLabels[key] = key;
-          loadedStockCostos[key] = null;
-          loadedStockUltimoCosto[key] = null;
-        }
-      });
+      const singleKey =
+        Array.isArray(product.consumes) && product.consumes.length === 1 && !product.esCombo;
+      if (!singleKey) return;
+
+      const key = product.consumes[0].key;
+      const globalRow = globalStockByKey[key];
+      loadedStockLabels[key] = globalRow?.etiqueta || key;
+
+      const invRow = invByProductId[product.id];
+      if (invRow) {
+        loadedStock[key] = Number(invRow.stock);
+        loadedStockCostos[key] = invRow.precio_costo != null ? Number(invRow.precio_costo) : null;
+        loadedStockUltimoCosto[key] =
+          invRow.ultimo_costo_compra != null ? Number(invRow.ultimo_costo_compra) : null;
+      } else if (sucursalId) {
+        // Hay sucursal activa pero esta clave no tiene fila propia ahí
+        // todavía (producto creado después del backfill, o nunca
+        // asignado a esta sucursal) — se muestra en 0 con costo
+        // desconocido, nunca se inventa un número. Corrígelo editando
+        // el stock de este producto desde el Gestor de Productos.
+        console.warn(
+          `"${product.name}" (clave "${key}") no tiene fila en 'inventario_sucursales' para esta sucursal — se muestra en 0.`
+        );
+        loadedStock[key] = 0;
+        loadedStockCostos[key] = null;
+        loadedStockUltimoCosto[key] = null;
+      } else {
+        // Sin sucursal activa todavía (el admin no eligió arriba): no
+        // hay ningún stock que mostrar, a propósito.
+        loadedStock[key] = 0;
+        loadedStockCostos[key] = null;
+        loadedStockUltimoCosto[key] = null;
+      }
     });
 
     setSections(builtSections);
@@ -209,7 +265,7 @@ export function useCatalog() {
     setStockCostos(loadedStockCostos);
     setStockUltimoCosto(loadedStockUltimoCosto);
     setLoading(false);
-  }, []);
+  }, [sucursalId]);
 
   useEffect(() => {
     load();
@@ -259,15 +315,36 @@ export function useCatalog() {
       .on("postgres_changes", { event: "*", schema: "public", table: "productos" }, scheduleReload)
       .on("postgres_changes", { event: "*", schema: "public", table: "stock" }, scheduleReload)
       .on("postgres_changes", { event: "*", schema: "public", table: "categorias" }, scheduleReload)
+      // Refactor de Stock: 'inventario_sucursales' es ahora la fuente
+      // real de la cantidad — sin esto, un descuento por venta desde
+      // OTRO dispositivo (o la propia registrar_venta) nunca refrescaría
+      // el stock en pantalla. Filtrado por 'sucursal_id' cuando ya hay
+      // una activa: un cambio en OTRA sucursal no nos importa (ese
+      // catálogo ni siquiera se está mostrando acá).
+      .on(
+        "postgres_changes",
+        sucursalId
+          ? {
+              event: "*",
+              schema: "public",
+              table: "inventario_sucursales",
+              filter: `sucursal_id=eq.${sucursalId}`,
+            }
+          : { event: "*", schema: "public", table: "inventario_sucursales" },
+        scheduleReload
+      )
       .subscribe((status, err) => {
         if (status === "SUBSCRIBED") {
-          console.log("[Realtime] conectado — escuchando productos/stock/categorias.");
+          console.log(
+            "[Realtime] conectado — escuchando productos/stock/categorias/inventario_sucursales."
+          );
         } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.error(
             "[Realtime] no se pudo conectar (status:",
             status,
-            "). Revisa que 'productos', 'stock' y 'categorias' estén agregadas a la publicación " +
-              "'supabase_realtime' en Supabase (Database → Replication) — ver migración 0045.",
+            "). Revisa que 'productos', 'stock', 'categorias' e 'inventario_sucursales' estén " +
+              "agregadas a la publicación 'supabase_realtime' en Supabase (Database → Replication) " +
+              "— ver migraciones 0045 y 0048.",
             err || ""
           );
         }
@@ -277,7 +354,7 @@ export function useCatalog() {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [load]);
+  }, [load, sucursalId]);
 
   // Alterna si un producto se muestra en el catálogo público (no afecta
   // su disponibilidad para vender desde /admin). Actualiza el estado

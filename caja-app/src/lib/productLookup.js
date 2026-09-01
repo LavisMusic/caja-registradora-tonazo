@@ -172,6 +172,13 @@ export async function crearProducto({
   // flag para que el resto de la app (carrito, boletas, WhatsApp)
   // sepa mostrar "Kg" en vez de "unidad(es)".
   ventaPorPeso,
+  // Refactor de Stock (Multi-Sucursal): la sucursal ACTIVA de quien
+  // está creando el producto — el stock inicial (o el 0 por defecto de
+  // "+ Nueva Variante") se guarda en 'inventario_sucursales' para ESTA
+  // sucursal. Otras sucursales quedan sin fila propia hasta que alguien
+  // les asigne stock desde el Gestor de Productos (useCatalog las
+  // muestra en 0 con un aviso en consola mientras tanto).
+  sucursalId,
 }) {
   const categoriaNombre = (categoria || "").trim();
   const { data: catExistente, error: catLookupError } = await supabase
@@ -247,22 +254,33 @@ export async function crearProducto({
         })
       : null;
 
+  // 'stock' (global) YA NO guarda la cantidad real — solo la 'etiqueta'
+  // (nombre humano de la clave, no varía por sucursal). 'cantidad: 0'
+  // acá es solo para satisfacer la columna NOT NULL de esta fila
+  // nueva ('stockKey' siempre es nueva, generada por generateStockKey
+  // para no chocar con ninguna existente) — la cantidad de verdad vive
+  // en 'inventario_sucursales', por sucursal.
   const { error: stockError } = await supabase
     .from("stock")
-    .upsert(
+    .upsert([{ nombre: stockKey, cantidad: 0, etiqueta: nombreCompleto }], { onConflict: "nombre" });
+  if (stockError) throw stockError;
+
+  if (sucursalId) {
+    const { error: invError } = await supabase.from("inventario_sucursales").upsert(
       [
         {
-          nombre: stockKey,
-          cantidad: unidadesNum,
-          etiqueta: nombreCompleto,
+          producto_id: insertedProducto.id,
+          sucursal_id: sucursalId,
+          stock: unidadesNum,
           ...(costoUnitarioInicial != null
             ? { precio_costo: costoUnitarioInicial, ultimo_costo_compra: costoUnitarioInicial }
             : {}),
         },
       ],
-      { onConflict: "nombre" }
+      { onConflict: "producto_id,sucursal_id" }
     );
-  if (stockError) throw stockError;
+    if (invError) throw invError;
+  }
 
   return { producto: insertedProducto, stockKey };
 }
