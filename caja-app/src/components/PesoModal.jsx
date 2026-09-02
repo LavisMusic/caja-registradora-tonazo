@@ -29,7 +29,7 @@ export default function PesoModal({ product, avail, initialKg, onCancel, onConfi
   };
 
   return (
-    <div className="tz-modal-backdrop" onClick={onCancel}>
+    <div className="tz-modal-backdrop tz-modal-backdrop-nested">
       <div className="tz-modal tz-peso-modal" onClick={(e) => e.stopPropagation()}>
         <button className="tz-modal-close" onClick={onCancel} aria-label="Cerrar">
           <X size={18} />

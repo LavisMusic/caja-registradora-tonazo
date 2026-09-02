@@ -22,6 +22,43 @@ function parseSubgrupo(subgrupo) {
   return { numero: null, title: subgrupo };
 }
 
+/* "Combo Fiesta" -> "combo" (primera palabra, sin tildes/mayúsculas) —
+   la clave de "cluster" que usa clusterizarPorPrefijo para juntar
+   productos "hermanos" que arrancan igual, aunque no compartan
+   'nombre_base' (ej. "Combo Fiesta" y "Combo Lopezaaa" son productos
+   DISTINTOS, no variantes uno del otro, pero igual deben quedar
+   contiguos en la carta). */
+function prefijoCluster(nombre) {
+  const primera = (nombre || "").trim().split(/\s+/)[0] || "";
+  return primera
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
+/* Reordena los productos de UN subgrupo/categoría agrupando (cluster)
+   los que comparten prefijo, SIN ordenarlos alfabéticamente: el orden
+   relativo entre clusters queda tal cual el de 'orden' original —
+   respeta dónde apareció CADA cluster por primera vez ("sin importar
+   si la 'C' va antes o después en el orden global"), solo jala hacia
+   ahí a los demás miembros dispersos del mismo cluster. Estable: los
+   productos dentro de un mismo cluster mantienen su orden relativo
+   entre sí. Un producto de nombre único (sin "hermanos") es su propio
+   cluster de 1 y no se mueve de su posición relativa. */
+function clusterizarPorPrefijo(productos) {
+  const ordenClusters = [];
+  const porCluster = new Map();
+  productos.forEach((p) => {
+    const key = prefijoCluster(p.nombre_base || p.nombre);
+    if (!porCluster.has(key)) {
+      porCluster.set(key, []);
+      ordenClusters.push(key);
+    }
+    porCluster.get(key).push(p);
+  });
+  return ordenClusters.flatMap((key) => porCluster.get(key));
+}
+
 /* Arma [{ key, label, groups: [{ numero, title, items: [...] }] }] a
    partir de las filas planas de 'categorias' + 'productos'. Es la
    MISMA forma que antes producía el array SECTIONS hardcodeado. */
@@ -60,7 +97,7 @@ function buildSectionsFromRows(categoriaRows, productoRows) {
       return {
         numero,
         title,
-        items: groupsMap.get(groupKey).map((p) => ({
+        items: clusterizarPorPrefijo(groupsMap.get(groupKey)).map((p) => ({
           id: p.id,
           combo: p.etiqueta || undefined,
           name: p.nombre,

@@ -76,7 +76,7 @@ export default function ImageCropModal({ imageSrc, mimeType, onCancel, onConfirm
   };
 
   return (
-    <div className="tz-modal-backdrop" onClick={onCancel}>
+    <div className="tz-modal-backdrop tz-modal-backdrop-nested">
       <div className="tz-modal tz-crop-modal" onClick={(e) => e.stopPropagation()}>
         <button className="tz-modal-close" onClick={onCancel} aria-label="Cerrar" disabled={processing}>
           <X size={18} />

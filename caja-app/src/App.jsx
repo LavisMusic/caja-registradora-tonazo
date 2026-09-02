@@ -44,6 +44,7 @@ import imageCompression from "browser-image-compression";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import { formatSoles, formatDate } from "./utils/format";
+import { safeGetItem, safeSetItem } from "./utils/safeStorage";
 import { useCatalog } from "./hooks/useCatalog";
 import Styles from "./components/Styles";
 import CardDetail from "./components/CardDetail";
@@ -66,6 +67,7 @@ import CatalogVisibilityAccordion from "./components/CatalogVisibilityAccordion"
 import ProductManagerModal from "./components/ProductManagerModal";
 import ColorPicker from "./components/ColorPicker";
 import LogoEasterEgg from "./components/LogoEasterEgg";
+import ScrollSpySidebar from "./components/ScrollSpySidebar";
 import TicketBoleta from "./components/TicketBoleta";
 import ImageManager from "./components/ImageManager";
 import PesoModal from "./components/PesoModal";
@@ -693,22 +695,32 @@ export default function App() {
      Declarado ACÁ (antes de useCatalog) a propósito: el refactor de
      Stock necesita saber la sucursal operativa ANTES de pedirle el
      catálogo a Supabase — 'sucursalOperativaId' es justo lo que
-     useCatalog recibe como parámetro más abajo. ---- */
+     useCatalog recibe como parámetro más abajo.
+
+     BUG CRÍTICO resuelto acá: estos 3 useState leen localStorage
+     DENTRO de su inicializador — corre en fase de RENDER. En un
+     dispositivo/navegador que bloquea el storage (modo privado,
+     políticas de privacidad, un webview embebido), 'localStorage.
+     getItem' puede LANZAR una excepción real en vez de devolver null
+     — eso tira abajo el render entero y lo agarra el Error Boundary
+     ("Algo salió mal") apenas se entra desde ese dispositivo, aunque
+     en el navegador normal del dev nunca pase. 'safeGetItem'/
+     'safeSetItem' (ver utils/safeStorage.js) nunca lanzan. ---- */
   const [localidadFiltroId, setLocalidadFiltroId] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("tz_admin_localidad_filtro") || "" : ""
+    safeGetItem("tz_admin_localidad_filtro", "")
   );
   const [sucursalActivaId, setSucursalActivaId] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("tz_admin_sucursal_activa") || "" : ""
+    safeGetItem("tz_admin_sucursal_activa", "")
   );
   const [cajaActivaId, setCajaActivaId] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("tz_admin_caja_activa") || "" : ""
+    safeGetItem("tz_admin_caja_activa", "")
   );
   useEffect(() => {
-    localStorage.setItem("tz_admin_localidad_filtro", localidadFiltroId || "");
+    safeSetItem("tz_admin_localidad_filtro", localidadFiltroId || "");
   }, [localidadFiltroId]);
   useEffect(() => {
-    localStorage.setItem("tz_admin_sucursal_activa", sucursalActivaId || "");
-    localStorage.setItem("tz_admin_caja_activa", cajaActivaId || "");
+    safeSetItem("tz_admin_sucursal_activa", sucursalActivaId || "");
+    safeSetItem("tz_admin_caja_activa", cajaActivaId || "");
   }, [sucursalActivaId, cajaActivaId]);
 
   /* ---- Partes 4/5 "Segregación Real de Datos" (y ahora también el
@@ -1153,6 +1165,39 @@ export default function App() {
     setSucursalActivaId(caja?.sucursalId || "");
   };
 
+  /* ---- BUG CRÍTICO / UX: en un dispositivo nuevo (localStorage vacío,
+     o el que traía ya no existe más) el admin llegaba a un dashboard
+     financiero completamente en blanco ("Elige una sucursal") sin
+     ningún dato hasta elegir algo a mano. Apenas la jerarquía carga, si
+     no hay una localidad/sucursal ya elegida y VÁLIDA (persistida o de
+     una interacción previa), se selecciona la primera disponible de
+     forma seguridad — nunca asume que exista, nunca revienta si la
+     lista sigue vacía (localidades.length === 0 corta antes de tocar
+     nada). Recorre 'cajas' buscando la primera cuya sucursal pertenezca
+     a esa localidad — si esa sucursal todavía no tiene ninguna caja
+     creada, deja la localidad elegida pero sin caja activa (el segundo
+     dropdown queda a la espera, no rompe nada). ---- */
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (localidades.length === 0) return;
+    if (localidadFiltroId && localidades.some((l) => l.id === localidadFiltroId)) return;
+
+    const primeraLocalidad = localidades[0];
+    setLocalidadFiltroId(primeraLocalidad.id);
+
+    const primeraCajaDeLaLocalidad = cajas.find((c) => {
+      const suc = sucursales.find((s) => s.id === c.sucursalId);
+      return suc?.localidadId === primeraLocalidad.id;
+    });
+    // Mismo efecto que 'elegirCajaActiva', pero sin llamarla directo:
+    // es una función nueva en cada render, así que meterla en las deps
+    // de abajo haría correr este efecto en cada render.
+    if (primeraCajaDeLaLocalidad) {
+      setCajaActivaId(primeraCajaDeLaLocalidad.id);
+      setSucursalActivaId(primeraCajaDeLaLocalidad.sucursalId);
+    }
+  }, [isAdmin, localidades, sucursales, cajas, localidadFiltroId]);
+
   /* ---- Creación dinámica de Localidades/Sucursales: un prompt() nativo
      alcanza (pidió "un prompt o un modal rápido" — esto evita construir
      todo un modal nuevo para un caso de uso de una sola línea de texto).
@@ -1406,7 +1451,7 @@ export default function App() {
   // siempre vuelve a pedir confirmación, y Cerrar Caja invalida el
   // valor guardado al cambiar 'abiertaEn' en la próxima apertura).
   const [turnoConfirmadoEn, setTurnoConfirmadoEn] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("tz_turno_confirmado_en") : null
+    safeGetItem("tz_turno_confirmado_en", null)
   );
 
   /* ---- Sincronización en tiempo real de 'cajas': si OTRA
@@ -1547,6 +1592,16 @@ export default function App() {
   const ticketRef = useRef(null);
   const [boletaError, setBoletaError] = useState("");
   const [copiandoBoleta, setCopiandoBoleta] = useState(false);
+
+  /* ---- Navegación estilo "Fortnite" (ScrollSpySidebar): un nodo DOM
+     por cada Subgrupo de la categoría activa — 'activeSection.groups'
+     ya renderiza TODOS seguidos en una sola página larga (no hay
+     accordion acá, a diferencia del panel de admin), así que "saltar
+     entre subgrupos" es justo lo que hace falta. El ref vive en un
+     objeto plano (no un array de refs) porque 'gi' no es estable entre
+     categorías distintas — no importa, solo se lee mientras la
+     categoría activa no cambió. ---- */
+  const groupSectionRefs = useRef({});
 
   // Boleta reconstruida desde "Mis Ventas" (historial) para el botón
   // "Generar Boleta" — ref/estado propios porque 'lastSale'/'ticketRef'
@@ -3618,6 +3673,139 @@ export default function App() {
     }
   };
 
+  /* ---- DnD Multinivel — mover un PRODUCTO (reordenar dentro de su
+     mismo subgrupo/categoría, o cambiarlo de subgrupo/categoría por
+     completo). 'productos.orden' ya existía (useCatalog.js ordena por
+     esa columna) — acá se renumera COMPLETO el subgrupo/categoría
+     destino (0,1,2…) según el array ya ordenado que trae 'sections'
+     (fuente de verdad del orden actual en pantalla), insertando el
+     producto movido en 'targetIndex'. Un UPDATE por fila afectada
+     (Promise.all) — no hay forma de variar 'orden' por fila en un solo
+     UPDATE masivo desde supabase-js. ---- */
+  const itemsDeGrupo = (categoriaLabel, subgrupoRaw) =>
+    Object.values(productsById).filter(
+      (p) => p.sectionLabel === categoriaLabel && (p.subgrupoRaw || null) === (subgrupoRaw || null)
+    );
+
+  const moverProducto = async ({ productoId, categoriaDestino, subgrupoDestino, beforeProductoId }) => {
+    const producto = productsById[productoId];
+    if (!producto) return { error: new Error("Producto no encontrado.") };
+
+    const mismoDestino =
+      producto.sectionLabel === categoriaDestino &&
+      (producto.subgrupoRaw || null) === (subgrupoDestino || null);
+
+    // 'beforeProductoId' (no un índice numérico crudo): evita el
+    // clásico off-by-one de "¿el índice del elemento donde soltaste
+    // cuenta al que estás moviendo, o ya no?" — acá la lista destino YA
+    // sale sin el producto que se está moviendo, así que insertarlo
+    // "antes de X" siempre cae en el lugar correcto, sea que X esté en
+    // la misma lista (reordenar) o en otra (mover de grupo).
+    const listaDestino = itemsDeGrupo(categoriaDestino, subgrupoDestino).filter(
+      (p) => p.id !== productoId
+    );
+    let index = listaDestino.length;
+    if (beforeProductoId) {
+      const beforeIdx = listaDestino.findIndex((p) => p.id === beforeProductoId);
+      if (beforeIdx !== -1) index = beforeIdx;
+    }
+    listaDestino.splice(index, 0, producto);
+
+    try {
+      if (!mismoDestino) {
+        const { error: moveError } = await supabase
+          .from("productos")
+          .update({ categoria: categoriaDestino, subgrupo: subgrupoDestino || null })
+          .eq("id", productoId);
+        if (moveError) return { error: moveError };
+      }
+
+      const results = await Promise.all(
+        listaDestino.map((p, i) => supabase.from("productos").update({ orden: i }).eq("id", p.id))
+      );
+      const failed = results.find((r) => r.error);
+      if (failed) return { error: failed.error };
+
+      await refetchCatalog();
+      return { error: null };
+    } catch (err) {
+      console.error("Error moviendo producto (DnD):", err);
+      return { error: err };
+    }
+  };
+
+  /* ---- DnD Multinivel — mover un SUBGRUPO (reordenar dentro de la
+     misma categoría, o cambiarlo de categoría por completo). Un
+     subgrupo NO tiene tabla maestra propia (ver eliminarSubgrupo más
+     arriba) — su "orden" está codificado en el PREFIJO NUMÉRICO del
+     propio texto ("01 Ron Cartavio"), que useCatalog.js usa para
+     ordenar (parseSubgrupo + sort numérico). Mover un subgrupo, entonces,
+     significa renumerar el prefijo de TODOS los subgrupos de la
+     categoría destino (uno por uno, cada renumeración es un UPDATE
+     masivo por texto — afecta a todos los productos que comparten ese
+     subgrupo a la vez) para que el prefijo refleje la posición final. ---- */
+  const moverSubgrupo = async ({
+    categoriaOrigen,
+    subgrupoRawOrigen,
+    categoriaDestino,
+    beforeSubgrupoRaw,
+  }) => {
+    const productosDelSubgrupo = itemsDeGrupo(categoriaOrigen, subgrupoRawOrigen);
+    if (productosDelSubgrupo.length === 0) {
+      return { error: new Error("Ese subgrupo está vacío o ya no existe.") };
+    }
+    const tituloSubgrupo = subgrupoRawOrigen.replace(/^\d+\s+/, "");
+
+    const seen = new Set();
+    const subgruposDestino = [];
+    Object.values(productsById).forEach((p) => {
+      if (p.sectionLabel !== categoriaDestino) return;
+      const raw = p.subgrupoRaw;
+      if (!raw || seen.has(raw)) return;
+      if (categoriaOrigen === categoriaDestino && raw === subgrupoRawOrigen) return;
+      seen.add(raw);
+      subgruposDestino.push({ raw, titulo: raw.replace(/^\d+\s+/, "") });
+    });
+
+    // Mismo criterio que moverProducto: 'beforeSubgrupoRaw' (el raw
+    // ACTUAL del subgrupo antes del cual insertar), no un índice crudo
+    // — la lista destino ya sale sin el subgrupo que se está moviendo.
+    let index = subgruposDestino.length;
+    if (beforeSubgrupoRaw) {
+      const beforeIdx = subgruposDestino.findIndex((s) => s.raw === beforeSubgrupoRaw);
+      if (beforeIdx !== -1) index = beforeIdx;
+    }
+    subgruposDestino.splice(index, 0, { raw: subgrupoRawOrigen, titulo: tituloSubgrupo, esElMovido: true });
+
+    try {
+      for (let i = 0; i < subgruposDestino.length; i++) {
+        const entry = subgruposDestino[i];
+        const nuevoRaw = `${String(i + 1).padStart(2, "0")} ${entry.titulo}`;
+        if (entry.esElMovido) {
+          if (nuevoRaw === entry.raw && categoriaOrigen === categoriaDestino) continue;
+          const { error } = await supabase
+            .from("productos")
+            .update({ categoria: categoriaDestino, subgrupo: nuevoRaw })
+            .eq("categoria", categoriaOrigen)
+            .eq("subgrupo", subgrupoRawOrigen);
+          if (error) return { error };
+        } else if (entry.raw !== nuevoRaw) {
+          const { error } = await supabase
+            .from("productos")
+            .update({ subgrupo: nuevoRaw })
+            .eq("categoria", categoriaDestino)
+            .eq("subgrupo", entry.raw);
+          if (error) return { error };
+        }
+      }
+      await refetchCatalog();
+      return { error: null };
+    } catch (err) {
+      console.error("Error moviendo subgrupo (DnD):", err);
+      return { error: err };
+    }
+  };
+
   /* ---- alta directa de una categoría vacía desde "Visibilidad en
      catálogo público" — a diferencia de crearProducto() (que crea la
      categoría solo como efecto secundario de dar de alta un producto),
@@ -3724,6 +3912,20 @@ export default function App() {
 
   const openComboModal = () => {
     resetComboForm();
+    setComboModalOpen(true);
+  };
+
+  /* ---- Mecánica de "Crafteo"/Fusión (DnD, categoría COMBOS): al
+     soltar el SEGUNDO producto sobre la tarjeta "staged" del primero,
+     CatalogVisibilityAccordion llama a esto con ambos — abre "Nuevo
+     Combo" YA precargado con los dos como ingredientes (qty 1 cada
+     uno), sin que el admin tenga que buscarlos de nuevo en el
+     formulario. Cerrar el modal sin guardar (botón X) simplemente NO
+     llama a esto — el estado "staged" se limpia solo, del lado del
+     accordion, sin haber tocado nunca 'comboItems'. ---- */
+  const craftCombo = (productos) => {
+    resetComboForm();
+    setComboItems(productos.map((p) => ({ productId: p.id, name: p.name, qty: 1 })));
     setComboModalOpen(true);
   };
 
@@ -6101,7 +6303,7 @@ export default function App() {
   const confirmarTurno = () => {
     if (!estadoCaja?.abiertaEn) return;
     const marca = String(estadoCaja.abiertaEn);
-    localStorage.setItem("tz_turno_confirmado_en", marca);
+    safeSetItem("tz_turno_confirmado_en", marca);
     setTurnoConfirmadoEn(marca);
   };
 
@@ -6476,6 +6678,16 @@ export default function App() {
   }, [productStats]);
 
   const activeSection = sections.find((s) => s.key === activeTab);
+
+  // ScrollSpySidebar: solo tiene sentido con subgrupos REALES (título
+  // propio) — una categoría sin subgrupos es una sola sección larga,
+  // no hay "entre qué" navegar. 'id' = 'gi' (el índice dentro de
+  // 'activeSection.groups', la misma clave que ya usa el .map() de
+  // abajo para el ref) — se resetea solo al cambiar de categoría
+  // porque 'activeSection' cambia y este array se recalcula entero.
+  const scrollspyItems = (activeSection?.groups || [])
+    .map((g, gi) => ({ id: gi, label: g.title }))
+    .filter((it) => it.label);
 
   // Agrupación por nombre_base calculada UNA vez por sección activa,
   // sobre TODOS sus subgrupos a la vez — ver buildSectionDisplayEntries.
@@ -6927,6 +7139,10 @@ export default function App() {
       )}
 
       <main className="tz-main">
+        <ScrollSpySidebar
+          items={scrollspyItems}
+          getSectionEl={(id) => groupSectionRefs.current[id]}
+        />
         {/* ---------------- Partes 4/5: sin sucursal/caja activa elegida,
            el admin no ve NINGÚN dato financiero — mejor "nada" que
            mezclar sucursales por accidente. El resto del dashboard
@@ -7078,7 +7294,7 @@ export default function App() {
             </div>
           ) : (
             activeSection.groups.map((group, gi) => (
-              <div key={gi} className="tz-group">
+              <div key={gi} className="tz-group" ref={(el) => (groupSectionRefs.current[gi] = el)}>
               {group.title && (
                 <div className="tz-group-heading">
                   <span className="tz-badge">{group.numero}</span>
@@ -7339,7 +7555,6 @@ export default function App() {
         {variantModalGroup && (
           <div
             className="tz-modal-backdrop"
-            onClick={() => setVariantModalGroup(null)}
           >
             <div
               className="tz-modal tz-variant-modal"
@@ -8147,7 +8362,7 @@ export default function App() {
          incluido el propio cajero cerrando su turno, se refleja acá
          solo, sin F5). */}
       {isAdmin && gestorCajasOpen && (
-        <div className="tz-modal-backdrop" onClick={() => setGestorCajasOpen(false)}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal tz-modal-wide tz-modal-gestor-cajas" onClick={(e) => e.stopPropagation()}>
             <button
               className="tz-modal-close"
@@ -8344,7 +8559,7 @@ export default function App() {
 
       {/* ---------------- MODAL EDICIÓN DE STOCK ---------------- */}
       {editOpen && (
-        <div className="tz-modal-backdrop" onClick={closeEdit}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
             <button className="tz-modal-close" onClick={closeEdit} aria-label="Cerrar">
               <X size={18} />
@@ -8893,6 +9108,9 @@ export default function App() {
                     onCreateCategoria={crearCategoria}
                     onAddVariante={agregarVariante}
                     onReorderCategorias={reorderCategorias}
+                    onMoverProducto={moverProducto}
+                    onMoverSubgrupo={moverSubgrupo}
+                    onCraftCombo={craftCombo}
                   />
                 </>
               )}
@@ -8906,7 +9124,7 @@ export default function App() {
          ingredientes — no tiene stock propio, así que no pide unidades
          ni costo inicial (ver crearCombo en productLookup.js). */}
       {comboModalOpen && (
-        <div className="tz-modal-backdrop" onClick={() => setComboModalOpen(false)}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
             <button
               className="tz-modal-close"
@@ -9054,7 +9272,7 @@ export default function App() {
          — acá solo el shell del modal (backdrop/cerrar/título) y el
          handler que sube cada imagen confirmada de inmediato. */}
       {imageManagerProduct && (
-        <div className="tz-modal-backdrop" onClick={closeImageManager}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
             <button className="tz-modal-close" onClick={closeImageManager} aria-label="Cerrar">
               <X size={18} />
@@ -9087,7 +9305,7 @@ export default function App() {
 
       {/* ---------------- MODAL: DESCUENTO (solo admin) ---------------- */}
       {discountModalProduct && (
-        <div className="tz-modal-backdrop" onClick={closeDiscountModal}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
             <button className="tz-modal-close" onClick={closeDiscountModal} aria-label="Cerrar">
               <X size={18} />
@@ -9196,7 +9414,7 @@ export default function App() {
 
       {/* ---------------- MODAL: MIS VENTAS (HOY) ---------------- */}
       {misVentasOpen && (
-        <div className="tz-modal-backdrop" onClick={() => setMisVentasOpen(false)}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
             <button
               className="tz-modal-close"
@@ -9308,13 +9526,7 @@ export default function App() {
 
       {/* ---------------- MODAL: USUARIOS (Cajeros y Clientes, solo admin) ---------------- */}
       {cajerosOpen && (
-        <div
-          className="tz-modal-backdrop"
-          onClick={() => {
-            setCajerosOpen(false);
-            resetCajeroForm();
-          }}
-        >
+        <div className="tz-modal-backdrop">
           <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
             <button
               className="tz-modal-close"
@@ -9608,7 +9820,7 @@ export default function App() {
 
       {/* ---------------- MODAL: CAMBIAR PIN (dentro de Usuarios) ---------------- */}
       {pinModalUser && (
-        <div className="tz-modal-backdrop" onClick={closePinModal}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
             <button className="tz-modal-close" onClick={closePinModal} aria-label="Cerrar">
               <X size={18} />
@@ -9655,7 +9867,7 @@ export default function App() {
 
       {/* ---------------- MODAL: MÉTODO DE PAGO (Yape / Plin / Otros) ---------------- */}
       {activeMethodModal && (
-        <div className="tz-modal-backdrop" onClick={closeMethodModal}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
             <button className="tz-modal-close" onClick={closeMethodModal} aria-label="Cerrar">
               <X size={18} />
@@ -9776,7 +9988,7 @@ export default function App() {
 
       {/* ---------------- MODAL: LIBRETA (Fiados) ---------------- */}
       {libretaOpen && (
-        <div className="tz-modal-backdrop" onClick={closeLibreta}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
             <button className="tz-modal-close" onClick={closeLibreta} aria-label="Cerrar">
               <X size={18} />
@@ -10210,13 +10422,7 @@ export default function App() {
 
       {/* ---------------- MODAL: TOP CLIENTES (ranking de fidelidad) ---------------- */}
       {topClientesOpen && (
-        <div
-          className="tz-modal-backdrop"
-          onClick={() => {
-            setTopClientesOpen(false);
-            setExpandedTopClienteId(null);
-          }}
-        >
+        <div className="tz-modal-backdrop">
           <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
             <button
               className="tz-modal-close"
@@ -10330,7 +10536,7 @@ export default function App() {
 
       {/* ---------------- MODAL: FIADOS (historial de cobros, solo lectura) ---------------- */}
       {fiadosViewOpen && (
-        <div className="tz-modal-backdrop" onClick={() => setFiadosViewOpen(false)}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
             <button
               className="tz-modal-close"
@@ -10421,7 +10627,7 @@ export default function App() {
 
       {/* ---------------- MODAL: GASTOS ---------------- */}
       {gastosOpen && (
-        <div className="tz-modal-backdrop" onClick={closeGastosModal}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
             <button className="tz-modal-close" onClick={closeGastosModal} aria-label="Cerrar">
               <X size={18} />
@@ -10928,7 +11134,7 @@ export default function App() {
 
       {/* ---------------- MODAL: CIERRE DE CAJA ---------------- */}
       {cierreModalOpen && (
-        <div className="tz-modal-backdrop" onClick={() => setCierreModalOpen(false)}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
             <button
               className="tz-modal-close"
@@ -11153,7 +11359,7 @@ export default function App() {
          RAW, sin filtrar) + la suscripción de Realtime a 'cierres_caja'
          que ya corre desde que se monta App — nunca hace falta F5. */}
       {isAdmin && historialCierresOpen && (
-        <div className="tz-modal-backdrop" onClick={() => setHistorialCierresOpen(false)}>
+        <div className="tz-modal-backdrop">
           <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
             <button
               className="tz-modal-close"

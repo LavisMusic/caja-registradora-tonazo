@@ -1,4 +1,16 @@
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  MeasuringStrategy,
+  PointerSensor,
+  pointerWithin,
+  useDroppable,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   ChevronDown,
   ChevronUp,
@@ -11,10 +23,68 @@ import {
   Plus,
   Copy,
   GripVertical,
+  Sparkles,
 } from "lucide-react";
 import { buscarProductoPorCodigo } from "../lib/productLookup";
 import BarcodeScannerModal from "./BarcodeScannerModal";
 import ColorPicker from "./ColorPicker";
+
+/* ---- DnD Multinivel (Categoría -> Subgrupo -> Producto): sobre
+   @dnd-kit/core + @dnd-kit/sortable. Cada nivel (categorías dentro del
+   acordeón, subgrupos dentro de una categoría, productos dentro de un
+   subgrupo/categoría) es su propio <SortableContext> — así el drag se
+   siente FÍSICO: al arrastrar, los demás elementos de ESA MISMA lista
+   se apartan y hacen hueco en tiempo real (lo calcula @dnd-kit/sortable
+   solo, comparando la posición de 'active' contra 'over' dentro del
+   array 'items' del contexto — no hace falta mutar ningún estado a
+   mano para verlo, solo pasar el array en el orden actual), en vez de
+   "saltar y reemplazarse" recién al soltar.
+
+   Cada fila/tarjeta usa un ÚNICO id (mismo para arrastrar Y soltar,
+   'useSortable' ya combina ambos) — el grip (GripVertical) es el
+   handle real (listeners/attributes ahí, vía 'setActivatorNodeRef'),
+   pero el nodo que se mueve/anima es la fila COMPLETA ('setNodeRef').
+   Los objetivos "hoja" siguen sin anidarse entre sí (mismo diseño de
+   antes, para que pointerWithin nunca quede ambiguo):
+     - Categorías se sueltan sobre OTRAS categorías (reordenar, dentro
+       del SortableContext superior).
+     - Subgrupos se sueltan sobre CABECERAS de categoría (mover al
+       final de otra categoría) o sobre OTROS subgrupos (reordenar/
+       mover, se inserta ANTES del subgrupo soltado — dentro del
+       SortableContext de esa categoría).
+     - Productos se sueltan sobre CABECERAS de categoría (agregar sin
+       subgrupo), CABECERAS de subgrupo (agregar al final de ese
+       subgrupo) o sobre OTROS productos (reordenar/mover, se inserta
+       ANTES del producto soltado — dentro del SortableContext de ese
+       subgrupo/categoría), o sobre la "zona de crafteo" de Combos.
+   El "moverse dentro de otra lista" (cruzar de subgrupo/categoría) NO
+   tiene la animación de hueco en vivo de @dnd-kit/sortable (el ítem no
+   es miembro del SortableContext ajeno mientras se arrastra) — pero
+   el resultado final, vía handleDragEnd, es idéntico a reordenar. ---- */
+
+function useSortableItem(id, data, disabled) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({ id, data, disabled });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+  return { attributes, listeners, setNodeRef, setActivatorNodeRef, style, isDragging, isOver };
+}
+
+function useDropSlot(id, data) {
+  const { setNodeRef, isOver } = useDroppable({ id, data });
+  return { setNodeRef, isOver };
+}
 
 /* Fila de un producto: toggle de visibilidad, editar (nombre/detalle)
    y eliminar (con confirmación inline en vez de un modal aparte, para
@@ -25,7 +95,12 @@ import ColorPicker from "./ColorPicker";
 
    Orden de los controles a la derecha: Toggle, luego Lápiz (editar),
    luego Papelera (eliminar) — el lápiz ocupa el lugar donde antes
-   estaba el toggle, y el toggle se corrió un paso a la izquierda. */
+   estaba el toggle, y el toggle se corrió un paso a la izquierda.
+
+   DnD: toda la fila es un droppable ("soltar OTRO producto antes de
+   este"); el GripVertical al inicio es el ÚNICO punto arrastrable
+   (drag handle) — así no interfiere con los botones/toggle/inputs del
+   resto de la fila. */
 function ProductoRow({
   producto,
   onToggleVisibility,
@@ -36,6 +111,7 @@ function ProductoRow({
   categoriaLabel,
   subgrupoRaw,
   onAddVariante,
+  movingId,
 }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -63,6 +139,18 @@ function ProductoRow({
   const [varianteColor, setVarianteColor] = useState(null);
   const [varianteSaving, setVarianteSaving] = useState(false);
   const [varianteError, setVarianteError] = useState("");
+
+  const dragId = `prod:${producto.id}`;
+  const sortable = useSortableItem(dragId, {
+    type: "producto",
+    productoId: producto.id,
+    categoriaLabel,
+    subgrupoRaw,
+  });
+  // La BD todavía no confirmó el movimiento que soltó ESTE producto —
+  // pulso neón + spinner en el handle en vez de dejar la fila "seca"
+  // hasta que refetchCatalog() traiga el nuevo orden.
+  const isSaving = movingId === dragId;
 
   const handleDeleteClick = async () => {
     setBusy(true);
@@ -183,8 +271,10 @@ function ProductoRow({
     setVarianteColor(null);
   };
 
+  let content;
+
   if (addingVariante) {
-    return (
+    content = (
       <div className="tz-vis-confirm-delete">
         <p>
           Nueva variante de <strong>{producto.baseName || producto.name}</strong> — mismo precio y
@@ -231,10 +321,8 @@ function ProductoRow({
         </div>
       </div>
     );
-  }
-
-  if (confirming) {
-    return (
+  } else if (confirming) {
+    content = (
       <div className="tz-vis-confirm-delete">
         <p>
           ¿Eliminar <strong>{producto.name}</strong> definitivamente?
@@ -283,10 +371,8 @@ function ProductoRow({
         </div>
       </div>
     );
-  }
-
-  if (editing) {
-    return (
+  } else if (editing) {
+    content = (
       <div className="tz-vis-confirm-delete">
         <input
           type="text"
@@ -364,56 +450,78 @@ function ProductoRow({
         )}
       </div>
     );
+  } else {
+    content = (
+      <div className="tz-stock-row">
+        <span
+          className="tz-vis-drag-handle"
+          ref={sortable.setActivatorNodeRef}
+          {...sortable.listeners}
+          {...sortable.attributes}
+          aria-label={`Arrastrar ${producto.name}`}
+          title="Arrastrar para reordenar/mover"
+        >
+          {isSaving ? <Loader2 size={14} className="tz-spin" /> : <GripVertical size={14} />}
+        </span>
+        <div className="tz-stock-row-info">
+          <span className="tz-stock-row-name">
+            {producto.color && (
+              <span className="tz-variant-dot tz-variant-dot-inline" style={{ background: producto.color }} />
+            )}
+            {producto.name}
+          </span>
+          {producto.detail && <span className="tz-vis-row-detail">{producto.detail}</span>}
+        </div>
+        <div className="tz-vis-row-actions">
+          <label className="tz-toggle">
+            <input
+              type="checkbox"
+              checked={producto.visiblePublico ?? true}
+              onChange={(e) => onToggleVisibility(producto, e.target.checked)}
+            />
+            <span className="tz-toggle-slider" />
+          </label>
+          <button
+            type="button"
+            className="tz-vis-edit-btn"
+            onClick={startEdit}
+            aria-label={`Editar ${producto.name}`}
+            title="Editar producto"
+          >
+            <Pencil size={14} />
+          </button>
+          <button
+            type="button"
+            className="tz-vis-edit-btn"
+            onClick={startAddVariante}
+            aria-label={`Añadir variante de ${producto.name}`}
+            title="+ Añadir Variante"
+          >
+            <Copy size={14} />
+          </button>
+          <button
+            type="button"
+            className="tz-vis-delete-btn"
+            onClick={() => setConfirming(true)}
+            aria-label={`Eliminar ${producto.name}`}
+            title="Eliminar producto"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="tz-stock-row">
-      <div className="tz-stock-row-info">
-        <span className="tz-stock-row-name">
-          {producto.color && (
-            <span className="tz-variant-dot tz-variant-dot-inline" style={{ background: producto.color }} />
-          )}
-          {producto.name}
-        </span>
-        {producto.detail && <span className="tz-vis-row-detail">{producto.detail}</span>}
-      </div>
-      <div className="tz-vis-row-actions">
-        <label className="tz-toggle">
-          <input
-            type="checkbox"
-            checked={producto.visiblePublico ?? true}
-            onChange={(e) => onToggleVisibility(producto, e.target.checked)}
-          />
-          <span className="tz-toggle-slider" />
-        </label>
-        <button
-          type="button"
-          className="tz-vis-edit-btn"
-          onClick={startEdit}
-          aria-label={`Editar ${producto.name}`}
-          title="Editar producto"
-        >
-          <Pencil size={14} />
-        </button>
-        <button
-          type="button"
-          className="tz-vis-edit-btn"
-          onClick={startAddVariante}
-          aria-label={`Añadir variante de ${producto.name}`}
-          title="+ Añadir Variante"
-        >
-          <Copy size={14} />
-        </button>
-        <button
-          type="button"
-          className="tz-vis-delete-btn"
-          onClick={() => setConfirming(true)}
-          aria-label={`Eliminar ${producto.name}`}
-          title="Eliminar producto"
-        >
-          <Trash2 size={15} />
-        </button>
-      </div>
+    <div
+      ref={sortable.setNodeRef}
+      style={sortable.style}
+      className={`tz-vis-dnd-slot ${sortable.isOver ? "tz-vis-dnd-slot-over" : ""} ${
+        sortable.isDragging ? "tz-vis-dnd-dragging" : ""
+      } ${isSaving ? "tz-vis-dnd-saving" : ""}`}
+    >
+      {content}
     </div>
   );
 }
@@ -432,6 +540,7 @@ function SearchableProductList({
   categoriaLabel,
   subgrupoRaw,
   onAddVariante,
+  movingId,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -496,25 +605,254 @@ function SearchableProductList({
         <p className="tz-method-history-empty">Ningún producto coincide.</p>
       ) : (
         <div className="tz-stock-list">
-          {filtered.map((p) => (
-            <ProductoRow
-              key={p.id}
-              producto={p}
-              onToggleVisibility={onToggleVisibility}
-              onDelete={onDelete}
-              onSoftDelete={onSoftDelete}
-              onEditProducto={onEditProducto}
-              onAssignBarcode={onAssignBarcode}
-              categoriaLabel={categoriaLabel}
-              subgrupoRaw={subgrupoRaw}
-              onAddVariante={onAddVariante}
-            />
-          ))}
+          <SortableContext
+            items={filtered.map((p) => `prod:${p.id}`)}
+            strategy={verticalListSortingStrategy}
+          >
+            {filtered.map((p) => (
+              <ProductoRow
+                key={p.id}
+                producto={p}
+                onToggleVisibility={onToggleVisibility}
+                onDelete={onDelete}
+                onSoftDelete={onSoftDelete}
+                onEditProducto={onEditProducto}
+                onAssignBarcode={onAssignBarcode}
+                categoriaLabel={categoriaLabel}
+                subgrupoRaw={subgrupoRaw}
+                onAddVariante={onAddVariante}
+                movingId={movingId}
+              />
+            ))}
+          </SortableContext>
         </div>
       )}
 
       {scannerOpen && (
         <BarcodeScannerModal onScan={handleScan} onClose={() => setScannerOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+/* ---- Zona de "Crafteo"/Fusión de Combos: droppable único y fijo
+   ("combo-craft-zone") que vive arriba de todo, SOLO dentro de la
+   categoría Combos. Sin nada "staged" es una caja vacía a la espera
+   del primer producto; con un producto "staged" se convierte en su
+   tarjeta (con X para descartar) — sigue siendo el MISMO droppable, así
+   que soltar el segundo producto exactamente ahí es lo que dispara la
+   fusión (Paso 2/3 del pedido). ---- */
+function ComboCraftZone({ stagedProduct, onDiscard }) {
+  const drop = useDropSlot("combo-craft-zone", { type: "combo-craft-zone" });
+
+  return (
+    <div
+      ref={drop.setNodeRef}
+      className={`tz-combo-craft-zone ${drop.isOver ? "tz-combo-craft-zone-over" : ""} ${
+        stagedProduct ? "tz-combo-craft-zone-staged" : ""
+      }`}
+    >
+      {stagedProduct ? (
+        <div className="tz-combo-staged-card">
+          <Sparkles size={16} />
+          <span className="tz-combo-staged-name">{stagedProduct.name}</span>
+          <span className="tz-combo-staged-hint">Suelta OTRO producto acá para combinarlos</span>
+          <button
+            type="button"
+            className="tz-combo-staged-discard"
+            onClick={onDiscard}
+            aria-label="Descartar"
+            title="Descartar"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ) : (
+        <p className="tz-combo-craft-zone-empty">
+          <Sparkles size={15} /> Arrastra un producto acá para empezar a armar un Combo
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ---- Overlay de fusión: se monta un instante (ver 'fusing' en el
+   componente raíz) mostrando las dos tarjetas conectadas por líneas
+   neón curvas y animadas — puramente decorativo, cubre la pantalla
+   entera (position: fixed) y nunca intercepta clics (pointer-events:
+   none). Se retira solo, con un setTimeout en el componente raíz que
+   coincide con la duración de la animación. ---- */
+function ComboFusionOverlay({ productoA, productoB }) {
+  return (
+    <div className="tz-combo-fusion-overlay">
+      <div className="tz-combo-fusion-card tz-combo-fusion-card-a">{productoA.name}</div>
+      <svg className="tz-combo-fusion-svg" viewBox="0 0 400 160" preserveAspectRatio="none">
+        <path className="tz-combo-fusion-path tz-combo-fusion-path-1" d="M40,80 C140,20 260,140 360,80" />
+        <path className="tz-combo-fusion-path tz-combo-fusion-path-2" d="M40,80 C140,140 260,20 360,80" />
+      </svg>
+      <div className="tz-combo-fusion-card tz-combo-fusion-card-b">{productoB.name}</div>
+      <div className="tz-combo-fusion-label">
+        <Sparkles size={18} /> Combinando…
+      </div>
+    </div>
+  );
+}
+
+/* Una fila de subgrupo (cabecera + su lista de productos si está
+   abierto). Extraído como su PROPIO componente (no un .map() inline
+   dentro de CategoriaAccordion) por una razón muy concreta: cada fila
+   necesita sus propios useDraggable/useDroppable, y las Reglas de los
+   Hooks de React PROHÍBEN llamar hooks dentro de un callback de .map()
+   — tienen que vivir en el nivel superior de un componente que se
+   instancia una vez por elemento del array (mismo motivo por el que
+   ProductoRow ya era su propio componente). El estado de "estoy
+   editando el nombre" es EXCLUSIVO a nivel de toda la categoría (uno
+   a la vez) y sigue viviendo en CategoriaAccordion — acá solo se
+   recibe como props. */
+function SubgrupoSection({
+  section,
+  group,
+  gi,
+  sectionKey,
+  openSubgrupos,
+  onToggleSubgrupo,
+  isEditing,
+  editValue,
+  onEditValueChange,
+  editSaving,
+  editError,
+  onStartEdit,
+  onSaveEdit,
+  onCancelEdit,
+  onDeleteSubgrupo,
+  onToggleVisibility,
+  onDelete,
+  onSoftDelete,
+  onEditProducto,
+  onAssignBarcode,
+  onAddVariante,
+  rawSubgrupo,
+  movingId,
+}) {
+  const key = `${sectionKey}::${group.title ?? "sin-subgrupo"}::${gi}`;
+  const subOpen = openSubgrupos.has(key);
+  const raw = rawSubgrupo(group);
+
+  const subDragId = `sub:${sectionKey}:${gi}`;
+  // 'sectionKey'/'gi'/'title' viajan en la data SOLO para que
+  // handleDragOver (auto-despliegue) pueda reconstruir la MISMA clave
+  // de 'openSubgrupos' que arma este componente arriba, sin duplicar
+  // esa fórmula en otro lado.
+  const subSortable = useSortableItem(subDragId, {
+    type: "subgroup",
+    categoriaLabel: section.label,
+    subgrupoRaw: raw,
+    sectionKey,
+    gi,
+    title: group.title,
+  });
+  const isSaving = movingId === subDragId;
+
+  return (
+    <div
+      className={`tz-vis-subsection ${subSortable.isOver ? "tz-vis-dnd-slot-over" : ""} ${
+        subSortable.isDragging ? "tz-vis-dnd-dragging" : ""
+      } ${isSaving ? "tz-vis-dnd-saving" : ""}`}
+      ref={subSortable.setNodeRef}
+      style={subSortable.style}
+    >
+      {isEditing ? (
+        <div className="tz-vis-inline-edit-row">
+          <input
+            type="text"
+            className="tz-text-input"
+            value={editValue}
+            onChange={(e) => onEditValueChange(e.target.value)}
+            autoFocus
+          />
+          <button
+            type="button"
+            className="tz-vis-edit-btn"
+            onClick={onSaveEdit}
+            disabled={editSaving}
+            aria-label="Guardar subgrupo"
+          >
+            {editSaving ? <Loader2 size={13} className="tz-spin" /> : <Check size={13} />}
+          </button>
+          <button
+            type="button"
+            className="tz-vis-edit-btn"
+            onClick={onCancelEdit}
+            disabled={editSaving}
+            aria-label="Cancelar"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      ) : (
+        <div className="tz-vis-header-row">
+          <span
+            ref={subSortable.setActivatorNodeRef}
+            className="tz-vis-drag-handle"
+            {...subSortable.listeners}
+            {...subSortable.attributes}
+            aria-label={`Arrastrar subgrupo ${group.title || "sin subgrupo"}`}
+            title="Arrastrar para reordenar/mover"
+          >
+            {isSaving ? <Loader2 size={13} className="tz-spin" /> : <GripVertical size={13} />}
+          </span>
+          <button type="button" className="tz-vis-subgroup-header" onClick={() => onToggleSubgrupo(key)}>
+            <span>{group.title || "Sin subgrupo"}</span>
+            <span className="tz-vis-category-meta">
+              {group.items.length} {subOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </span>
+          </button>
+          {group.title && (
+            <>
+              <button
+                type="button"
+                className="tz-vis-edit-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartEdit(key, group);
+                }}
+                aria-label={`Editar subgrupo ${group.title}`}
+                title="Editar subgrupo"
+              >
+                <Pencil size={13} />
+              </button>
+              <button
+                type="button"
+                className="tz-vis-delete-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteSubgrupo(group);
+                }}
+                aria-label={`Eliminar subgrupo ${group.title}`}
+                title="Eliminar subgrupo"
+              >
+                <Trash2 size={13} />
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {isEditing && editError && <p className="tz-error">{editError}</p>}
+      {subOpen && !isEditing && (
+        <div className="tz-vis-accordion-inner">
+          <SearchableProductList
+            items={group.items}
+            onToggleVisibility={onToggleVisibility}
+            onDelete={onDelete}
+            onSoftDelete={onSoftDelete}
+            onEditProducto={onEditProducto}
+            onAssignBarcode={onAssignBarcode}
+            categoriaLabel={section.label}
+            subgrupoRaw={raw}
+            onAddVariante={onAddVariante}
+            movingId={movingId}
+          />
+        </div>
       )}
     </div>
   );
@@ -526,9 +864,18 @@ function SearchableProductList({
    encabezados de Categoría y Subgrupo llevan un botón de lápiz que
    dispara un UPDATE masivo (todos los productos que comparten ese
    valor) — acá no hay una fila individual que editar, el "nombre de
-   categoría/subgrupo" es un string repetido en varias filas. */
+   categoría/subgrupo" es un string repetido en varias filas.
+
+   'open'/'onToggleOpen' (categoría) y 'openSubgrupos'/'onToggleSubgrupo'
+   viven en el componente RAÍZ (no acá) — el auto-despliegue por hover
+   durante un drag necesita poder abrir una categoría desde AFUERA,
+   sin que el usuario haya hecho clic en nada. */
 function CategoriaAccordion({
   section,
+  isOpen,
+  onToggleOpen,
+  openSubgrupos,
+  onToggleSubgrupo,
   onToggleVisibility,
   onDelete,
   onSoftDelete,
@@ -541,16 +888,11 @@ function CategoriaAccordion({
   onForceHideCategoria,
   onForceHideSubgrupo,
   onAddVariante,
-  onDragHandleStart,
-  onDragOverCategoria,
-  onDropCategoria,
-  onDragEndCategoria,
-  isDragging,
-  isDragOver,
+  isCombosCategoria,
+  stagedProduct,
+  onDiscardStaged,
+  movingId,
 }) {
-  const [open, setOpen] = useState(false);
-  const [openSubgrupos, setOpenSubgrupos] = useState(() => new Set());
-
   const [editingCategoria, setEditingCategoria] = useState(false);
   const [categoriaValue, setCategoriaValue] = useState(section.label);
   const [categoriaSaving, setCategoriaSaving] = useState(false);
@@ -561,14 +903,12 @@ function CategoriaAccordion({
   const [subgrupoSaving, setSubgrupoSaving] = useState(false);
   const [subgrupoError, setSubgrupoError] = useState("");
 
-  const toggleSubgrupo = (key) => {
-    setOpenSubgrupos((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
+  const catDragId = `cat:${section.key}`;
+  const catSortable = useSortableItem(catDragId, {
+    type: "category",
+    categoriaLabel: section.label,
+  });
+  const isSaving = movingId === catDragId;
 
   const saveCategoriaRename = async () => {
     setCategoriaSaving(true);
@@ -663,17 +1003,11 @@ function CategoriaAccordion({
 
   return (
     <div
-      className={`tz-vis-category ${isDragging ? "tz-vis-category-dragging" : ""} ${
-        isDragOver ? "tz-vis-category-drag-over" : ""
-      }`}
-      onDragOver={(e) => {
-        e.preventDefault();
-        onDragOverCategoria?.();
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDropCategoria?.();
-      }}
+      ref={catSortable.setNodeRef}
+      style={catSortable.style}
+      className={`tz-vis-category ${catSortable.isDragging ? "tz-vis-category-dragging" : ""} ${
+        catSortable.isOver ? "tz-vis-category-drag-over" : ""
+      } ${isSaving ? "tz-vis-dnd-saving" : ""}`}
     >
       {editingCategoria ? (
         <div className="tz-vis-inline-edit-row">
@@ -709,24 +1043,19 @@ function CategoriaAccordion({
       ) : (
         <div className="tz-vis-header-row">
           <span
+            ref={catSortable.setActivatorNodeRef}
             className="tz-vis-drag-handle"
-            draggable
-            onDragStart={onDragHandleStart}
-            onDragEnd={onDragEndCategoria}
-            onClick={(e) => e.stopPropagation()}
+            {...catSortable.listeners}
+            {...catSortable.attributes}
             aria-label={`Arrastrar para reordenar ${section.label}`}
             title="Arrastrar para reordenar"
           >
-            <GripVertical size={15} />
+            {isSaving ? <Loader2 size={15} className="tz-spin" /> : <GripVertical size={15} />}
           </span>
-          <button
-            type="button"
-            className="tz-vis-category-header"
-            onClick={() => setOpen((prev) => !prev)}
-          >
+          <button type="button" className="tz-vis-category-header" onClick={onToggleOpen}>
             <span>{section.label}</span>
             <span className="tz-vis-category-meta">
-              {totalItems} {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              {totalItems} {isOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </span>
           </button>
           <button
@@ -759,8 +1088,12 @@ function CategoriaAccordion({
       )}
       {categoriaError && <p className="tz-error">{categoriaError}</p>}
 
-      {open && (
+      {isOpen && (
         <div className="tz-vis-accordion-inner">
+          {isCombosCategoria && (
+            <ComboCraftZone stagedProduct={stagedProduct} onDiscard={onDiscardStaged} />
+          )}
+
           {!hasRealSubgroups ? (
             <SearchableProductList
               items={section.groups[0]?.items ?? []}
@@ -772,113 +1105,48 @@ function CategoriaAccordion({
               categoriaLabel={section.label}
               subgrupoRaw={null}
               onAddVariante={onAddVariante}
+              movingId={movingId}
             />
           ) : (
-            section.groups.map((group, gi) => {
-              const key = `${section.key}::${group.title ?? "sin-subgrupo"}::${gi}`;
-              const subOpen = openSubgrupos.has(key);
-              const isEditingThisSubgrupo = editingSubgrupoKey === key;
-              return (
-                <div className="tz-vis-subsection" key={key}>
-                  {isEditingThisSubgrupo ? (
-                    <div className="tz-vis-inline-edit-row">
-                      <input
-                        type="text"
-                        className="tz-text-input"
-                        value={subgrupoValue}
-                        onChange={(e) => setSubgrupoValue(e.target.value)}
-                        autoFocus
-                      />
-                      <button
-                        type="button"
-                        className="tz-vis-edit-btn"
-                        onClick={() => saveSubgrupoRename(group)}
-                        disabled={subgrupoSaving}
-                        aria-label="Guardar subgrupo"
-                      >
-                        {subgrupoSaving ? (
-                          <Loader2 size={13} className="tz-spin" />
-                        ) : (
-                          <Check size={13} />
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        className="tz-vis-edit-btn"
-                        onClick={() => {
-                          setEditingSubgrupoKey(null);
-                          setSubgrupoError("");
-                        }}
-                        disabled={subgrupoSaving}
-                        aria-label="Cancelar"
-                      >
-                        <X size={13} />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="tz-vis-header-row">
-                      <button
-                        type="button"
-                        className="tz-vis-subgroup-header"
-                        onClick={() => toggleSubgrupo(key)}
-                      >
-                        <span>{group.title || "Sin subgrupo"}</span>
-                        <span className="tz-vis-category-meta">
-                          {group.items.length}{" "}
-                          {subOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </span>
-                      </button>
-                      {group.title && (
-                        <>
-                          <button
-                            type="button"
-                            className="tz-vis-edit-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              startEditSubgrupo(key, group);
-                            }}
-                            aria-label={`Editar subgrupo ${group.title}`}
-                            title="Editar subgrupo"
-                          >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            className="tz-vis-delete-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteSubgrupo(group);
-                            }}
-                            aria-label={`Eliminar subgrupo ${group.title}`}
-                            title="Eliminar subgrupo"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {subgrupoError && isEditingThisSubgrupo && (
-                    <p className="tz-error">{subgrupoError}</p>
-                  )}
-                  {subOpen && !isEditingThisSubgrupo && (
-                    <div className="tz-vis-accordion-inner">
-                      <SearchableProductList
-                        items={group.items}
-                        onToggleVisibility={onToggleVisibility}
-                        onDelete={onDelete}
-                        onSoftDelete={onSoftDelete}
-                        onEditProducto={onEditProducto}
-                        onAssignBarcode={onAssignBarcode}
-                        categoriaLabel={section.label}
-                        subgrupoRaw={rawSubgrupo(group)}
-                        onAddVariante={onAddVariante}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })
+            <SortableContext
+              items={section.groups.map((_, gi) => `sub:${section.key}:${gi}`)}
+              strategy={verticalListSortingStrategy}
+            >
+              {section.groups.map((group, gi) => {
+                const key = `${section.key}::${group.title ?? "sin-subgrupo"}::${gi}`;
+                return (
+                  <SubgrupoSection
+                    key={key}
+                    section={section}
+                    group={group}
+                    gi={gi}
+                    sectionKey={section.key}
+                    openSubgrupos={openSubgrupos}
+                    onToggleSubgrupo={onToggleSubgrupo}
+                    isEditing={editingSubgrupoKey === key}
+                    editValue={subgrupoValue}
+                    onEditValueChange={setSubgrupoValue}
+                    editSaving={subgrupoSaving}
+                    editError={subgrupoError}
+                    onStartEdit={startEditSubgrupo}
+                    onSaveEdit={() => saveSubgrupoRename(group)}
+                    onCancelEdit={() => {
+                      setEditingSubgrupoKey(null);
+                      setSubgrupoError("");
+                    }}
+                    onDeleteSubgrupo={handleDeleteSubgrupo}
+                    onToggleVisibility={onToggleVisibility}
+                    onDelete={onDelete}
+                    onSoftDelete={onSoftDelete}
+                    onEditProducto={onEditProducto}
+                    onAssignBarcode={onAssignBarcode}
+                    onAddVariante={onAddVariante}
+                    rawSubgrupo={rawSubgrupo}
+                    movingId={movingId}
+                  />
+                );
+              })}
+            </SortableContext>
           )}
         </div>
       )}
@@ -890,7 +1158,9 @@ function CategoriaAccordion({
    catálogo público": acordeón Categoría -> Subgrupo -> productos, con
    búsqueda/escaneo contextual por sección, alta+baja de productos
    (toggle + eliminar con confirmación y fallback a soft delete), y
-   edición al vuelo (lápiz) de producto/categoría/subgrupo. */
+   edición al vuelo (lápiz) de producto/categoría/subgrupo — más DnD
+   multinivel (categoría/subgrupo/producto) y la mecánica de "crafteo"
+   de Combos, ambos sobre @dnd-kit/core (ver comentario grande arriba). */
 export default function CatalogVisibilityAccordion({
   sections,
   onToggleVisibility,
@@ -905,6 +1175,9 @@ export default function CatalogVisibilityAccordion({
   onCreateCategoria,
   onAddVariante,
   onReorderCategorias,
+  onMoverProducto,
+  onMoverSubgrupo,
+  onCraftCombo,
 }) {
   // Blindaje del lado del cliente: si Supabase deja pasar un delete o
   // update sin afectar ninguna fila (RLS bloqueando en silencio, o la
@@ -925,29 +1198,64 @@ export default function CatalogVisibilityAccordion({
   const [creatingSaving, setCreatingSaving] = useState(false);
   const [creatingError, setCreatingError] = useState("");
 
-  /* ---- Drag & Drop de categorías (HTML5 nativo, sin librería): el
-     handle (GripVertical) es el único elemento 'draggable' — dragover/
-     drop se escuchan en la tarjeta entera de CategoriaAccordion para
-     que soltar en cualquier parte de la categoría destino cuente. Al
-     soltar, se arma el array completo reordenado y se delega el
-     persistido (optimista + UPDATE a 'categorias.orden') a
-     reorderCategorias() en useCatalog.js. ---- */
-  const [dragIndex, setDragIndex] = useState(null);
-  const [dragOverIndex, setDragOverIndex] = useState(null);
+  // Categorías/subgrupos abiertos — lo pide el auto-despliegue por
+  // hover (500ms) durante un drag: necesita poder abrir una categoría
+  // desde ACÁ (el DndContext), sin esperar un clic del usuario.
+  const [openCategorias, setOpenCategorias] = useState(() => new Set());
+  const [openSubgrupos, setOpenSubgrupos] = useState(() => new Set());
 
-  const handleDrop = (targetIndex, currentVisibleSections) => {
-    if (dragIndex === null || dragIndex === targetIndex) {
-      setDragIndex(null);
-      setDragOverIndex(null);
-      return;
-    }
-    const reordered = [...currentVisibleSections];
-    const [moved] = reordered.splice(dragIndex, 1);
-    reordered.splice(targetIndex, 0, moved);
-    setDragIndex(null);
-    setDragOverIndex(null);
-    onReorderCategorias?.(reordered.map((s) => s.label));
+  const toggleCategoria = (label) => {
+    setOpenCategorias((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
   };
+  const toggleSubgrupo = (key) => {
+    setOpenSubgrupos((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // Mecánica de "Crafteo"/Fusión (categoría Combos): 'stagedProduct' es
+  // el primer producto soltado (Paso 1); 'fusing' dispara la animación
+  // de líneas neón (Paso 2) antes de delegarle a App.jsx la apertura
+  // del modal "Nuevo Combo" ya precargado (Paso 3, ver onCraftCombo).
+  const [stagedProduct, setStagedProduct] = useState(null);
+  const [fusing, setFusing] = useState(null); // { a, b } | null
+
+  // Lookup plano id -> producto, para resolver 'activeData.productoId'
+  // al soltar sobre la zona de crafteo (el active/over de dnd-kit solo
+  // trae ids + la 'data' que YA le pusimos, nunca el objeto completo).
+  const productosById = useMemo(() => {
+    const map = {};
+    sections.forEach((s) => s.groups.forEach((g) => g.items.forEach((it) => (map[it.id] = it))));
+    return map;
+  }, [sections]);
+
+  const [activeDrag, setActiveDrag] = useState(null); // data del draggable activo, para el DragOverlay
+  // Id (mismo formato que useDragHandle: 'prod:', 'sub:', 'cat:') del
+  // ítem cuya mutación hacia Supabase está EN VUELO tras soltar — cada
+  // fila/tarjeta lo compara contra su propio id para pintar su propio
+  // spinner/pulso, en vez de "congelar" toda la lista mientras se
+  // confirma el movimiento.
+  const [movingId, setMovingId] = useState(null);
+  const hoverTimerRef = useRef(null);
+  const hoverTargetRef = useRef(null);
+
+  const clearHoverTimer = () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = null;
+    hoverTargetRef.current = null;
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
+  );
 
   const handleCreateCategoria = async () => {
     const nombre = newCategoriaValue.trim();
@@ -983,91 +1291,317 @@ export default function CatalogVisibilityAccordion({
       groups: s.groups.filter((g) => !hiddenSubgrupos.has(`${s.label}::${g.title}`)),
     }));
 
+  /* ---- Paso 1/2/3 del crafteo: primer producto soltado -> queda
+     "staged"; segundo producto soltado sobre esa MISMA tarjeta -> corre
+     la animación de fusión y, al terminar, delega a onCraftCombo. ---- */
+  const handleDropOnCraftZone = (productoId) => {
+    const producto = productosById[productoId];
+    if (!producto) return;
+    if (!stagedProduct) {
+      setStagedProduct(producto);
+      return;
+    }
+    if (stagedProduct.id === producto.id) return; // mismo producto soltado de nuevo: no-op
+
+    const primero = stagedProduct;
+    setStagedProduct(null);
+    setFusing({ a: primero, b: producto });
+    window.setTimeout(() => {
+      setFusing(null);
+      onCraftCombo?.([primero, producto]);
+    }, 650);
+  };
+
+  const handleDragStart = (event) => {
+    setActiveDrag(event.active?.data?.current || null);
+  };
+
+  // Arma (o reutiliza, si ya está corriendo para el MISMO objetivo) un
+  // timer de 500ms que aplica 'applyFn' — usado tanto para auto-abrir
+  // una categoría como un subgrupo colapsados durante un drag.
+  const armHoverTimer = (targetKey, applyFn) => {
+    if (hoverTargetRef.current === targetKey) return; // ya está corriendo para este mismo objetivo
+    clearHoverTimer();
+    hoverTargetRef.current = targetKey;
+    hoverTimerRef.current = window.setTimeout(() => {
+      applyFn();
+      hoverTargetRef.current = null;
+    }, 500);
+  };
+
+  /* ---- Auto-despliegue (hover-to-open): mientras se arrastra algo
+     sobre una CATEGORÍA o SUBGRUPO colapsados, arma un timer de 500ms
+     antes de expandirlo (con la misma animación suave de entrada que
+     ya tiene '.tz-vis-accordion-inner' al abrir a mano); si el drag se
+     mueve a otro lado antes de que termine, se cancela.
+       - Categoría: producto O subgrupo arrastrado por encima la
+         auto-despliega (subgrupos SÍ pueden "entrar" a otra categoría).
+       - Subgrupo: solo un PRODUCTO arrastrado por encima lo
+         auto-despliega — los subgrupos no anidan entre sí, no hace
+         falta "entrar" a otro subgrupo.
+     Las categorías/subgrupos no se auto-despliegan entre sí cuando lo
+     arrastrado es su MISMO tipo y el destino ya es "hoja" (reordenar
+     no necesita ver el contenido). ---- */
+  const handleDragOver = (event) => {
+    const { active, over } = event;
+    const activeType = active?.data?.current?.type;
+    const overData = over?.data?.current;
+
+    if (!over || !overData) {
+      clearHoverTimer();
+      return;
+    }
+
+    if (
+      (activeType === "producto" || activeType === "subgroup") &&
+      overData.type === "category" &&
+      !openCategorias.has(overData.categoriaLabel)
+    ) {
+      armHoverTimer(`cat::${overData.categoriaLabel}`, () => {
+        setOpenCategorias((prev) => new Set(prev).add(overData.categoriaLabel));
+      });
+      return;
+    }
+
+    if (activeType === "producto" && overData.type === "subgroup") {
+      const subKey = `${overData.sectionKey}::${overData.title ?? "sin-subgrupo"}::${overData.gi}`;
+      if (!openSubgrupos.has(subKey)) {
+        armHoverTimer(`sub::${subKey}`, () => {
+          setOpenSubgrupos((prev) => new Set(prev).add(subKey));
+        });
+        return;
+      }
+    }
+
+    clearHoverTimer();
+  };
+
+  // Marca 'id' como "guardando" mientras 'fn' (la mutación async hacia
+  // Supabase) está en vuelo, y lo limpia pase lo que pase (éxito o
+  // error) — así el spinner/pulso de la fila SIEMPRE se apaga, incluso
+  // si moverProducto/moverSubgrupo/reorderCategorias fallan.
+  const runMove = async (id, fn) => {
+    setMovingId(id);
+    try {
+      await fn();
+    } finally {
+      setMovingId(null);
+    }
+  };
+
+  const handleDragEnd = async (event) => {
+    clearHoverTimer();
+    setActiveDrag(null);
+
+    const { active, over } = event;
+    if (!over) return;
+    const activeData = active.data?.current;
+    const overData = over.data?.current;
+    if (!activeData || !overData) return;
+
+    if (activeData.type === "category") {
+      if (overData.type !== "category") return;
+      if (activeData.categoriaLabel === overData.categoriaLabel) return;
+      const labels = visibleSections.map((s) => s.label);
+      const fromIdx = labels.indexOf(activeData.categoriaLabel);
+      if (fromIdx === -1) return;
+      const reordered = [...labels];
+      reordered.splice(fromIdx, 1);
+      const insertAt = reordered.indexOf(overData.categoriaLabel);
+      if (insertAt === -1) return;
+      reordered.splice(insertAt, 0, activeData.categoriaLabel);
+      await runMove(active.id, () => onReorderCategorias?.(reordered));
+      return;
+    }
+
+    if (activeData.type === "subgroup") {
+      if (overData.type === "category") {
+        await runMove(active.id, () =>
+          onMoverSubgrupo?.({
+            categoriaOrigen: activeData.categoriaLabel,
+            subgrupoRawOrigen: activeData.subgrupoRaw,
+            categoriaDestino: overData.categoriaLabel,
+            beforeSubgrupoRaw: null,
+          })
+        );
+      } else if (overData.type === "subgroup") {
+        if (
+          activeData.categoriaLabel === overData.categoriaLabel &&
+          activeData.subgrupoRaw === overData.subgrupoRaw
+        ) {
+          return;
+        }
+        await runMove(active.id, () =>
+          onMoverSubgrupo?.({
+            categoriaOrigen: activeData.categoriaLabel,
+            subgrupoRawOrigen: activeData.subgrupoRaw,
+            categoriaDestino: overData.categoriaLabel,
+            beforeSubgrupoRaw: overData.subgrupoRaw,
+          })
+        );
+      }
+      return;
+    }
+
+    if (activeData.type === "producto") {
+      if (overData.type === "combo-craft-zone") {
+        handleDropOnCraftZone(activeData.productoId);
+        return;
+      }
+      if (overData.type === "category") {
+        await runMove(active.id, () =>
+          onMoverProducto?.({
+            productoId: activeData.productoId,
+            categoriaDestino: overData.categoriaLabel,
+            subgrupoDestino: null,
+            beforeProductoId: null,
+          })
+        );
+      } else if (overData.type === "subgroup") {
+        await runMove(active.id, () =>
+          onMoverProducto?.({
+            productoId: activeData.productoId,
+            categoriaDestino: overData.categoriaLabel,
+            subgrupoDestino: overData.subgrupoRaw,
+            beforeProductoId: null,
+          })
+        );
+      } else if (overData.type === "producto") {
+        if (overData.productoId === activeData.productoId) return;
+        await runMove(active.id, () =>
+          onMoverProducto?.({
+            productoId: activeData.productoId,
+            categoriaDestino: overData.categoriaLabel,
+            subgrupoDestino: overData.subgrupoRaw,
+            beforeProductoId: overData.productoId,
+          })
+        );
+      }
+    }
+  };
+
+  const activeDragLabel = (() => {
+    if (!activeDrag) return "";
+    if (activeDrag.type === "category") return activeDrag.categoriaLabel;
+    if (activeDrag.type === "subgroup") return activeDrag.subgrupoRaw;
+    if (activeDrag.type === "producto") return productosById[activeDrag.productoId]?.name || "";
+    return "";
+  })();
+
   return (
-    <div className="tz-vis-accordion">
-      <div className="tz-vis-create-categoria">
-        {creatingCategoria ? (
-          <div className="tz-vis-inline-edit-row">
-            <input
-              type="text"
-              className="tz-text-input"
-              placeholder="Nombre de la nueva categoría"
-              value={newCategoriaValue}
-              onChange={(e) => setNewCategoriaValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateCategoria();
-              }}
-              autoFocus
-            />
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      // 'Always' (no el default 'WhileDragging', que solo mide una vez
+      // al empezar): el auto-despliegue (item 3) puede abrir una
+      // categoría/subgrupo A MITAD del arrastre, cambiando el layout
+      // por completo — sin re-medir, dnd-kit seguiría calculando
+      // colisiones contra las posiciones VIEJAS (de antes de abrirse).
+      measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+      onDragCancel={() => {
+        clearHoverTimer();
+        setActiveDrag(null);
+      }}
+    >
+      <div className="tz-vis-accordion">
+        <div className="tz-vis-create-categoria">
+          {creatingCategoria ? (
+            <div className="tz-vis-inline-edit-row">
+              <input
+                type="text"
+                className="tz-text-input"
+                placeholder="Nombre de la nueva categoría"
+                value={newCategoriaValue}
+                onChange={(e) => setNewCategoriaValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateCategoria();
+                }}
+                autoFocus
+              />
+              <button
+                type="button"
+                className="tz-vis-edit-btn"
+                onClick={handleCreateCategoria}
+                disabled={creatingSaving}
+                aria-label="Guardar categoría"
+              >
+                {creatingSaving ? <Loader2 size={13} className="tz-spin" /> : <Check size={13} />}
+              </button>
+              <button
+                type="button"
+                className="tz-vis-edit-btn"
+                onClick={() => {
+                  setCreatingCategoria(false);
+                  setNewCategoriaValue("");
+                  setCreatingError("");
+                }}
+                disabled={creatingSaving}
+                aria-label="Cancelar"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              className="tz-vis-edit-btn"
-              onClick={handleCreateCategoria}
-              disabled={creatingSaving}
-              aria-label="Guardar categoría"
-            >
-              {creatingSaving ? <Loader2 size={13} className="tz-spin" /> : <Check size={13} />}
-            </button>
-            <button
-              type="button"
-              className="tz-vis-edit-btn"
+              className="tz-camera-cancel tz-scanner-upload-btn"
               onClick={() => {
-                setCreatingCategoria(false);
-                setNewCategoriaValue("");
+                setCreatingCategoria(true);
                 setCreatingError("");
               }}
-              disabled={creatingSaving}
-              aria-label="Cancelar"
             >
-              <X size={13} />
+              <Plus size={15} /> Nueva Categoría
             </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            className="tz-camera-cancel tz-scanner-upload-btn"
-            onClick={() => {
-              setCreatingCategoria(true);
-              setCreatingError("");
-            }}
-          >
-            <Plus size={15} /> Nueva Categoría
-          </button>
-        )}
-        {creatingError && <p className="tz-error">{creatingError}</p>}
+          )}
+          {creatingError && <p className="tz-error">{creatingError}</p>}
+        </div>
+
+        <SortableContext
+          items={visibleSections.map((s) => `cat:${s.key}`)}
+          strategy={verticalListSortingStrategy}
+        >
+          {visibleSections.map((section) => (
+            <CategoriaAccordion
+              key={section.key}
+              section={section}
+              isOpen={openCategorias.has(section.label)}
+              onToggleOpen={() => toggleCategoria(section.label)}
+              openSubgrupos={openSubgrupos}
+              onToggleSubgrupo={toggleSubgrupo}
+              onToggleVisibility={onToggleVisibility}
+              onDelete={onDelete}
+              onSoftDelete={onSoftDelete}
+              onEditProducto={onEditProducto}
+              onAssignBarcode={onAssignBarcode}
+              onRenameCategoria={onRenameCategoria}
+              onRenameSubgrupo={onRenameSubgrupo}
+              onDeleteCategoria={onDeleteCategoria}
+              onDeleteSubgrupo={onDeleteSubgrupo}
+              onForceHideCategoria={forceHideCategoria}
+              onForceHideSubgrupo={forceHideSubgrupo}
+              onAddVariante={onAddVariante}
+              isCombosCategoria={section.label.trim().toLowerCase() === "combos"}
+              stagedProduct={stagedProduct}
+              onDiscardStaged={() => setStagedProduct(null)}
+              movingId={movingId}
+            />
+          ))}
+        </SortableContext>
       </div>
 
-      {visibleSections.map((section, index) => (
-        <CategoriaAccordion
-          key={section.key}
-          section={section}
-          onToggleVisibility={onToggleVisibility}
-          onDelete={onDelete}
-          onSoftDelete={onSoftDelete}
-          onEditProducto={onEditProducto}
-          onAssignBarcode={onAssignBarcode}
-          onRenameCategoria={onRenameCategoria}
-          onRenameSubgrupo={onRenameSubgrupo}
-          onDeleteCategoria={onDeleteCategoria}
-          onDeleteSubgrupo={onDeleteSubgrupo}
-          onForceHideCategoria={forceHideCategoria}
-          onForceHideSubgrupo={forceHideSubgrupo}
-          onAddVariante={onAddVariante}
-          onDragHandleStart={(e) => {
-            e.dataTransfer.effectAllowed = "move";
-            e.dataTransfer.setData("text/plain", String(index));
-            setDragIndex(index);
-          }}
-          onDragOverCategoria={() => setDragOverIndex(index)}
-          onDropCategoria={() => handleDrop(index, visibleSections)}
-          onDragEndCategoria={() => {
-            setDragIndex(null);
-            setDragOverIndex(null);
-          }}
-          isDragging={dragIndex === index}
-          isDragOver={dragOverIndex === index && dragIndex !== null && dragIndex !== index}
-        />
-      ))}
-    </div>
+      <DragOverlay dropAnimation={null}>
+        {activeDrag ? (
+          <div className={`tz-vis-drag-ghost tz-vis-drag-ghost-${activeDrag.type}`}>
+            <GripVertical size={13} />
+            {activeDragLabel}
+          </div>
+        ) : null}
+      </DragOverlay>
+
+      {fusing && <ComboFusionOverlay productoA={fusing.a} productoB={fusing.b} />}
+    </DndContext>
   );
 }

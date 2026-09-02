@@ -411,6 +411,82 @@ export default function Styles() {
         overflow-x: visible;
       }
 
+      /* ---------- ScrollSpySidebar ("navegación estilo Fortnite") ----------
+         Oculto en móvil a propósito (base mobile-first): en una
+         pantalla angosta la barra lateral fija robaría espacio real de
+         contenido y competiría con el thumb del usuario — recién
+         aparece desde 768px (ver el bloque @media más abajo), donde ya
+         sobra espacio a los costados de la grilla de productos. */
+      .tz-scrollspy { display: none; }
+      @media (min-width: 768px) {
+        .tz-scrollspy {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          position: fixed;
+          top: 50%;
+          transform: translateY(-50%);
+          z-index: 40;
+          padding: 14px 10px;
+          border-radius: 999px;
+          background: rgba(10, 7, 22, 0.55);
+          border: 1px solid var(--border-soft);
+          backdrop-filter: blur(6px);
+          transition: background 0.2s ease, border-color 0.2s ease, padding 0.2s ease;
+        }
+        .tz-scrollspy-right { right: 10px; }
+        .tz-scrollspy-left { left: 10px; }
+        .tz-scrollspy-expanded {
+          background: var(--panel-solid);
+          border-color: rgba(43,232,255,0.3);
+          padding: 16px 14px;
+          box-shadow: 0 0 30px rgba(43,232,255,0.15);
+        }
+        .tz-scrollspy-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          background: transparent;
+          border: none;
+          padding: 0;
+          cursor: pointer;
+          color: var(--text-dim);
+        }
+        .tz-scrollspy-right .tz-scrollspy-item { flex-direction: row-reverse; }
+        .tz-scrollspy-dot {
+          flex-shrink: 0;
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: var(--text-dim);
+          box-shadow: 0 0 0 rgba(43,232,255,0);
+          transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+        }
+        .tz-scrollspy-item-active .tz-scrollspy-dot {
+          background: var(--cyan);
+          box-shadow: 0 0 10px rgba(43,232,255,0.9);
+          transform: scale(1.3);
+        }
+        /* Los nombres viven SIEMPRE en el DOM (nunca aparecen/
+           desaparecen de golpe) — solo se les anima max-width + opacity
+           a 0 cuando la barra está colapsada, así el despliegue al
+           pasar el mouse se siente fluido, no un "pop". */
+        .tz-scrollspy-label {
+          max-width: 0;
+          opacity: 0;
+          overflow: hidden;
+          white-space: nowrap;
+          font-family: 'Rajdhani', sans-serif;
+          font-weight: 700;
+          font-size: 12.5px;
+          transition: max-width 0.25s ease, opacity 0.2s ease;
+        }
+        .tz-scrollspy-expanded .tz-scrollspy-label { max-width: 160px; opacity: 1; }
+        .tz-scrollspy-item-active .tz-scrollspy-label { color: var(--cyan); }
+        .tz-scrollspy-item:hover .tz-scrollspy-dot { background: var(--text); }
+        .tz-scrollspy-item-active:hover .tz-scrollspy-dot { background: var(--cyan); }
+      }
+
       /* ---------- FILTROS SUPERIORES (Parte 3, solo admin — y el
          filtro público de sucursal del catálogo, que reusa esta misma
          clase) ----------
@@ -1169,7 +1245,14 @@ export default function Styles() {
         justify-content: center;
         gap: 14px;
       }
-      .tz-card-top { display: flex; justify-content: space-between; gap: 10px; }
+      /* Fix Admin Mode Bug: en pantallas MUY angostas, dos botones de
+         admin (%, lápiz) + el checkbox no caben al lado del nombre sin
+         aplastarlo — por debajo de 640px (el 'sm' de Tailwind), la
+         cabecera pasa de fila a columna: el nombre ocupa el ancho
+         completo en su propia línea, y las acciones caen debajo,
+         alineadas a la derecha. Desde 640px vuelven a compartir fila
+         (ver el @media más abajo). */
+      .tz-card-top { display: flex; flex-direction: column; gap: 8px; }
       /* flex-basis 0 (no 'auto'): el bloque de nombre+detalle arranca
          en 0 y crece solo hasta el espacio que sobra, en vez de pedir
          su ancho de contenido completo antes de repartir — así nunca
@@ -1178,6 +1261,12 @@ export default function Styles() {
          que el texto se achique por debajo del "ancho de contenido"
          normal y haga wrap en vez de forzar overflow. */
       .tz-card-info { min-width: 0; flex: 1 1 0%; }
+      @media (min-width: 640px) {
+        .tz-card-top { flex-direction: row; justify-content: space-between; gap: 10px; }
+      }
+      @media (max-width: 639px) {
+        .tz-card-top-actions { align-self: flex-end; }
+      }
       .tz-combo {
         display: block;
         font-family: 'Orbitron', sans-serif;
@@ -1192,7 +1281,14 @@ export default function Styles() {
         font-size: 18px;
         font-weight: 700;
         line-height: 1.25;
-        overflow-wrap: anywhere;
+        /* Fix Admin Mode Bug: 'anywhere' partía nombres cortos letra
+           por letra ("Co/m/bo") apenas la tarjeta se apretaba con los
+           botones de admin — 'break-word' es la versión "inteligente":
+           respeta los espacios entre palabras (wrap normal) y SOLO
+           rompe una palabra a la mitad si, aun sola en su propia línea,
+           no entra igual (el caso real que 'anywhere' quería cubrir:
+           un nombre sin espacios, patológicamente largo). */
+        overflow-wrap: break-word;
       }
       .tz-name-plus {
         color: var(--green);
@@ -2128,6 +2224,16 @@ export default function Styles() {
         justify-content: center;
         padding: 10px;
       }
+      /* Bloqueo Global de Modales: clic afuera YA NO cierra ningún
+         modal en toda la app (los backdrops dejaron de llevar onClick)
+         — la única salida es el botón "X". Este modificador es para
+         modales que se abren DESDE ADENTRO de otro ya abierto
+         (BarcodeScannerModal, ImageCropModal, PesoModal — escanear o
+         recortar una foto sin salir del formulario que los abrió): un
+         z-index más alto que el estándar (60) los garantiza siempre
+         por ENCIMA del modal que los contiene, sin depender de que el
+         orden del DOM alcance por sí solo. */
+      .tz-modal-backdrop-nested { z-index: 70; }
       .tz-modal {
         position: relative;
         width: 100%;
@@ -2710,9 +2816,12 @@ export default function Styles() {
         background: rgba(255,255,255,0.02);
         transition: border-color 0.12s, box-shadow 0.12s, opacity 0.12s;
       }
-      /* Drag & Drop de categorías (nativo HTML5, sin librería): el
-         handle es el único elemento draggable; dragover/drop viven en
-         toda la tarjeta para que soltar en cualquier parte cuente. */
+      /* DnD Multinivel (Categoría/Subgrupo/Producto) sobre @dnd-kit/core:
+         el handle (GripVertical) es el único elemento con los
+         listeners de arrastre (touch-action:none es obligatorio para
+         que el PointerSensor funcione bien en touch); el resto de la
+         fila/tarjeta es el droppable, para que soltar en cualquier
+         parte de ella cuente. */
       .tz-vis-drag-handle {
         flex-shrink: 0;
         display: flex;
@@ -2729,6 +2838,209 @@ export default function Styles() {
       .tz-vis-category-drag-over {
         border-color: var(--cyan);
         box-shadow: 0 0 0 1.5px var(--cyan), 0 0 16px rgba(43,232,255,0.35);
+      }
+      /* Slot genérico de subgrupo/producto (SubgrupoSection/ProductoRow):
+         mismo lenguaje visual que '.tz-vis-category-drag-over' de
+         arriba, a una escala más chica. */
+      .tz-vis-dnd-slot { border-radius: 10px; transition: box-shadow 0.12s, opacity 0.12s; }
+      .tz-vis-dnd-slot-over {
+        box-shadow: 0 0 0 1.5px var(--cyan), 0 0 14px rgba(43,232,255,0.35);
+      }
+      .tz-vis-dnd-dragging { opacity: 0.4; }
+      .tz-vis-subsection.tz-vis-dnd-slot-over,
+      .tz-vis-subsection.tz-vis-dnd-dragging {
+        border-radius: 10px;
+        transition: box-shadow 0.12s, opacity 0.12s;
+      }
+      /* Feedback de carga al SOLTAR: mientras la mutación async hacia
+         Supabase (moverProducto/moverSubgrupo/reorderCategorias) está en
+         vuelo, la fila/tarjeta que se soltó (y SOLO esa — 'movingId' se
+         compara contra el id propio de cada ítem) pulsa en neón cian y
+         su grip cambia por un spinner, para que el drop nunca se sienta
+         "seco" mientras se espera la confirmación de la base. */
+      .tz-vis-dnd-saving { animation: tz-vis-saving-pulse 1.1s ease-in-out infinite; }
+      @keyframes tz-vis-saving-pulse {
+        0%, 100% { box-shadow: 0 0 0 1px rgba(43,232,255,0.25), 0 0 6px rgba(43,232,255,0.2); }
+        50% { box-shadow: 0 0 0 1.5px rgba(43,232,255,0.65), 0 0 18px rgba(43,232,255,0.55); }
+      }
+      /* "Fantasma" que sigue al cursor durante el arrastre (DragOverlay
+         de dnd-kit) — un chip compacto, nunca el tamaño real de la
+         fila/tarjeta (sería ruidoso arrastrando algo tan angosto como
+         el acordeón). */
+      .tz-vis-drag-ghost {
+        /* dnd-kit hace 'portal' del DragOverlay directo a document.body,
+           así que escapa de cualquier 'overflow: hidden' del modal — pero
+           NO gana automáticamente el apilamiento (z-index) contra otros
+           elementos con su propio stacking context (ej. el backdrop del
+           modal en z-index:60). Sin 'position' + 'z-index' explícitos acá,
+           la tarjeta arrastrada podía quedar recortada/detrás del modal. */
+        position: fixed;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: var(--panel-solid);
+        border: 1px solid var(--cyan);
+        box-shadow: 0 0 24px rgba(43,232,255,0.5);
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 13px;
+        white-space: nowrap;
+        cursor: grabbing;
+        pointer-events: none;
+      }
+      .tz-vis-drag-ghost-category { border-color: var(--yellow); box-shadow: 0 0 24px rgba(215,255,59,0.5); }
+      .tz-vis-drag-ghost-subgroup { border-color: var(--pink); box-shadow: 0 0 24px rgba(255,47,158,0.5); }
+
+      /* ---- Mecánica de "Crafteo"/Fusión de Combos ---- */
+      .tz-combo-craft-zone {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 56px;
+        margin-bottom: 10px;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1.5px dashed rgba(215,255,59,0.4);
+        background: rgba(215,255,59,0.04);
+        transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+      }
+      .tz-combo-craft-zone-over {
+        border-color: var(--yellow);
+        border-style: solid;
+        box-shadow: 0 0 22px rgba(215,255,59,0.45);
+        background: rgba(215,255,59,0.1);
+      }
+      .tz-combo-craft-zone-empty {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        color: var(--yellow);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 12.5px;
+        text-align: center;
+      }
+      .tz-combo-craft-zone-staged { border-style: solid; border-color: rgba(215,255,59,0.6); }
+      .tz-combo-staged-card {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 6px 34px 6px 10px;
+        color: var(--yellow);
+        font-family: 'Rajdhani', sans-serif;
+      }
+      .tz-combo-staged-name { font-weight: 800; font-size: 13px; color: var(--text); }
+      .tz-combo-staged-hint {
+        font-size: 11px;
+        color: var(--text-dim);
+        margin-left: auto;
+        text-align: right;
+      }
+      .tz-combo-staged-discard {
+        position: absolute;
+        top: 50%;
+        right: 4px;
+        transform: translateY(-50%);
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        border: 1px solid rgba(255,84,112,0.4);
+        background: rgba(255,84,112,0.1);
+        color: var(--danger);
+        cursor: pointer;
+      }
+      .tz-combo-staged-discard:hover { background: rgba(255,84,112,0.22); }
+
+      /* Overlay de fusión: dos tarjetas + 2 curvas SVG neón fluyendo
+         entre ellas, superpuesto a TODA la pantalla (decorativo, nunca
+         intercepta clics) durante la breve transición antes de abrir
+         "Nuevo Combo" ya precargado. */
+      .tz-combo-fusion-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 80;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        pointer-events: none;
+        background: rgba(5, 3, 12, 0.55);
+        backdrop-filter: blur(3px);
+        animation: tz-combo-fusion-fade 0.65s ease-in-out;
+      }
+      .tz-combo-fusion-card {
+        flex: 0 0 auto;
+        max-width: 150px;
+        padding: 14px 16px;
+        border-radius: 14px;
+        background: var(--panel-solid);
+        border: 1.5px solid var(--yellow);
+        box-shadow: 0 0 30px rgba(215,255,59,0.6);
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 800;
+        font-size: 13px;
+        text-align: center;
+        overflow-wrap: anywhere;
+      }
+      .tz-combo-fusion-card-a { animation: tz-combo-fusion-in-left 0.5s ease-out; }
+      .tz-combo-fusion-card-b { animation: tz-combo-fusion-in-right 0.5s ease-out; }
+      .tz-combo-fusion-svg {
+        width: min(45vw, 320px);
+        height: 130px;
+        flex: 0 0 auto;
+        margin: 0 -20px;
+        overflow: visible;
+      }
+      .tz-combo-fusion-path {
+        fill: none;
+        stroke: var(--yellow);
+        stroke-width: 3;
+        stroke-linecap: round;
+        filter: drop-shadow(0 0 8px rgba(215,255,59,0.9)) drop-shadow(0 0 16px rgba(255,47,158,0.6));
+        stroke-dasharray: 24 14;
+        animation: tz-combo-fusion-flow 0.7s linear infinite;
+      }
+      .tz-combo-fusion-path-2 { stroke: var(--pink); animation-direction: reverse; }
+      .tz-combo-fusion-label {
+        position: absolute;
+        bottom: 20%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--yellow);
+        font-family: 'Orbitron', sans-serif;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        text-shadow: 0 0 12px rgba(215,255,59,0.7);
+        animation: tz-combo-fusion-fade 0.65s ease-in-out;
+      }
+      @keyframes tz-combo-fusion-flow {
+        from { stroke-dashoffset: 76; }
+        to { stroke-dashoffset: 0; }
+      }
+      @keyframes tz-combo-fusion-in-left {
+        from { transform: translateX(40px); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes tz-combo-fusion-in-right {
+        from { transform: translateX(-40px); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes tz-combo-fusion-fade {
+        0%, 100% { opacity: 0; }
+        15%, 85% { opacity: 1; }
       }
       .tz-vis-category-header,
       .tz-vis-subgroup-header {

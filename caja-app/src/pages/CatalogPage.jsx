@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, LogIn, LogOut, Loader2 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCatalog } from "../hooks/useCatalog";
@@ -10,7 +10,9 @@ import CardDetail from "../components/CardDetail";
 import ComboIngredients from "../components/ComboIngredients";
 import ProductImage from "../components/ProductImage";
 import LogoEasterEgg from "../components/LogoEasterEgg";
+import ScrollSpySidebar from "../components/ScrollSpySidebar";
 import { formatSoles } from "../utils/format";
+import { safeGetItem, safeSetItem } from "../utils/safeStorage";
 import logo from "../assets/logo.png";
 
 // Copiado tal cual de App.jsx: mismo cálculo, mismo criterio de
@@ -81,10 +83,10 @@ export default function CatalogPage() {
   const [publicSucursales, setPublicSucursales] = useState([]);
   const [publicLocalesLoading, setPublicLocalesLoading] = useState(true);
   const [publicLocalidadId, setPublicLocalidadId] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("tz_public_localidad_id") || "" : ""
+    safeGetItem("tz_public_localidad_id", "")
   );
   const [publicSucursalId, setPublicSucursalId] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("tz_public_sucursal_id") || "" : ""
+    safeGetItem("tz_public_sucursal_id", "")
   );
 
   useEffect(() => {
@@ -125,9 +127,8 @@ export default function CatalogPage() {
   }, [publicLocalesLoading, publicSucursales, publicSucursalId]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    localStorage.setItem("tz_public_localidad_id", publicLocalidadId || "");
-    localStorage.setItem("tz_public_sucursal_id", publicSucursalId || "");
+    safeSetItem("tz_public_localidad_id", publicLocalidadId || "");
+    safeSetItem("tz_public_sucursal_id", publicSucursalId || "");
   }, [publicLocalidadId, publicSucursalId]);
 
   const publicSucursalesDeLocalidad = publicSucursales.filter(
@@ -169,6 +170,15 @@ export default function CatalogPage() {
   }, [visibleSections]);
 
   const activeSection = visibleSections.find((s) => s.key === activeTab);
+
+  /* ---- Navegación estilo "Fortnite" (ScrollSpySidebar) — copiado tal
+     cual del mismo mecanismo en App.jsx: un ref por Subgrupo de la
+     categoría activa (acá también se renderizan todos seguidos, sin
+     accordion), para poder saltar entre ellos. ---- */
+  const groupSectionRefs = useRef({});
+  const scrollspyItems = (activeSection?.groups || [])
+    .map((g, gi) => ({ id: gi, label: g.title }))
+    .filter((it) => it.label);
 
   const handleFiadosClick = () => {
     if (session) {
@@ -280,6 +290,10 @@ export default function CatalogPage() {
       )}
 
       <main className="tz-main">
+        <ScrollSpySidebar
+          items={scrollspyItems}
+          getSectionEl={(id) => groupSectionRefs.current[id]}
+        />
         {/* ---------------- TABS ---------------- */}
         {visibleSections.length > 0 && (
           <nav className="tz-tabs">
@@ -309,7 +323,7 @@ export default function CatalogPage() {
             </div>
           ) : (
             activeSection.groups.map((group, gi) => (
-              <div key={gi} className="tz-group">
+              <div key={gi} className="tz-group" ref={(el) => (groupSectionRefs.current[gi] = el)}>
                 {group.title && (
                   <div className="tz-group-heading">
                     <span className="tz-badge">{group.numero}</span>

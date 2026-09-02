@@ -20,19 +20,46 @@ export function setAuthPersistence(remember) {
   rememberMe = remember;
 }
 
+// Bug crítico: en un dispositivo/navegador que bloquea localStorage o
+// sessionStorage (modo privado, políticas de privacidad, webviews
+// embebidos), 'window.localStorage.getItem(...)' puede LANZAR en vez de
+// devolver null. El SDK de Supabase llama a este storage adapter desde
+// su propia inicialización (restaurar la sesión guardada) — una
+// excepción ahí puede tirar abajo el arranque de toda la app antes de
+// que React llegue a montar nada útil. 'memoryFallback' deja a la
+// sesión funcionando igual DENTRO de esta pestaña (se pierde al
+// recargar, pero la app no revienta) cuando el storage real no está
+// disponible — mismo criterio de "nunca lanzar" que safeStorage.js.
+const memoryFallback = new Map();
+
 const dynamicStorage = {
   getItem: (key) => {
-    return window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
+    try {
+      return window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
+    } catch (err) {
+      console.warn(`[supabaseClient] Storage bloqueado al leer "${key}", usando memoria:`, err);
+      return memoryFallback.get(key) ?? null;
+    }
   },
   setItem: (key, value) => {
-    const target = rememberMe ? window.localStorage : window.sessionStorage;
-    const other = rememberMe ? window.sessionStorage : window.localStorage;
-    target.setItem(key, value);
-    other.removeItem(key); // evita un resto duplicado/desincronizado en el otro storage
+    try {
+      const target = rememberMe ? window.localStorage : window.sessionStorage;
+      const other = rememberMe ? window.sessionStorage : window.localStorage;
+      target.setItem(key, value);
+      other.removeItem(key); // evita un resto duplicado/desincronizado en el otro storage
+    } catch (err) {
+      console.warn(`[supabaseClient] Storage bloqueado al guardar "${key}", usando memoria:`, err);
+      memoryFallback.set(key, value);
+    }
   },
   removeItem: (key) => {
-    window.localStorage.removeItem(key);
-    window.sessionStorage.removeItem(key);
+    try {
+      window.localStorage.removeItem(key);
+      window.sessionStorage.removeItem(key);
+    } catch (err) {
+      console.warn(`[supabaseClient] Storage bloqueado al borrar "${key}":`, err);
+    }
+    memoryFallback.delete(key);
   },
 };
 
