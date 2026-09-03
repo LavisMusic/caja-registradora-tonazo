@@ -2812,7 +2812,13 @@ export default function Styles() {
       .tz-vis-category {
         border: 1px solid var(--border-soft);
         border-radius: 12px;
-        overflow: hidden;
+        /* SIN 'overflow: hidden' a propósito: ninguno de los hijos
+           (header, accordion-inner, subgrupos/productos) tiene fondo a
+           sangrado que necesite recorte para respetar las esquinas
+           redondeadas — pero el glow neón (box-shadow) de una fila/
+           subgrupo/tarjeta arrastrándose SÍ necesita salirse de este
+           bounding box para no verse "guillotinado" (bug reportado con
+           image_e92421.jpg). */
         background: rgba(255,255,255,0.02);
         transition: border-color 0.12s, box-shadow 0.12s, opacity 0.12s;
       }
@@ -2862,6 +2868,19 @@ export default function Styles() {
       @keyframes tz-vis-saving-pulse {
         0%, 100% { box-shadow: 0 0 0 1px rgba(43,232,255,0.25), 0 0 6px rgba(43,232,255,0.2); }
         50% { box-shadow: 0 0 0 1.5px rgba(43,232,255,0.65), 0 0 18px rgba(43,232,255,0.55); }
+      }
+      /* Bloqueo de Categoría (Combos): reemplaza el glow cian de
+         "aceptado" por uno rojo — un producto que no es ya de Combos
+         nunca puede soltarse acá como ítem individual (cabecera de
+         categoría/subgrupo, o encima de otro producto), solo vía la
+         Zona de Crafteo. */
+      .tz-vis-category.tz-vis-drag-forbidden {
+        border-color: var(--danger);
+        box-shadow: 0 0 0 1.5px var(--danger), 0 0 16px rgba(255,84,112,0.4);
+      }
+      .tz-vis-dnd-slot.tz-vis-drag-forbidden,
+      .tz-vis-subsection.tz-vis-drag-forbidden {
+        box-shadow: 0 0 0 1.5px var(--danger), 0 0 14px rgba(255,84,112,0.4);
       }
       /* "Fantasma" que sigue al cursor durante el arrastre (DragOverlay
          de dnd-kit) — un chip compacto, nunca el tamaño real de la
@@ -2926,6 +2945,26 @@ export default function Styles() {
         text-align: center;
       }
       .tz-combo-craft-zone-staged { border-style: solid; border-color: rgba(215,255,59,0.6); }
+      /* Paso 2 del crafteo (ANTES de soltar): con un producto YA
+         staged, un SEGUNDO producto arrastrado exactamente encima de
+         la Zona de Crafteo dispara este pulso doble (amarillo + rosa,
+         los mismos colores del overlay de fusión post-drop) — la
+         fusión "se siente venir" mientras se arrastra, no recién al
+         soltar. Ver 'tz-vis-drag-ghost-fusing' para el mismo pulso en
+         el fantasma que sigue al cursor. */
+      @keyframes tz-combo-fusing-pulse {
+        0%, 100% { box-shadow: 0 0 14px rgba(215,255,59,0.4), 0 0 8px rgba(255,47,158,0.25); }
+        50% { box-shadow: 0 0 30px rgba(215,255,59,0.85), 0 0 22px rgba(255,47,158,0.65); }
+      }
+      .tz-combo-craft-zone-fusing-preview {
+        border-color: var(--pink);
+        animation: tz-combo-fusing-pulse 0.9s ease-in-out infinite;
+      }
+      .tz-combo-staged-card-fusing .tz-combo-staged-name { color: var(--pink); }
+      .tz-vis-drag-ghost-fusing {
+        border-color: var(--pink);
+        animation: tz-combo-fusing-pulse 0.9s ease-in-out infinite;
+      }
       .tz-combo-staged-card {
         position: relative;
         display: flex;

@@ -86,6 +86,17 @@ function useDropSlot(id, data) {
   return { setNodeRef, isOver };
 }
 
+// Categoría "Combos" es especial: sus productos NO se agregan como
+// ítems individuales (arrastrados desde otra categoría, o soltados
+// directo sobre su cabecera/subgrupo/fila) — la ÚNICA puerta de
+// entrada es la Zona de Crafteo (ComboCraftZone), que arma un producto
+// NUEVO vía el modal "Nuevo Combo". Reordenar productos que YA son de
+// Combos entre sí sigue funcionando normal (eso no es "entrar como
+// ítem individual", ya están ahí).
+function esCategoriaCombos(label) {
+  return (label || "").trim().toLowerCase() === "combos";
+}
+
 /* Fila de un producto: toggle de visibilidad, editar (nombre/detalle)
    y eliminar (con confirmación inline en vez de un modal aparte, para
    no apilar overlays sobre el acordeón). Si el borrado choca con una
@@ -112,6 +123,7 @@ function ProductoRow({
   subgrupoRaw,
   onAddVariante,
   movingId,
+  activeDrag,
 }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -151,6 +163,16 @@ function ProductoRow({
   // pulso neón + spinner en el handle en vez de dejar la fila "seca"
   // hasta que refetchCatalog() traiga el nuevo orden.
   const isSaving = movingId === dragId;
+  // Bloqueo de Categoría (Combos): mismo criterio que en
+  // CategoriaAccordion/SubgrupoSection — un producto AJENO sobrevolando
+  // esta fila (para "insertarse antes") tampoco cuenta como aceptado
+  // cuando la fila ya es de Combos.
+  const isDropForbidden =
+    esCategoriaCombos(categoriaLabel) &&
+    sortable.isOver &&
+    activeDrag?.type === "producto" &&
+    activeDrag.productoId !== producto.id &&
+    !esCategoriaCombos(activeDrag.categoriaLabel);
 
   const handleDeleteClick = async () => {
     setBusy(true);
@@ -513,13 +535,20 @@ function ProductoRow({
     );
   }
 
+  // Al arrancar un drag, dnd-kit suele resolver 'over' como el MISMO
+  // ítem que se está arrastrando (el puntero todavía está encima de su
+  // punto de origen) — sin este guard, la fila se auto-iluminaba como
+  // "aceptando un drop" de sí misma, un glow que además se veía
+  // recortado por quedar pegado al borde de su propio contenedor.
+  const showAcceptGlow = sortable.isOver && !sortable.isDragging;
+
   return (
     <div
       ref={sortable.setNodeRef}
       style={sortable.style}
-      className={`tz-vis-dnd-slot ${sortable.isOver ? "tz-vis-dnd-slot-over" : ""} ${
-        sortable.isDragging ? "tz-vis-dnd-dragging" : ""
-      } ${isSaving ? "tz-vis-dnd-saving" : ""}`}
+      className={`tz-vis-dnd-slot ${
+        isDropForbidden ? "tz-vis-drag-forbidden" : showAcceptGlow ? "tz-vis-dnd-slot-over" : ""
+      } ${sortable.isDragging ? "tz-vis-dnd-dragging" : ""} ${isSaving ? "tz-vis-dnd-saving" : ""}`}
     >
       {content}
     </div>
@@ -541,6 +570,7 @@ function SearchableProductList({
   subgrupoRaw,
   onAddVariante,
   movingId,
+  activeDrag,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -622,6 +652,7 @@ function SearchableProductList({
                 subgrupoRaw={subgrupoRaw}
                 onAddVariante={onAddVariante}
                 movingId={movingId}
+                activeDrag={activeDrag}
               />
             ))}
           </SortableContext>
@@ -641,19 +672,26 @@ function SearchableProductList({
    del primer producto; con un producto "staged" se convierte en su
    tarjeta (con X para descartar) — sigue siendo el MISMO droppable, así
    que soltar el segundo producto exactamente ahí es lo que dispara la
-   fusión (Paso 2/3 del pedido). ---- */
-function ComboCraftZone({ stagedProduct, onDiscard }) {
+   fusión (Paso 2/3 del pedido).
+
+   'isFusionHover' (Paso 2, ANTES de soltar): con un producto YA
+   staged, si un SEGUNDO producto está siendo arrastrado exactamente
+   por encima de esta misma zona, la tarjeta staged se ilumina con un
+   pulso — la fusión "se siente venir" mientras se arrastra, no recién
+   al soltar (eso lo sigue cubriendo ComboFusionOverlay). ---- */
+function ComboCraftZone({ stagedProduct, onDiscard, activeDrag }) {
   const drop = useDropSlot("combo-craft-zone", { type: "combo-craft-zone" });
+  const isFusionHover = !!stagedProduct && drop.isOver && activeDrag?.type === "producto";
 
   return (
     <div
       ref={drop.setNodeRef}
       className={`tz-combo-craft-zone ${drop.isOver ? "tz-combo-craft-zone-over" : ""} ${
         stagedProduct ? "tz-combo-craft-zone-staged" : ""
-      }`}
+      } ${isFusionHover ? "tz-combo-craft-zone-fusing-preview" : ""}`}
     >
       {stagedProduct ? (
-        <div className="tz-combo-staged-card">
+        <div className={`tz-combo-staged-card ${isFusionHover ? "tz-combo-staged-card-fusing" : ""}`}>
           <Sparkles size={16} />
           <span className="tz-combo-staged-name">{stagedProduct.name}</span>
           <span className="tz-combo-staged-hint">Suelta OTRO producto acá para combinarlos</span>
@@ -733,6 +771,7 @@ function SubgrupoSection({
   onAddVariante,
   rawSubgrupo,
   movingId,
+  activeDrag,
 }) {
   const key = `${sectionKey}::${group.title ?? "sin-subgrupo"}::${gi}`;
   const subOpen = openSubgrupos.has(key);
@@ -752,12 +791,23 @@ function SubgrupoSection({
     title: group.title,
   });
   const isSaving = movingId === subDragId;
+  // Bloqueo de Categoría (Combos): mismo criterio que en
+  // CategoriaAccordion — un producto AJENO sobrevolando la cabecera de
+  // un subgrupo DENTRO de Combos tampoco cuenta como "aceptado".
+  const isDropForbidden =
+    esCategoriaCombos(section.label) &&
+    subSortable.isOver &&
+    activeDrag?.type === "producto" &&
+    !esCategoriaCombos(activeDrag.categoriaLabel);
+  // Mismo guard de auto-hover que ProductoRow: un subgrupo no se
+  // ilumina como "aceptando" un drop de sí mismo.
+  const showAcceptGlow = subSortable.isOver && !subSortable.isDragging;
 
   return (
     <div
-      className={`tz-vis-subsection ${subSortable.isOver ? "tz-vis-dnd-slot-over" : ""} ${
-        subSortable.isDragging ? "tz-vis-dnd-dragging" : ""
-      } ${isSaving ? "tz-vis-dnd-saving" : ""}`}
+      className={`tz-vis-subsection ${
+        isDropForbidden ? "tz-vis-drag-forbidden" : showAcceptGlow ? "tz-vis-dnd-slot-over" : ""
+      } ${subSortable.isDragging ? "tz-vis-dnd-dragging" : ""} ${isSaving ? "tz-vis-dnd-saving" : ""}`}
       ref={subSortable.setNodeRef}
       style={subSortable.style}
     >
@@ -851,6 +901,7 @@ function SubgrupoSection({
             subgrupoRaw={raw}
             onAddVariante={onAddVariante}
             movingId={movingId}
+            activeDrag={activeDrag}
           />
         </div>
       )}
@@ -892,6 +943,7 @@ function CategoriaAccordion({
   stagedProduct,
   onDiscardStaged,
   movingId,
+  activeDrag,
 }) {
   const [editingCategoria, setEditingCategoria] = useState(false);
   const [categoriaValue, setCategoriaValue] = useState(section.label);
@@ -909,6 +961,14 @@ function CategoriaAccordion({
     categoriaLabel: section.label,
   });
   const isSaving = movingId === catDragId;
+  // Bloqueo de Categoría (Combos): un producto AJENO sobrevolando esta
+  // cabecera no debería sentirse "aceptado" — reemplaza el glow cian
+  // normal por uno rojo de "no" en vez del habitual acento cian.
+  const isDropForbidden =
+    isCombosCategoria &&
+    catSortable.isOver &&
+    activeDrag?.type === "producto" &&
+    !esCategoriaCombos(activeDrag.categoriaLabel);
 
   const saveCategoriaRename = async () => {
     setCategoriaSaving(true);
@@ -1000,13 +1060,16 @@ function CategoriaAccordion({
   // sub-acordeón innecesario de un solo nivel.
   const hasRealSubgroups = section.groups.length > 1 || !!section.groups[0]?.title;
   const totalItems = section.groups.reduce((sum, g) => sum + g.items.length, 0);
+  // Mismo guard de auto-hover que ProductoRow/SubgrupoSection: una
+  // categoría no se ilumina como "aceptando" un drop de sí misma.
+  const showAcceptGlow = catSortable.isOver && !catSortable.isDragging;
 
   return (
     <div
       ref={catSortable.setNodeRef}
       style={catSortable.style}
       className={`tz-vis-category ${catSortable.isDragging ? "tz-vis-category-dragging" : ""} ${
-        catSortable.isOver ? "tz-vis-category-drag-over" : ""
+        isDropForbidden ? "tz-vis-drag-forbidden" : showAcceptGlow ? "tz-vis-category-drag-over" : ""
       } ${isSaving ? "tz-vis-dnd-saving" : ""}`}
     >
       {editingCategoria ? (
@@ -1091,7 +1154,11 @@ function CategoriaAccordion({
       {isOpen && (
         <div className="tz-vis-accordion-inner">
           {isCombosCategoria && (
-            <ComboCraftZone stagedProduct={stagedProduct} onDiscard={onDiscardStaged} />
+            <ComboCraftZone
+              stagedProduct={stagedProduct}
+              onDiscard={onDiscardStaged}
+              activeDrag={activeDrag}
+            />
           )}
 
           {!hasRealSubgroups ? (
@@ -1106,6 +1173,7 @@ function CategoriaAccordion({
               subgrupoRaw={null}
               onAddVariante={onAddVariante}
               movingId={movingId}
+              activeDrag={activeDrag}
             />
           ) : (
             <SortableContext
@@ -1143,6 +1211,7 @@ function CategoriaAccordion({
                     onAddVariante={onAddVariante}
                     rawSubgrupo={rawSubgrupo}
                     movingId={movingId}
+                    activeDrag={activeDrag}
                   />
                 );
               })}
@@ -1238,6 +1307,11 @@ export default function CatalogVisibilityAccordion({
   }, [sections]);
 
   const [activeDrag, setActiveDrag] = useState(null); // data del draggable activo, para el DragOverlay
+  // Id de lo que está "over" ahora mismo (dnd-kit) — SOLO se usa para
+  // saber si hay que iluminar el fantasma del DragOverlay con el pulso
+  // de fusión (Paso 2 del crafteo: un segundo producto arrastrado
+  // exactamente encima de la Zona de Crafteo con algo YA staged).
+  const [overId, setOverId] = useState(null);
   // Id (mismo formato que useDragHandle: 'prod:', 'sub:', 'cat:') del
   // ítem cuya mutación hacia Supabase está EN VUELO tras soltar — cada
   // fila/tarjeta lo compara contra su propio id para pintar su propio
@@ -1314,6 +1388,7 @@ export default function CatalogVisibilityAccordion({
 
   const handleDragStart = (event) => {
     setActiveDrag(event.active?.data?.current || null);
+    setOverId(null);
   };
 
   // Arma (o reutiliza, si ya está corriendo para el MISMO objetivo) un
@@ -1346,6 +1421,7 @@ export default function CatalogVisibilityAccordion({
     const { active, over } = event;
     const activeType = active?.data?.current?.type;
     const overData = over?.data?.current;
+    setOverId(over?.id ?? null);
 
     if (!over || !overData) {
       clearHoverTimer();
@@ -1392,6 +1468,7 @@ export default function CatalogVisibilityAccordion({
   const handleDragEnd = async (event) => {
     clearHoverTimer();
     setActiveDrag(null);
+    setOverId(null);
 
     const { active, over } = event;
     if (!over) return;
@@ -1448,6 +1525,14 @@ export default function CatalogVisibilityAccordion({
         handleDropOnCraftZone(activeData.productoId);
         return;
       }
+      // Bloqueo de Categoría: un producto que NO es ya de Combos no
+      // puede "aterrizar" ahí de ningún otro modo (cabecera de
+      // categoría, cabecera de subgrupo, o encima de otro producto) —
+      // se rechaza en silencio, la fila vuelve a su lugar sola (el
+      // preview de @dnd-kit/sortable se revierte al no haber mutación).
+      if (esCategoriaCombos(overData.categoriaLabel) && !esCategoriaCombos(activeData.categoriaLabel)) {
+        return;
+      }
       if (overData.type === "category") {
         await runMove(active.id, () =>
           onMoverProducto?.({
@@ -1488,6 +1573,13 @@ export default function CatalogVisibilityAccordion({
     return "";
   })();
 
+  // Paso 2 del crafteo (ANTES de soltar): este segundo producto está
+  // sobrevolando la Zona de Crafteo mientras YA hay uno "staged" — el
+  // fantasma que sigue al cursor se ilumina con el mismo pulso que la
+  // tarjeta staged, para que la fusión "se sienta venir".
+  const isFusionHover =
+    activeDrag?.type === "producto" && overId === "combo-craft-zone" && !!stagedProduct;
+
   return (
     <DndContext
       sensors={sensors}
@@ -1504,6 +1596,7 @@ export default function CatalogVisibilityAccordion({
       onDragCancel={() => {
         clearHoverTimer();
         setActiveDrag(null);
+        setOverId(null);
       }}
     >
       <div className="tz-vis-accordion">
@@ -1583,10 +1676,11 @@ export default function CatalogVisibilityAccordion({
               onForceHideCategoria={forceHideCategoria}
               onForceHideSubgrupo={forceHideSubgrupo}
               onAddVariante={onAddVariante}
-              isCombosCategoria={section.label.trim().toLowerCase() === "combos"}
+              isCombosCategoria={esCategoriaCombos(section.label)}
               stagedProduct={stagedProduct}
               onDiscardStaged={() => setStagedProduct(null)}
               movingId={movingId}
+              activeDrag={activeDrag}
             />
           ))}
         </SortableContext>
@@ -1594,7 +1688,11 @@ export default function CatalogVisibilityAccordion({
 
       <DragOverlay dropAnimation={null}>
         {activeDrag ? (
-          <div className={`tz-vis-drag-ghost tz-vis-drag-ghost-${activeDrag.type}`}>
+          <div
+            className={`tz-vis-drag-ghost tz-vis-drag-ghost-${activeDrag.type} ${
+              isFusionHover ? "tz-vis-drag-ghost-fusing" : ""
+            }`}
+          >
             <GripVertical size={13} />
             {activeDragLabel}
           </div>
