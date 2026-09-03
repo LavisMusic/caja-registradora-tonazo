@@ -32,6 +32,27 @@ export default function ScrollSpySidebar({ items, getSectionEl, side = "right" }
     }
     if (items.length === 0) return undefined;
 
+    // Fallback al primer ítem apenas cambia la lista (nueva categoría,
+    // o el catálogo recién terminó de cargar) — 'useState(items[0]?.id)'
+    // solo corre en el montaje INICIAL, así que si 'items' llegó vacío
+    // esa primera vez (típico: useCatalog todavía no trajo los datos),
+    // 'activeId' se quedaba en null para siempre hasta el primer evento
+    // del observer — y si en ese momento nada cruza todavía la franja
+    // angosta de abajo (recién abierta la sección, sin scrollear), NADA
+    // se veía activo. Esto se pisa solo apenas el observer real
+    // encuentra una sección intersectando de verdad.
+    setActiveId((prev) => (items.some((it) => it.id === prev) ? prev : items[0].id));
+
+    // 'dataset.scrollspyId' es SIEMPRE string (así es el DOM), pero
+    // 'it.id' acá es un número (gi) — sin este mapa de vuelta, activeId
+    // termina guardando el string "0" mientras el render sigue
+    // comparando contra el número 0, así que 'activeId === it.id'
+    // (comparación estricta) nunca vuelve a ser true después del
+    // PRIMER evento del observer: el punto activo se apaga para
+    // siempre. Resolvemos el string de vuelta al id ORIGINAL (su tipo
+    // real) antes de guardarlo.
+    const idByString = new Map(items.map((it) => [String(it.id), it.id]));
+
     // Ratios de intersección por sección, actualizados en cada evento
     // — la sección "activa" es la que tiene MÁS área visible ahora
     // mismo (más robusto que "la primera que cruza el borde", que
@@ -46,7 +67,7 @@ export default function ScrollSpySidebar({ items, getSectionEl, side = "right" }
           bestId = id;
         }
       });
-      if (bestId != null) setActiveId(bestId);
+      if (bestId != null) setActiveId(idByString.get(bestId) ?? bestId);
     };
 
     const observer = new IntersectionObserver(

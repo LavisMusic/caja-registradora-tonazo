@@ -412,79 +412,101 @@ export default function Styles() {
       }
 
       /* ---------- ScrollSpySidebar ("navegación estilo Fortnite") ----------
-         Oculto en móvil a propósito (base mobile-first): en una
-         pantalla angosta la barra lateral fija robaría espacio real de
-         contenido y competiría con el thumb del usuario — recién
-         aparece desde 768px (ver el bloque @media más abajo), donde ya
-         sobra espacio a los costados de la grilla de productos. */
-      .tz-scrollspy { display: none; }
-      @media (min-width: 768px) {
-        .tz-scrollspy {
-          display: flex;
-          flex-direction: column;
-          gap: 10px;
-          position: fixed;
-          top: 50%;
-          transform: translateY(-50%);
-          z-index: 40;
-          padding: 14px 10px;
-          border-radius: 999px;
-          background: rgba(10, 7, 22, 0.55);
-          border: 1px solid var(--border-soft);
-          backdrop-filter: blur(6px);
-          transition: background 0.2s ease, border-color 0.2s ease, padding 0.2s ease;
-        }
-        .tz-scrollspy-right { right: 10px; }
-        .tz-scrollspy-left { left: 10px; }
-        .tz-scrollspy-expanded {
-          background: var(--panel-solid);
-          border-color: rgba(43,232,255,0.3);
-          padding: 16px 14px;
-          box-shadow: 0 0 30px rgba(43,232,255,0.15);
-        }
-        .tz-scrollspy-item {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          background: transparent;
-          border: none;
-          padding: 0;
-          cursor: pointer;
-          color: var(--text-dim);
-        }
-        .tz-scrollspy-right .tz-scrollspy-item { flex-direction: row-reverse; }
-        .tz-scrollspy-dot {
-          flex-shrink: 0;
-          width: 7px;
-          height: 7px;
-          border-radius: 50%;
-          background: var(--text-dim);
-          box-shadow: 0 0 0 rgba(43,232,255,0);
-          transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
-        }
-        .tz-scrollspy-item-active .tz-scrollspy-dot {
-          background: var(--cyan);
-          box-shadow: 0 0 10px rgba(43,232,255,0.9);
-          transform: scale(1.3);
-        }
-        /* Los nombres viven SIEMPRE en el DOM (nunca aparecen/
-           desaparecen de golpe) — solo se les anima max-width + opacity
-           a 0 cuando la barra está colapsada, así el despliegue al
-           pasar el mouse se siente fluido, no un "pop". */
-        .tz-scrollspy-label {
-          max-width: 0;
-          opacity: 0;
-          overflow: hidden;
-          white-space: nowrap;
-          font-family: 'Rajdhani', sans-serif;
-          font-weight: 700;
-          font-size: 12.5px;
-          transition: max-width 0.25s ease, opacity 0.2s ease;
-        }
-        .tz-scrollspy-expanded .tz-scrollspy-label { max-width: 160px; opacity: 1; }
-        .tz-scrollspy-item-active .tz-scrollspy-label { color: var(--cyan); }
-        .tz-scrollspy-item:hover .tz-scrollspy-dot { background: var(--text); }
-        .tz-scrollspy-item-active:hover .tz-scrollspy-dot { background: var(--cyan); }
+         Visible SIEMPRE, celular incluido — anclada al lateral, nunca
+         compite por el ancho horizontal del contenido (es un carril
+         angosto fijo de ~30-40px, no una barra que empuje nada), así
+         que ocultarla en pantallas chicas no aportaba nada, solo hacía
+         que el menú "desapareciera" justo donde más se necesita para
+         no perderse en una carta larga.
+         'flex + flex-direction:column + align-items:center +
+         justify-content:center': con las etiquetas colapsadas (ancho
+         0 vía max-width/overflow, ver '.tz-scrollspy-label' abajo),
+         'align-items:center' es lo que centra cada punto EXACTO en el
+         eje horizontal del carril — sin esto, el contenedor podía
+         quedar unos px más ancho que el punto y el punto se veía
+         corrido, no centrado matemáticamente. */
+      .tz-scrollspy {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        position: fixed;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 40;
+        padding: 16px 12px;
+        border-radius: 16px;
+        background: rgba(10, 7, 22, 0.55);
+        border: 1px solid var(--border-soft);
+        backdrop-filter: blur(6px);
+        transition: background 0.2s ease, border-color 0.2s ease, padding 0.2s ease;
+      }
+      .tz-scrollspy-right { right: 10px; }
+      .tz-scrollspy-left { left: 10px; }
+      .tz-scrollspy-expanded {
+        background: var(--panel-solid);
+        border-color: rgba(43,232,255,0.3);
+        padding: 18px 16px;
+        box-shadow: 0 0 30px rgba(43,232,255,0.15);
+      }
+      .tz-scrollspy-item {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        background: transparent;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        color: var(--text-dim);
+      }
+      .tz-scrollspy-right .tz-scrollspy-item { flex-direction: row-reverse; }
+      /* Estética "Limón Neón": el mismo --yellow (y la misma receta de
+         glow, 'box-shadow' con su rgba) que ya usan las insignias
+         numeradas de subgrupo (ej. '01', '02' — ver '.tz-badge') — un
+         punto inactivo es lima tenue, el activo es lima a pleno con
+         glow fuerte, nunca cian (eso queda para el resto del chrome). */
+      .tz-scrollspy-dot {
+        flex-shrink: 0;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: rgba(215,255,59,0.35);
+        box-shadow: 0 0 0 rgba(215,255,59,0);
+        transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+      }
+      .tz-scrollspy-item-active .tz-scrollspy-dot {
+        background: var(--yellow);
+        box-shadow: 0 0 12px rgba(215,255,59,0.9), 0 0 4px rgba(215,255,59,0.9);
+        transform: scale(1.3);
+      }
+      /* Los nombres viven SIEMPRE en el DOM (nunca aparecen/
+         desaparecen de golpe) — solo se les anima max-width + opacity
+         a 0 cuando la barra está colapsada, así el despliegue al
+         pasar el mouse se siente fluido, no un "pop". */
+      .tz-scrollspy-label {
+        max-width: 0;
+        opacity: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 14px;
+        transition: max-width 0.25s ease, opacity 0.2s ease, color 0.15s ease, text-shadow 0.15s ease;
+      }
+      .tz-scrollspy-expanded .tz-scrollspy-label { max-width: 180px; opacity: 1; }
+      .tz-scrollspy-item-active .tz-scrollspy-label {
+        color: var(--yellow);
+        text-shadow: 0 0 8px rgba(215,255,59,0.55);
+      }
+      .tz-scrollspy-item:hover .tz-scrollspy-dot { background: rgba(215,255,59,0.7); }
+      .tz-scrollspy-item-active:hover .tz-scrollspy-dot { background: var(--yellow); }
+      /* Hover del NOMBRE (independiente de si es la sección activa):
+         se pinta lima con un glow suave, como pedido. */
+      .tz-scrollspy-item:hover .tz-scrollspy-label {
+        color: var(--yellow);
+        text-shadow: 0 0 8px rgba(215,255,59,0.5);
       }
 
       /* ---------- FILTROS SUPERIORES (Parte 3, solo admin — y el
