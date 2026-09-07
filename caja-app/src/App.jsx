@@ -43,7 +43,9 @@ import { createWorker } from "tesseract.js";
 import imageCompression from "browser-image-compression";
 import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
-import { formatSoles, formatDate } from "./utils/format";
+import { formatSoles, formatDate, formatQty, formatTime } from "./utils/format";
+import CartRow from "./components/CartRow";
+import GestorPedidosModal from "./components/GestorPedidosModal";
 import { safeGetItem, safeSetItem } from "./utils/safeStorage";
 import { useCatalog } from "./hooks/useCatalog";
 import Styles from "./components/Styles";
@@ -296,14 +298,6 @@ function toPeruWhatsappNumber(whatsapp) {
   return cleaned.length === 9 && cleaned.startsWith("9") ? `51${cleaned}` : cleaned;
 }
 
-function formatTime(ts) {
-  const d = new Date(ts);
-  return d.toLocaleTimeString("es-PE", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 /* Medianoche (hora local) del día que contiene el timestamp dado.
    Se usa como respaldo del corte de turno cuando todavía no se ha
    hecho ningún Cierre de Caja. */
@@ -346,14 +340,6 @@ function availabilityFor(product, stock, productsById) {
   return product.ventaPorPeso ? raw : Math.floor(raw);
 }
 
-// "1.25 Kg" para venta a granel, "3" (bare, como siempre) para
-// productos por unidad — un solo lugar que decide el formato de
-// cantidad para carrito/tarjetas/boletas/WhatsApp, así los tres nunca
-// pueden mostrar cosas distintas entre sí.
-function formatQty(ventaPorPeso, qty) {
-  const n = Number(qty) || 0;
-  return ventaPorPeso ? `${n.toFixed(2)} Kg` : String(n);
-}
 
 /* ---- Resiliencia offline: cola de ventas que no se pudieron mandar a
    Supabase por falta de conexión. Cada entrada guarda EXACTAMENTE los
@@ -454,116 +440,6 @@ function StockTag({ avail }) {
    un render raro. Se compromete a 'selection' (vía onQtyChange) recién
    al perder foco o presionar Enter; un valor inválido revierte al
    último válido en vez de dejar el carrito en un estado roto. */
-function CartRow({
-  product,
-  qty,
-  avail,
-  unitPrice,
-  discountLabel,
-  onQtyChange,
-  onRemove,
-  onEditWeight,
-}) {
-  const [localQty, setLocalQty] = useState(String(qty));
-  const hasDiscount = !!discountLabel;
-  const effectiveUnitPrice = unitPrice ?? product.price;
-
-  useEffect(() => {
-    setLocalQty(String(qty));
-  }, [qty]);
-
-  const commit = (raw) => {
-    const parsed = parseInt(raw, 10);
-    if (isNaN(parsed)) {
-      setLocalQty(String(qty));
-      return;
-    }
-    const clamped = Math.min(Math.max(parsed, 1), Math.max(avail, 1));
-    onQtyChange(clamped);
-    setLocalQty(String(clamped));
-  };
-
-  return (
-    <div className="tz-cart-row">
-      <div className="tz-cart-row-info">
-        <span className="tz-cart-row-name">
-          {product.name}
-          {product.detail ? ` · ${product.detail}` : ""}
-          {hasDiscount && (
-            <span className="tz-discount-badge tz-discount-badge-inline">{discountLabel}</span>
-          )}
-        </span>
-        <span className="tz-cart-row-amount-group">
-          {hasDiscount && (
-            <span className="tz-cart-row-original">{formatSoles(product.price * qty)}</span>
-          )}
-          <span className="tz-cart-row-amount">{formatSoles(effectiveUnitPrice * qty)}</span>
-        </span>
-      </div>
-      {hasDiscount && (
-        <span className="tz-cart-row-discount-note">
-          Descuento aplicado: {formatSoles((product.price - effectiveUnitPrice) * qty)}
-        </span>
-      )}
-      <div className="tz-cart-row-controls">
-        {product.ventaPorPeso ? (
-          <button
-            type="button"
-            className="tz-cart-peso-edit-btn"
-            onClick={onEditWeight}
-            aria-label={`Editar peso de ${product.name}`}
-          >
-            {formatQty(true, qty)} <Pencil size={13} />
-          </button>
-        ) : (
-          <div className="tz-qty-stepper tz-cart-qty-stepper">
-            <button
-              type="button"
-              onClick={() => onQtyChange(Math.max(qty - 1, 1))}
-              disabled={qty <= 1}
-              aria-label={`Disminuir cantidad de ${product.name}`}
-            >
-              <Minus size={14} />
-            </button>
-            <input
-              type="number"
-              min="1"
-              max={avail}
-              className="tz-cart-qty-input"
-              value={localQty}
-              onChange={(e) => setLocalQty(e.target.value)}
-              onBlur={(e) => commit(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  commit(e.currentTarget.value);
-                  e.currentTarget.blur();
-                }
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => onQtyChange(Math.min(qty + 1, avail))}
-              disabled={qty >= avail}
-              aria-label={`Aumentar cantidad de ${product.name}`}
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-        )}
-        <button
-          type="button"
-          className="tz-cart-remove-btn"
-          onClick={onRemove}
-          aria-label={`Quitar ${product.name} del ticket`}
-          title="Quitar del ticket"
-        >
-          <Trash2 size={15} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
 /* Fase 2 "Inventario Inteligente" (v3 — agrupación ESTRICTA y GLOBAL a
    la sección): agrupa productos que son variantes (sabor/color) de un
    mismo producto base, para no saturar la grilla con una tarjeta por
@@ -986,6 +862,10 @@ export default function App() {
   const [photoUploadError, setPhotoUploadError] = useState("");
   const [scanError, setScanError] = useState("");
   const [cameraSupported, setCameraSupported] = useState(true);
+
+  /* ---- Fase 1 "Pedidos Delivery": Gestor de Pedidos (admin Y cajero,
+     a diferencia del Gestor de Cajas que es solo admin) ---- */
+  const [gestorPedidosOpen, setGestorPedidosOpen] = useState(false);
 
   /* ---- módulo de Libreta (Fiados / cuentas por cobrar) ---- */
   const [libretaOpen, setLibretaOpen] = useState(false);
@@ -6930,6 +6810,18 @@ export default function App() {
               <BookOpen size={19} />
               <span className="tz-header-btn-label">Fiados</span>
             </button>
+            {/* Fase 1 "Pedidos Delivery": pedidos hechos por clientes
+               desde la tienda pública, filtrados por la sucursal
+               operativa de quien mira (cajaOperativaId/sucursalOperativaId,
+               mismo criterio que ya usa el resto de la app). */}
+            <button
+              className="tz-header-btn"
+              onClick={() => setGestorPedidosOpen(true)}
+              aria-label="Gestor de Pedidos"
+            >
+              <ShoppingCart size={19} />
+              <span className="tz-header-btn-label">Pedidos</span>
+            </button>
             <button
               className="tz-header-btn"
               onClick={() => setTopClientesOpen(true)}
@@ -8353,6 +8245,16 @@ export default function App() {
           Productos
         </button>
       </footer>
+
+      {/* ---------------- MODAL: GESTOR DE PEDIDOS (Fase 1) ---------------- */}
+      {gestorPedidosOpen && (
+        <GestorPedidosModal
+          sucursalId={sucursalOperativaId}
+          cajaId={cajaOperativaId}
+          vendedorLabel={cajeroNombre || (isAdmin ? "Admin" : "Cajero")}
+          onClose={() => setGestorPedidosOpen(false)}
+        />
+      )}
 
       {/* ---------------- MODAL: GESTOR DE CAJAS (Parte 3, solo admin) ----------------
          Control total sobre TODAS las cajas del sistema, agrupadas por

@@ -4955,6 +4955,230 @@ export default function Styles() {
           padding: 24px;
         }
       }
+
+      /* ==================================================================
+         FASE 1 "PEDIDOS DELIVERY" — Gestor de Pedidos (admin/cajero) +
+         chat de pedido (cliente <-> cajero) + carrito/checkout público.
+         ================================================================== */
+
+      .tz-pedidos-list {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-top: 14px;
+      }
+      .tz-pedido-card {
+        border: 1px solid var(--border-soft);
+        border-radius: 14px;
+        padding: 14px;
+        background: var(--panel);
+      }
+      .tz-pedido-card-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .tz-pedido-cliente-nombre {
+        font-weight: 700;
+        color: var(--text);
+        flex: 1;
+      }
+      .tz-chat-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--text-dim);
+        flex-shrink: 0;
+      }
+      .tz-chat-dot-activo {
+        background: var(--cyan);
+        box-shadow: 0 0 8px rgba(43,232,255,0.8);
+      }
+      .tz-pedido-estado {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.08);
+        color: var(--text-dim);
+      }
+      .tz-pedido-estado-nuevo { background: rgba(43,232,255,0.15); color: var(--cyan); }
+      .tz-pedido-estado-en_atencion { background: rgba(215,255,59,0.15); color: var(--yellow); }
+      .tz-pedido-estado-confirmado { background: var(--green-bg); color: var(--green); }
+      .tz-pedido-estado-cancelado { background: rgba(255,84,112,0.15); color: var(--danger); }
+      .tz-pedido-card-meta {
+        font-size: 12px;
+        color: var(--text-dim);
+        margin-top: 6px;
+      }
+      .tz-pedido-items-list {
+        list-style: none;
+        margin: 8px 0 0;
+        padding: 0;
+        font-size: 13px;
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .tz-pedido-card-total {
+        margin-top: 8px;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .tz-pedido-card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .tz-pedido-action-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12.5px;
+        font-weight: 600;
+        padding: 7px 11px;
+        border-radius: 10px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.04);
+        color: var(--text);
+        cursor: pointer;
+      }
+      .tz-pedido-action-btn:hover { border-color: var(--cyan); color: var(--cyan); }
+      .tz-pedido-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .tz-pedido-action-confirmar { border-color: var(--green); color: var(--green); }
+      .tz-pedido-action-cancelar { border-color: var(--danger); color: var(--danger); }
+
+      /* ---- Chat de pedido ---- */
+      .tz-modal-chat { max-width: 420px; display: flex; flex-direction: column; }
+      .tz-chat-messages {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 360px;
+        overflow-y: auto;
+        margin-top: 12px;
+        padding-right: 4px;
+      }
+      .tz-chat-empty { color: var(--text-dim); font-size: 13px; text-align: center; padding: 20px 0; }
+      .tz-chat-bubble-row { display: flex; justify-content: flex-start; }
+      .tz-chat-bubble-row-own { justify-content: flex-end; }
+      .tz-chat-bubble-row-sistema { justify-content: center; }
+      .tz-chat-bubble {
+        max-width: 78%;
+        padding: 8px 12px;
+        border-radius: 14px;
+        font-size: 13.5px;
+        line-height: 1.4;
+        word-break: break-word;
+      }
+      .tz-chat-bubble-own { background: rgba(43,232,255,0.18); color: var(--text); border-bottom-right-radius: 3px; }
+      .tz-chat-bubble-other { background: rgba(255,255,255,0.08); color: var(--text); border-bottom-left-radius: 3px; }
+      .tz-chat-bubble-sistema {
+        background: transparent;
+        border: 1px dashed var(--border-soft);
+        color: var(--text-dim);
+        font-size: 12px;
+        text-align: center;
+        max-width: 90%;
+      }
+      .tz-chat-input-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+      .tz-chat-input {
+        flex: 1;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        padding: 10px 12px;
+        color: var(--text);
+        font-size: 13.5px;
+      }
+      .tz-chat-input:focus { outline: none; border-color: var(--cyan); }
+      .tz-chat-send-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        border: none;
+        background: var(--cyan);
+        color: #05030c;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .tz-chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      /* ---- Carrito público del cliente (CatalogPage) ---- */
+      .tz-card-cart-controls { margin-top: 10px; }
+      .tz-card-add-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        width: 100%;
+        margin-top: 8px;
+        padding: 7px 0;
+        border-radius: 8px;
+        border: 1px solid var(--cyan);
+        background: rgba(43,232,255,0.1);
+        color: var(--cyan);
+        font-weight: 700;
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+      .tz-card-add-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+      .tz-cart-floating-bar {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 16px;
+        z-index: 55;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 12px 20px;
+        border-radius: 999px;
+        background: var(--panel-solid);
+        border: 1px solid rgba(43,232,255,0.35);
+        box-shadow: 0 0 30px rgba(43,232,255,0.2);
+        cursor: pointer;
+      }
+      .tz-cart-floating-bar-count {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 22px;
+        height: 22px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: var(--cyan);
+        color: #05030c;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .tz-cart-floating-bar-total { font-weight: 700; color: var(--text); }
+      .tz-pedido-confirmacion {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: center;
+        text-align: center;
+        padding: 10px 0;
+      }
+      .tz-pedido-confirmacion-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+      }
     `}</style>
   );
 }

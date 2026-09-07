@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, LogIn, LogOut, Loader2 } from "lucide-react";
+import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCatalog } from "../hooks/useCatalog";
 import { supabase } from "../supabaseClient";
@@ -11,6 +11,8 @@ import ComboIngredients from "../components/ComboIngredients";
 import ProductImage from "../components/ProductImage";
 import LogoEasterEgg from "../components/LogoEasterEgg";
 import ScrollSpySidebar from "../components/ScrollSpySidebar";
+import PedidoCheckoutModal from "../components/PedidoCheckoutModal";
+import MisPedidosModal from "../components/MisPedidosModal";
 import { formatSoles } from "../utils/format";
 import { safeGetItem, safeSetItem } from "../utils/safeStorage";
 import logo from "../assets/logo.png";
@@ -57,13 +59,32 @@ function effectivePrice(product) {
   return Math.max(0, Math.round(raw * 100) / 100);
 }
 
+// Copiado de App.jsx (formatDescuentoBadge) — mismo criterio, el
+// carrito de pedidos necesita mostrar el mismo badge de descuento que
+// ya usa el POS.
+function formatDescuentoBadge(product) {
+  const valor = product?.valorDescuento || 0;
+  if (valor <= 0) return null;
+  return product.tipoDescuento === "porcentaje" ? `-${valor}%` : `-${formatSoles(valor)}`;
+}
+
 // Ruta pública "/": mostrador de solo lectura, clon visual exacto del
 // panel de Admin (mismo <Styles/>, mismas clases tz-) pero sin ninguna
 // función operativa/contable — nada de stats, historial, ni acciones
 // de venta. Los productos se ven, no se seleccionan: sin onClick, sin
 // checkbox, sin selector de cantidad (ver .tz-card-readonly abajo).
 export default function CatalogPage() {
-  const { session, loading: authLoading, signOut } = useAuth();
+  const { session, loading: authLoading, signOut, isCliente } = useAuth();
+
+  /* ---- Fase 1 "Pedidos Delivery": carrito del cliente logueado.
+     Mismo shape que 'selection' en App.jsx ({ productId: qty }) — un
+     cliente sin sesión (o logueado pero no como 'cliente', ej. un
+     cajero mirando el catálogo público desde otra pestaña) solo ve el
+     catálogo de siempre, de solo lectura, sin carrito. */
+  const [carrito, setCarrito] = useState({});
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [misPedidosOpen, setMisPedidosOpen] = useState(false);
+  const puedeComprar = !!session && isCliente;
 
   /* ---- Filtro Público de Sucursales: el cliente elige en qué
      Localidad/Sucursal quiere comprar — el catálogo (productos Y
@@ -169,6 +190,51 @@ export default function CatalogPage() {
     setActiveTab((prev) => prev || visibleSections[0]?.key || "");
   }, [visibleSections]);
 
+  // Un pedido pertenece a UNA sola sucursal — si el cliente cambia de
+  // sucursal a mitad de armar su carrito, lo vaciamos (mezclar
+  // productos de dos sucursales distintas en un mismo pedido no tiene
+  // sentido: cada una tiene su propio stock/inventario_sucursales).
+  useEffect(() => {
+    setCarrito({});
+  }, [publicSucursalId]);
+
+  // Agregar al carrito es SIEMPRE aditivo (a diferencia del
+  // toggleProduct de App.jsx, que deselecciona si ya estaba elegido):
+  // acá no hay "deseleccionar tocando la tarjeta de nuevo", el cliente
+  // usa el stepper +/- una vez que el producto ya está en su carrito.
+  // Clampa al stock disponible, mismo criterio que selectProductForSale
+  // en App.jsx. La Venta por Peso queda fuera del carrito público (acá
+  // no hay balanza — pesar el producto sigue siendo tarea del cajero al
+  // recibir el pedido, no algo que el cliente pueda estimar solo).
+  const agregarAlCarrito = (product) => {
+    if (product.ventaPorPeso) return;
+    const avail = availabilityFor(product, stock, productsById);
+    if (avail <= 0) return;
+    setCarrito((prev) => {
+      const current = prev[product.id] ?? 0;
+      return { ...prev, [product.id]: Math.min(current + 1, avail) };
+    });
+  };
+
+  const cambiarCantidadCarrito = (productId, qty) => {
+    setCarrito((prev) => ({ ...prev, [productId]: qty }));
+  };
+
+  const quitarDelCarrito = (productId) => {
+    setCarrito((prev) => {
+      const next = { ...prev };
+      delete next[productId];
+      return next;
+    });
+  };
+
+  const carritoIds = Object.keys(carrito);
+  const carritoTotalItems = carritoIds.reduce((sum, id) => sum + carrito[id], 0);
+  const carritoTotalPrecio = carritoIds.reduce(
+    (sum, id) => sum + effectivePrice(productsById[id]) * carrito[id],
+    0
+  );
+
   const activeSection = visibleSections.find((s) => s.key === activeTab);
 
   /* ---- Navegación estilo "Fortnite" (ScrollSpySidebar) — copiado tal
@@ -203,14 +269,26 @@ export default function CatalogPage() {
       <Styles />
       <header className="tz-header">
         <div className="tz-header-row">
-          <button
-            className="tz-header-btn"
-            onClick={handleFiadosClick}
-            aria-label="Fiados"
-          >
-            <BookOpen size={19} />
-            <span className="tz-header-btn-label">Fiados</span>
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className="tz-header-btn"
+              onClick={handleFiadosClick}
+              aria-label="Fiados"
+            >
+              <BookOpen size={19} />
+              <span className="tz-header-btn-label">Fiados</span>
+            </button>
+            {puedeComprar && (
+              <button
+                className="tz-header-btn"
+                onClick={() => setMisPedidosOpen(true)}
+                aria-label="Mis Pedidos"
+              >
+                <ClipboardList size={19} />
+                <span className="tz-header-btn-label">Mis Pedidos</span>
+              </button>
+            )}
+          </div>
 
           <div className="tz-header-center">
             <LogoEasterEgg src={logo} alt="TONAZO!" className="tz-logo" />
@@ -393,6 +471,52 @@ export default function CatalogPage() {
                                 </div>
                               </div>
                             </div>
+
+                            {/* Fase 1 "Pedidos Delivery": solo un cliente
+                               logueado puede agregar al carrito — la
+                               Venta por Peso queda fuera (no hay balanza
+                               acá, ver agregarAlCarrito). */}
+                            {puedeComprar && !item.ventaPorPeso && !soldOut && (
+                              <div className="tz-card-cart-controls">
+                                {carrito[item.id] ? (
+                                  <div className="tz-qty-stepper">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        carrito[item.id] <= 1
+                                          ? quitarDelCarrito(item.id)
+                                          : cambiarCantidadCarrito(item.id, carrito[item.id] - 1)
+                                      }
+                                      aria-label={`Quitar una unidad de ${item.name}`}
+                                    >
+                                      <Minus size={14} />
+                                    </button>
+                                    <span>{carrito[item.id]}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        cambiarCantidadCarrito(
+                                          item.id,
+                                          Math.min(carrito[item.id] + 1, avail)
+                                        )
+                                      }
+                                      disabled={carrito[item.id] >= avail}
+                                      aria-label={`Agregar una unidad más de ${item.name}`}
+                                    >
+                                      <Plus size={14} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="tz-card-add-btn"
+                                    onClick={() => agregarAlCarrito(item)}
+                                  >
+                                    <Plus size={14} /> Agregar
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -405,6 +529,21 @@ export default function CatalogPage() {
         </section>
       </main>
 
+      {/* Fase 1 "Pedidos Delivery": barra flotante del carrito — solo
+         aparece con algo adentro, y con el checkout cerrado (mientras
+         el checkout está abierto ya se ve el mismo resumen ahí). */}
+      {puedeComprar && carritoTotalItems > 0 && !checkoutOpen && (
+        <button
+          type="button"
+          className="tz-cart-floating-bar"
+          onClick={() => setCheckoutOpen(true)}
+        >
+          <span className="tz-cart-floating-bar-count">{carritoTotalItems}</span>
+          <ShoppingCart size={18} />
+          <span className="tz-cart-floating-bar-total">{formatSoles(carritoTotalPrecio)}</span>
+        </button>
+      )}
+
       {loginOpen && (
         <LoginModal
           onClose={() => setLoginOpen(false)}
@@ -415,6 +554,26 @@ export default function CatalogPage() {
         />
       )}
       {fiadoOpen && <ClienteFiadoView onClose={() => setFiadoOpen(false)} />}
+      {checkoutOpen && (
+        <PedidoCheckoutModal
+          carrito={carritoIds.map((id) => ({
+            product: productsById[id],
+            qty: carrito[id],
+            avail: availabilityFor(productsById[id], stock, productsById),
+            discountLabel: formatDescuentoBadge(productsById[id]),
+          }))}
+          total={carritoTotalPrecio}
+          sucursalId={publicSucursalId}
+          session={session}
+          onQtyChange={cambiarCantidadCarrito}
+          onRemove={quitarDelCarrito}
+          onClose={() => setCheckoutOpen(false)}
+          onPedidoConfirmado={() => setCarrito({})}
+        />
+      )}
+      {misPedidosOpen && (
+        <MisPedidosModal session={session} onClose={() => setMisPedidosOpen(false)} />
+      )}
     </div>
   );
 }
