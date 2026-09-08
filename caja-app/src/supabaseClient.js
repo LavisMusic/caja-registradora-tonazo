@@ -1,12 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Unificación de backend (caja-registradora-tonazo + taxi-pe-app en un
-// solo proyecto Supabase, el de Taxi-PE): la URL/key ahora se leen de
-// las variables de entorno de Vite (.env, ver .env.example) — el valor
-// hardcodeado que sigue abajo es solo un FALLBACK por si el build no
-// las tuviera disponibles, ya actualizado al proyecto nuevo.
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://silfhbdmfdryjdzpwzvh.supabase.co';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpbGZoYmRtZmRyeWpkenB3enZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4MDc5OTMsImV4cCI6MjEwMjM4Mzk5M30.4oceDaRyxMSPq6171TcHqcdssAxzrakkaNQdh0JiTyg';
+// La URL/key se leen de las variables de entorno de Vite (.env, ver
+// .env.example) — el valor hardcodeado es solo un FALLBACK por si el
+// build no las tuviera disponibles. Proyecto propio de caja-registradora
+// (NO se unifica con taxi-pe-app — cada app mantiene su propio backend,
+// conectados por webhooks/Edge Functions en vez de una sola base).
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://xaerfywydzwifohjsvwa.supabase.co';
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhhZXJmeXd5ZHp3aWZvaGpzdndhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwMDA4NjcsImV4cCI6MjEwMDU3Njg2N30.Qi_mb_0wWEtFxnTCpe4-yCvdmvO1vFmatVFGzjiyC8o';
 
 // "Mantener sesión iniciada": el cliente de Supabase solo permite fijar
 // UN storage al crearlo, así que este adapter decide en cada operación
