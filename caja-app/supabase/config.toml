@@ -1,0 +1,8 @@
+project_id = "xaerfywydzwifohjsvwa"
+
+# La app de Caja (navegador) llama a `entrega-iniciar`; el preflight CORS
+# OPTIONS va SIN token, así que la verificación de JWT de la plataforma
+# tiene que estar apagada. La autenticación se hace DENTRO de la función
+# (exige Bearer + rol admin|cajero). Ver DELIVERY.md §2.
+[functions.entrega-iniciar]
+verify_jwt = false

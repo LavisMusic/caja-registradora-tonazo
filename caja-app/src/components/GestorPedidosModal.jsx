@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { X, MessageCircle, Check, Ban, Copy, Loader2, AlertTriangle } from "lucide-react";
+import { X, MessageCircle, Check, Ban, Copy, Loader2, AlertTriangle, Bike, Store, Trash2 } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { supabaseTaxi } from "../lib/supabaseTaxi";
 import { usePedidos } from "../hooks/usePedidos";
+import { usePedidosNoLeidos } from "../hooks/usePedidosNoLeidos";
 import ChatPedidoModal from "./ChatPedidoModal";
+import EntregaCajaModal from "./delivery/EntregaCajaModal";
 import TicketBoleta from "./TicketBoleta";
 import { formatSoles, formatDate, formatTime } from "../utils/format";
 import { buildWhatsappLink } from "../lib/whatsapp";
 import { copiarBoletaAlPortapapeles } from "../lib/boleta";
+import { iniciarEntrega } from "../lib/entregaIniciar";
 
 const ESTADO_LABELS = {
   nuevo: "Nuevo",
@@ -30,14 +34,41 @@ const METODO_LABELS = {
 // celeste antes de cada fila marca que es un chat de un CLIENTE de la
 // tienda (a futuro, cuando existan chats de conductores en este mismo
 // modal, ese punto es lo que los va a distinguir).
-export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, onClose }) {
+export default function GestorPedidosModal({
+  sucursalId,
+  cajaId,
+  vendedorLabel,
+  onVentaRegistrada,
+  resolverItemPedido,
+  onClose,
+}) {
   const { pedidos, loading, error, refetch } = usePedidos(sucursalId);
   const [clientesInfo, setClientesInfo] = useState({}); // { [authUserId]: {nombre, whatsapp} }
   const [chatPedido, setChatPedido] = useState(null);
   const [procesandoId, setProcesandoId] = useState(null);
   const [accionError, setAccionError] = useState("");
+  const [entregaModal, setEntregaModal] = useState(null); // { sessionToken, telefono }
+  const [asignandoId, setAsignandoId] = useState(null);
+  const [filtro, setFiltro] = useState("retirar"); // 'retirar' | 'repartir'
+  const [comprobanteVer, setComprobanteVer] = useState(null); // url
+  const { counts: noLeidos, refrescar: refrescarNoLeidos } = usePedidosNoLeidos(
+    pedidos.map((p) => p.id),
+    "cajero"
+  );
+
+  // ChatPedidoModal marca los mensajes como leídos al abrirse; acá solo
+  // refrescamos el contador al cerrar.
+  const cerrarChat = () => {
+    refrescarNoLeidos();
+    setChatPedido(null);
+  };
   const [boletaPedido, setBoletaPedido] = useState(null);
+  const [boletaExtra, setBoletaExtra] = useState(null); // { sede, entrega }
   const boletaRef = useRef(null);
+
+  // La reversión de la venta de un pedido cancelado (repone stock + borra
+  // 'historial') vive en App.jsx — corre mientras el admin tenga la app
+  // abierta, no solo con este modal abierto. Ver DELIVERY.md §5.
 
   // Nombre/whatsapp del cliente de cada pedido: 'pedidos.cliente_id' es
   // el auth.users.id (mismo que usa la sesión de Supabase Auth del
@@ -68,34 +99,113 @@ export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, 
     };
   }, [pedidos]);
 
+  // Correlativo V-000X para el pedido — mismo formato que las ventas
+  // normales del POS. Se calcula una vez y se congela en el pedido, así
+  // un reintento (p.ej. si falló el update de estado) reusa el mismo
+  // número en vez de quemar otro.
+  const resolverPurchaseId = async (pedido) => {
+    if (pedido.ventaPurchaseId) return { code: pedido.ventaPurchaseId, error: null };
+
+    const { data: code, error: corrError } = await supabase.rpc("rpc_siguiente_correlativo_venta");
+    if (corrError || !code) return { code: null, error: corrError || new Error("No se pudo generar el correlativo.") };
+
+    // Reclama el número con guarda por si dos confirmaciones corren a la
+    // vez: solo lo escribe quien lo encuentra en null; el que pierde
+    // relee y usa el que quedó guardado.
+    const { data: claimed, error: claimError } = await supabase
+      .from("pedidos")
+      .update({ venta_purchase_id: code })
+      .eq("id", pedido.id)
+      .is("venta_purchase_id", null)
+      .select("venta_purchase_id");
+    if (claimError) return { code: null, error: claimError };
+    if (claimed && claimed.length) return { code: claimed[0].venta_purchase_id, error: null };
+
+    const { data: existing, error: readError } = await supabase
+      .from("pedidos")
+      .select("venta_purchase_id")
+      .eq("id", pedido.id)
+      .single();
+    if (readError || !existing?.venta_purchase_id) {
+      return { code: null, error: readError || new Error("No se pudo asignar el correlativo.") };
+    }
+    return { code: existing.venta_purchase_id, error: null };
+  };
+
+  // Registra la venta (descuenta stock, suma a métricas del día) — una
+  // sola vez por pedido: en el RETIRO se hace al ACEPTAR la petición
+  // (pago ya verificado); en DELIVERY se hace al confirmar la entrega.
+  const registrarVentaPedido = async (pedido) => {
+    const { code, error: idError } = await resolverPurchaseId(pedido);
+    if (idError) return { error: idError };
+    return supabase.rpc("registrar_venta", {
+      p_purchase_id: code,
+      p_items: pedido.items.map((it) => {
+        // nombre/detalle CANÓNICOS del catálogo + costo real — así
+        // revertirVenta (que matchea por nombre+detalle) puede encontrar
+        // los 'consumes' y reponer stock si el pedido se cancela. Sin
+        // costo, la Ganancia Neta contaría el precio de venta entero.
+        const r = resolverItemPedido ? resolverItemPedido(it) : {};
+        const cu = r.costoUnitario != null ? r.costoUnitario : null;
+        return {
+          producto_id: it.productoId,
+          nombre: r.nombre || it.nombre,
+          detalle: r.detalle || "",
+          cantidad: it.cantidad,
+          precio: it.precioUnitario,
+          total: it.subtotal,
+          costo_unitario: cu,
+          costo_total: cu != null ? cu * it.cantidad : null,
+          venta_por_peso: it.ventaPorPeso,
+        };
+      }),
+      p_metodo_pago: pedido.metodoPago,
+      p_vendedor: vendedorLabel,
+      p_fecha: Date.now(),
+      p_monto_recibido: pedido.montoRecibido,
+      p_vuelto: pedido.vuelto,
+      p_ruc: null,
+      p_caja_id: cajaId,
+      p_sucursal_id: sucursalId,
+    });
+  };
+
+  // Cobro del repartidor: al recoger el pedido paga en el mostrador y esa
+  // plata es una venta más del día (DELIVERY.md §5). Se dispara desde el
+  // Gestor cuando la entrega ya está en_ruta/entregado y todavía no se
+  // cobró (venta_purchase_id nulo). Reusa registrarVentaPedido, que
+  // congela el correlativo V-000X en el pedido.
+  const cobrarRecojo = async (pedido) => {
+    setAccionError("");
+    setProcesandoId(pedido.id);
+    try {
+      const { error: rpcError } = await registrarVentaPedido(pedido);
+      if (rpcError) throw rpcError;
+      onVentaRegistrada?.();
+      await supabase.from("pedido_mensajes").insert([
+        {
+          pedido_id: pedido.id,
+          remitente: "sistema",
+          mensaje: "💵 La tienda registró el pago del repartidor por tu pedido.",
+        },
+      ]);
+      refetch();
+    } catch (err) {
+      console.error("[GestorPedidosModal] Error cobrando recojo:", err);
+      setAccionError(err?.message || "No se pudo registrar el cobro del repartidor.");
+    } finally {
+      setProcesandoId(null);
+    }
+  };
+
   const confirmarEntrega = async (pedido) => {
     setAccionError("");
     setProcesandoId(pedido.id);
     try {
-      const { error: rpcError } = await supabase.rpc("registrar_venta", {
-        p_purchase_id: pedido.id,
-        p_items: pedido.items.map((it) => ({
-          producto_id: it.productoId,
-          nombre: it.nombre,
-          detalle: "",
-          cantidad: it.cantidad,
-          precio: it.precioUnitario,
-          total: it.subtotal,
-          costo_unitario: null,
-          costo_total: null,
-          venta_por_peso: it.ventaPorPeso,
-        })),
-        p_metodo_pago: pedido.metodoPago,
-        p_vendedor: vendedorLabel,
-        p_fecha: Date.now(),
-        p_monto_recibido: pedido.montoRecibido,
-        p_vuelto: pedido.vuelto,
-        p_ruc: null,
-        p_caja_id: cajaId,
-        p_sucursal_id: sucursalId,
-      });
-      if (rpcError) throw rpcError;
-
+      // Retiro en tienda → la venta ya se registró al aceptar la petición.
+      // Delivery → la venta se registra con "Confirmar recojo y cobro"
+      // (cobrarRecojo) y el cierre lo hace el webhook del repartidor; este
+      // botón queda solo como cierre manual de respaldo.
       const { error: updateError } = await supabase
         .from("pedidos")
         .update({ estado: "confirmado" })
@@ -114,6 +224,116 @@ export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, 
     } catch (err) {
       console.error("[GestorPedidosModal] Error confirmando entrega:", err);
       setAccionError(err?.message || "No se pudo registrar la venta. Intenta de nuevo.");
+    } finally {
+      setProcesandoId(null);
+    }
+  };
+
+  // Delivery: crea (o reabre) la sesión de entrega en Taxi-PE y abre el
+  // modal de asignación. La dirección/ubicación ya viene en el pedido
+  // (la puso el cliente al hacer el pedido) — el admin solo asigna un
+  // repartidor, no re-ingresa nada. Ver DELIVERY.md §7.
+  const asignarRepartidor = async (pedido) => {
+    const cliente = clientesInfo[pedido.clienteId];
+    const telefono = pedido.contactoTelefono || cliente?.whatsapp || "";
+
+    // Ya tiene sesión → solo reabrir.
+    if (pedido.entregaSessionToken) {
+      setEntregaModal({ sessionToken: pedido.entregaSessionToken, telefono });
+      return;
+    }
+
+    setAccionError("");
+    setAsignandoId(pedido.id);
+    try {
+      // Coordenadas de origen = la sucursal (punto A). Las fija el admin
+      // en el Gestor de Cajas (sucursales.lat/lng).
+      const { data: suc } = await supabase
+        .from("sucursales")
+        .select("nombre, lat, lng")
+        .eq("id", sucursalId)
+        .single();
+
+      const res = await iniciarEntrega({
+        caja_pedido_ref: pedido.id,
+        sucursal: suc?.nombre || sucursalId,
+        cliente_nombre: pedido.contactoNombre || cliente?.nombre || "Cliente",
+        cliente_telefono: telefono,
+        direccion_entrega: pedido.direccionEntrega || "",
+        entrega_lat: pedido.entregaLat,
+        entrega_lng: pedido.entregaLng,
+        origen_lat: suc?.lat ?? null,
+        origen_lng: suc?.lng ?? null,
+        items: pedido.items.map((it) => ({ nombre: it.nombre, cantidad: it.cantidad })),
+        total: pedido.total,
+      });
+
+      const { error: updErr } = await supabase
+        .from("pedidos")
+        .update({
+          requiere_delivery: true,
+          entrega_id: res.entrega_id,
+          entrega_session_token: res.session_token,
+          entrega_pin: res.pin,
+        })
+        .eq("id", pedido.id);
+      if (updErr) throw updErr;
+
+      refetch();
+      setEntregaModal({ sessionToken: res.session_token, telefono });
+    } catch (err) {
+      console.error("[GestorPedidosModal] Error asignando repartidor:", err);
+      setAccionError(err?.message || "No se pudo iniciar la entrega.");
+    } finally {
+      setAsignandoId(null);
+    }
+  };
+
+  // "Eliminar del historial" solo lo saca de la vista de la CAJA — el
+  // cliente sigue viéndolo en el suyo (y viceversa). Ver 0059_pedidos_ocultar.
+  const eliminarPedido = async (pedido) => {
+    if (!confirm("¿Sacar este pedido de tu historial? (El cliente lo seguirá viendo en el suyo.)")) return;
+    setAccionError("");
+    setProcesandoId(pedido.id);
+    const { error: updErr } = await supabase.from("pedidos").update({ oculto_caja: true }).eq("id", pedido.id);
+    if (updErr) {
+      console.error("[GestorPedidosModal] Error ocultando pedido:", updErr);
+      setAccionError(updErr.message || "No se pudo quitar el pedido del historial.");
+    } else {
+      refetch();
+    }
+    setProcesandoId(null);
+  };
+
+  // Retiro en tienda: verificar el comprobante y aceptar/rechazar la
+  // petición. Al ACEPTAR se registra la venta (descuenta stock, suma a
+  // las métricas del día) — el pago ya está verificado.
+  const resolverRetiro = async (pedido, aceptar) => {
+    setAccionError("");
+    setProcesandoId(pedido.id);
+    try {
+      if (aceptar) {
+        const { error: rpcError } = await registrarVentaPedido(pedido);
+        if (rpcError) throw rpcError; // p.ej. stock insuficiente → no se acepta
+        onVentaRegistrada?.(); // refresca historial/stock/métricas en App
+      }
+      const nuevoEstado = aceptar ? "en_atencion" : "cancelado";
+      const { error } = await supabase.from("pedidos").update({ estado: nuevoEstado }).eq("id", pedido.id);
+      if (error) throw error;
+
+      await supabase.from("pedido_mensajes").insert([
+        {
+          pedido_id: pedido.id,
+          remitente: "sistema",
+          mensaje: aceptar
+            ? "✅ La tienda confirmó tu pago. Estamos preparando tu pedido para el retiro."
+            : "❌ La tienda no pudo verificar tu comprobante. El pedido fue cancelado.",
+        },
+      ]);
+      refetch();
+    } catch (err) {
+      console.error("[GestorPedidosModal] Error resolviendo retiro:", err);
+      setAccionError(err?.message || "No se pudo procesar la petición.");
     } finally {
       setProcesandoId(null);
     }
@@ -146,26 +366,67 @@ export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, 
   useEffect(() => {
     if (!boletaPedido) return;
     const cliente = clientesInfo[boletaPedido.clienteId];
-    const timer = setTimeout(async () => {
+    let alive = true;
+    (async () => {
+      const extra = { sede: "", entrega: null };
       try {
-        await copiarBoletaAlPortapapeles(boletaRef);
+        if (boletaPedido.sucursalId) {
+          const { data: suc } = await supabase
+            .from("sucursales")
+            .select("nombre")
+            .eq("id", boletaPedido.sucursalId)
+            .maybeSingle();
+          if (suc?.nombre) extra.sede = suc.nombre;
+        }
+        if (boletaPedido.entregaSessionToken) {
+          const { data: est } = await supabaseTaxi.rpc("rpc_entrega_estado", {
+            p_session_token: boletaPedido.entregaSessionToken,
+          });
+          const e = Array.isArray(est) ? est[0] : est;
+          if (e) {
+            extra.entrega = {
+              repartidor: e.conductor_nombre || "",
+              direccion: e.direccion_entrega || boletaPedido.direccionEntrega || "",
+            };
+            if (e.caja_sucursal && !extra.sede) extra.sede = e.caja_sucursal;
+          }
+        } else if (boletaPedido.requiereDelivery) {
+          extra.entrega = { repartidor: "", direccion: boletaPedido.direccionEntrega || "" };
+        }
+      } catch {
+        /* la boleta igual sale sin esos datos */
+      }
+      if (!alive) return;
+      setBoletaExtra(extra);
+      await new Promise((r) => setTimeout(r, 60));
+      if (!alive) return;
+      try {
+        const res = await copiarBoletaAlPortapapeles(boletaRef);
+        if (res?.descargado) {
+          setAccionError("Este navegador no deja copiar la imagen — se descargó la boleta. Adjuntala en el chat.");
+        }
         const link = buildWhatsappLink(
           cliente?.whatsapp,
           "Atento tu pedido está en camino! Aquí está tu boleta"
         );
         if (link) {
           window.open(link, "_blank");
-        } else {
+        } else if (!res?.descargado) {
           setAccionError("Este cliente no tiene un WhatsApp válido registrado.");
         }
       } catch (err) {
         console.error("[GestorPedidosModal] Error copiando boleta:", err);
-        setAccionError(err?.message || "No se pudo copiar la boleta.");
+        setAccionError(err?.message || "No se pudo generar la boleta.");
       } finally {
-        setBoletaPedido(null);
+        if (alive) {
+          setBoletaPedido(null);
+          setBoletaExtra(null);
+        }
       }
-    }, 50);
-    return () => clearTimeout(timer);
+    })();
+    return () => {
+      alive = false;
+    };
   }, [boletaPedido, clientesInfo]);
 
   return (
@@ -182,20 +443,89 @@ export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, 
           </p>
         )}
 
+        <div className="tz-gasto-tipo-buttons" style={{ margin: "6px 0 12px" }}>
+          {[
+            ["retirar", "Para retirar", Store, pedidos.filter((p) => !p.requiereDelivery && ["nuevo", "en_atencion"].includes(p.estado)).length],
+            ["repartir", "Para repartir", Bike, pedidos.filter((p) => p.requiereDelivery && ["nuevo", "en_atencion"].includes(p.estado)).length],
+          ].map(([k, txt, Icono, n]) => (
+            <button
+              key={k}
+              type="button"
+              className={`tz-gasto-tipo-btn ${filtro === k ? "tz-gasto-tipo-active" : ""}`}
+              onClick={() => setFiltro(k)}
+            >
+              <Icono size={14} /> {txt}{n > 0 ? ` (${n})` : ""}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <p className="tz-stock-editor-sub">
             <Loader2 className="tz-spin" size={16} /> Cargando pedidos...
           </p>
         ) : error ? (
           <p className="tz-error">{error}</p>
-        ) : pedidos.length === 0 ? (
-          <p className="tz-stock-editor-sub">Todavía no hay pedidos en esta sucursal.</p>
+        ) : pedidos.filter((p) => (filtro === "repartir" ? p.requiereDelivery : !p.requiereDelivery)).length === 0 ? (
+          <p className="tz-stock-editor-sub">
+            {filtro === "repartir" ? "No hay pedidos para repartir." : "No hay pedidos para retirar en tienda."}
+          </p>
         ) : (
           <div className="tz-pedidos-list">
-            {pedidos.map((pedido) => {
+            {pedidos
+              .filter((p) => (filtro === "repartir" ? p.requiereDelivery : !p.requiereDelivery))
+              .map((pedido) => {
               const cliente = clientesInfo[pedido.clienteId];
               const procesando = procesandoId === pedido.id;
               const activo = pedido.estado === "nuevo" || pedido.estado === "en_atencion";
+              const enProceso = pedido.estado === "nuevo" || pedido.estado === "en_atencion";
+              const esPeticionRetiro = !pedido.requiereDelivery && pedido.estado === "nuevo";
+
+              if (esPeticionRetiro) {
+                return (
+                  <div key={pedido.id} className="tz-pedido-card tz-peticion-card">
+                    <div className="tz-pedido-card-head">
+                      <span className="tz-peticion-badge">Petición de retiro</span>
+                      <span className="tz-pedido-cliente-nombre">{cliente?.nombre || "Cliente"}</span>
+                    </div>
+                    <div className="tz-pedido-card-meta">
+                      {formatDate(pedido.createdAt)} {formatTime(pedido.createdAt)} ·{" "}
+                      {METODO_LABELS[pedido.metodoPago] || pedido.metodoPago} · Total {formatSoles(pedido.total)}
+                    </div>
+                    <ul className="tz-pedido-items-list">
+                      {pedido.items.map((it) => (
+                        <li key={it.id}>{it.cantidad}x {it.nombre} — {formatSoles(it.subtotal)}</li>
+                      ))}
+                    </ul>
+                    {pedido.comprobanteUrl ? (
+                      <button type="button" className="tz-peticion-comprobante" onClick={() => setComprobanteVer(pedido.comprobanteUrl)}>
+                        <img src={pedido.comprobanteUrl} alt="Comprobante de pago" />
+                        <span>Ver comprobante</span>
+                      </button>
+                    ) : (
+                      <p className="tz-error"><AlertTriangle size={13} /> Sin comprobante adjunto.</p>
+                    )}
+                    <div className="tz-pedido-card-actions">
+                      <button
+                        type="button"
+                        className="tz-pedido-action-btn tz-pedido-action-confirmar"
+                        onClick={() => resolverRetiro(pedido, true)}
+                        disabled={procesando}
+                      >
+                        {procesando ? <Loader2 size={14} className="tz-spin" /> : <Check size={14} />} Aceptar
+                      </button>
+                      <button
+                        type="button"
+                        className="tz-pedido-action-btn tz-pedido-action-cancelar"
+                        onClick={() => resolverRetiro(pedido, false)}
+                        disabled={procesando}
+                      >
+                        <Ban size={14} /> Rechazar
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div key={pedido.id} className="tz-pedido-card">
                   <div className="tz-pedido-card-head">
@@ -224,13 +554,19 @@ export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, 
                   <div className="tz-pedido-card-total">Total: {formatSoles(pedido.total)}</div>
 
                   <div className="tz-pedido-card-actions">
-                    <button
-                      type="button"
-                      className="tz-pedido-action-btn"
-                      onClick={() => setChatPedido(pedido)}
-                    >
-                      <MessageCircle size={14} /> Ver chat
-                    </button>
+                    {pedido.estado !== "confirmado" && pedido.estado !== "cancelado" && (
+                      <button
+                        type="button"
+                        className="tz-pedido-action-btn"
+                        style={{ position: "relative" }}
+                        onClick={() => setChatPedido(pedido)}
+                      >
+                        <MessageCircle size={14} /> Ver chat
+                        {noLeidos[pedido.id] > 0 && (
+                          <span className="tz-badge-dot">{noLeidos[pedido.id] > 9 ? "9+" : noLeidos[pedido.id]}</span>
+                        )}
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="tz-pedido-action-btn"
@@ -239,17 +575,44 @@ export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, 
                     >
                       <Copy size={14} /> Copiar boleta y WhatsApp
                     </button>
-                    {activo && (
-                      <>
+                    {pedido.requiereDelivery && (activo || pedido.entregaSessionToken) && (
+                      <button
+                        type="button"
+                        className="tz-pedido-action-btn"
+                        onClick={() => asignarRepartidor(pedido)}
+                        disabled={asignandoId === pedido.id}
+                      >
+                        {asignandoId === pedido.id ? <Loader2 size={14} className="tz-spin" /> : <Bike size={14} />}
+                        {pedido.entregaSessionToken ? "Ver entrega" : "Asignar repartidor"}
+                      </button>
+                    )}
+                    {pedido.requiereDelivery &&
+                      !pedido.ventaPurchaseId &&
+                      ["en_ruta", "entregado"].includes(pedido.entregaEstado) &&
+                      pedido.estado !== "cancelado" && (
                         <button
                           type="button"
                           className="tz-pedido-action-btn tz-pedido-action-confirmar"
-                          onClick={() => confirmarEntrega(pedido)}
+                          onClick={() => cobrarRecojo(pedido)}
                           disabled={procesando}
                         >
                           {procesando ? <Loader2 size={14} className="tz-spin" /> : <Check size={14} />}
-                          Confirmar entregado
+                          Confirmar recojo y cobro
                         </button>
+                      )}
+                    {activo && (
+                      <>
+                        {!(pedido.requiereDelivery && pedido.entregaSessionToken) && (
+                          <button
+                            type="button"
+                            className="tz-pedido-action-btn tz-pedido-action-confirmar"
+                            onClick={() => confirmarEntrega(pedido)}
+                            disabled={procesando}
+                          >
+                            {procesando ? <Loader2 size={14} className="tz-spin" /> : <Check size={14} />}
+                            Confirmar entregado
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="tz-pedido-action-btn tz-pedido-action-cancelar"
@@ -260,6 +623,17 @@ export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, 
                         </button>
                       </>
                     )}
+                    {!enProceso && (
+                      <button
+                        type="button"
+                        className="tz-pedido-action-btn tz-pedido-action-cancelar"
+                        onClick={() => eliminarPedido(pedido)}
+                        disabled={procesando}
+                      >
+                        {procesando ? <Loader2 size={14} className="tz-spin" /> : <Trash2 size={14} />}
+                        Eliminar del historial
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -268,12 +642,37 @@ export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, 
         )}
       </div>
 
+      {comprobanteVer && (
+        <div className="tz-modal-backdrop" style={{ zIndex: 80 }} onClick={() => setComprobanteVer(null)}>
+          <div className="tz-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420, textAlign: "center" }}>
+            <button className="tz-modal-close" onClick={() => setComprobanteVer(null)} aria-label="Cerrar">
+              <X size={18} />
+            </button>
+            <h2>Comprobante de pago</h2>
+            <img src={comprobanteVer} alt="Comprobante" style={{ width: "100%", borderRadius: 10, marginTop: 8 }} />
+          </div>
+        </div>
+      )}
+
       {chatPedido && (
         <ChatPedidoModal
           pedidoId={chatPedido.id}
           remitentePropio="cajero"
           tituloChat={`Chat con ${clientesInfo[chatPedido.clienteId]?.nombre || "cliente"}`}
-          onClose={() => setChatPedido(null)}
+          onClose={cerrarChat}
+        />
+      )}
+
+      {entregaModal && (
+        <EntregaCajaModal
+          sessionToken={entregaModal.sessionToken}
+          rol="cajero"
+          esAdmin
+          telefonoCliente={entregaModal.telefono}
+          onClose={() => {
+            setEntregaModal(null);
+            refetch();
+          }}
         />
       )}
 
@@ -288,6 +687,8 @@ export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, 
                 cajero: vendedorLabel,
               }}
               cliente={{ nombre: clientesInfo[boletaPedido.clienteId]?.nombre || "" }}
+              sede={boletaExtra?.sede || ""}
+              entrega={boletaExtra?.entrega || null}
               productos={boletaPedido.items.map((it) => ({
                 cantidad: it.cantidad,
                 nombre: it.nombre,
@@ -298,6 +699,8 @@ export default function GestorPedidosModal({ sucursalId, cajaId, vendedorLabel, 
               totales={{
                 metodoPago: METODO_LABELS[boletaPedido.metodoPago] || boletaPedido.metodoPago,
                 totalPagar: boletaPedido.total,
+                efectivoRecibido: boletaPedido.metodoPago === "EFECTIVO" ? boletaPedido.montoRecibido : null,
+                vuelto: boletaPedido.vuelto,
               }}
             />
           </div>

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { X, Loader2, AlertTriangle, MessageCircle, Send, Copy, Check } from "lucide-react";
+import { X, Loader2, AlertTriangle, MessageCircle, Send, Copy, Check, Store, Bike, Camera } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import CartRow from "./CartRow";
-import PaymentMethodPicker from "./PaymentMethodPicker";
+import MapPicker from "./MapPicker";
+import PaymentMethodPicker, { METODOS_PEDIDO_CLIENTE } from "./PaymentMethodPicker";
+
+const METODOS_SIN_EFECTIVO = METODOS_PEDIDO_CLIENTE.filter((m) => m.key !== "EFECTIVO");
 import TicketBoleta from "./TicketBoleta";
 import ChatPedidoModal from "./ChatPedidoModal";
 import { formatSoles, formatDate, formatTime } from "../utils/format";
@@ -57,10 +60,15 @@ export default function PedidoCheckoutModal({
 }) {
   const [metodo, setMetodo] = useState(null);
   const [montoRecibido, setMontoRecibido] = useState("");
+  const [modoEntrega, setModoEntrega] = useState("tienda"); // 'tienda' | 'delivery'
+  const [ubicacion, setUbicacion] = useState(null); // { lat, lng, direccion }
+  const [comprobanteFile, setComprobanteFile] = useState(null);
+  const [comprobantePreview, setComprobantePreview] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [pedidoCreado, setPedidoCreado] = useState(null);
   const [misDatos, setMisDatos] = useState(null);
+  const [sedeNombre, setSedeNombre] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
   const [copiandoBoleta, setCopiandoBoleta] = useState(false);
   const boletaRef = useRef(null);
@@ -75,17 +83,68 @@ export default function PedidoCheckoutModal({
       .then(({ data }) => setMisDatos(data || null));
   }, [session]);
 
+  useEffect(() => {
+    if (!sucursalId) return;
+    supabase
+      .from("sucursales")
+      .select("nombre")
+      .eq("id", sucursalId)
+      .maybeSingle()
+      .then(({ data }) => setSedeNombre(data?.nombre || ""));
+  }, [sucursalId]);
+
+  const esRetiro = modoEntrega === "tienda";
+
+  // Al pasar a "Retiro en tienda", Efectivo no aplica (hace falta
+  // comprobante de un pago ya hecho).
+  useEffect(() => {
+    if (esRetiro && metodo === "EFECTIVO") {
+      setMetodo(null);
+      setMontoRecibido("");
+    }
+  }, [esRetiro, metodo]);
+
+  const handleComprobante = (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setComprobanteFile(f);
+    setComprobantePreview(URL.createObjectURL(f));
+  };
+
   const recibidoNum = parseFloat(montoRecibido);
   const isPaymentValid =
-    metodo && (metodo !== "EFECTIVO" || (montoRecibido !== "" && recibidoNum - total >= -0.009));
+    metodo &&
+    (esRetiro ? metodo !== "EFECTIVO" : metodo !== "EFECTIVO" || (montoRecibido !== "" && recibidoNum - total >= -0.009));
+  const entregaValida = esRetiro
+    ? !!comprobanteFile
+    : ubicacion?.lat != null && ubicacion?.lng != null && (ubicacion.direccion || "").trim().length > 3;
+  const puedeEnviar = isPaymentValid && entregaValida && carrito.length > 0 && !submitting;
 
   const handleEnviarPedido = async () => {
-    if (!isPaymentValid || carrito.length === 0) return;
+    if (!puedeEnviar) return;
     setSubmitting(true);
     setError("");
 
     const montoRecibidoNum = metodo === "EFECTIVO" ? recibidoNum : null;
     const vuelto = metodo === "EFECTIVO" ? Math.max(recibidoNum - total, 0) : null;
+    const esDelivery = modoEntrega === "delivery";
+
+    // Retiro en tienda: subir el comprobante de pago a comprobantes-fotos.
+    let comprobanteUrl = null;
+    if (!esDelivery && comprobanteFile) {
+      const ext = (comprobanteFile.name.split(".").pop() || "jpg").toLowerCase();
+      const path = `retiro/${session.user.id}/${Date.now()}.${ext}`;
+      const { data: up, error: upErr } = await supabase.storage
+        .from("comprobantes-fotos")
+        .upload(path, comprobanteFile, { contentType: comprobanteFile.type || "image/jpeg", upsert: false });
+      if (upErr) {
+        console.error("[PedidoCheckoutModal] Error subiendo comprobante:", upErr);
+        setError("No se pudo subir el comprobante. Intenta de nuevo.");
+        setSubmitting(false);
+        return;
+      }
+      comprobanteUrl = supabase.storage.from("comprobantes-fotos").getPublicUrl(up.path).data.publicUrl;
+    }
 
     const { data: pedidoRow, error: pedidoError } = await supabase
       .from("pedidos")
@@ -97,6 +156,13 @@ export default function PedidoCheckoutModal({
           monto_recibido: montoRecibidoNum,
           vuelto,
           total,
+          requiere_delivery: esDelivery,
+          comprobante_url: comprobanteUrl,
+          direccion_entrega: esDelivery ? ubicacion.direccion.trim() : null,
+          entrega_lat: esDelivery ? ubicacion.lat : null,
+          entrega_lng: esDelivery ? ubicacion.lng : null,
+          contacto_nombre: esDelivery ? misDatos?.nombre || null : null,
+          contacto_telefono: esDelivery ? misDatos?.whatsapp || null : null,
         },
       ])
       .select()
@@ -202,12 +268,47 @@ export default function PedidoCheckoutModal({
               <strong>Total: {formatSoles(total)}</strong>
             </p>
 
+            <div className="tz-checkout-entrega">
+              <div className="tz-gasto-tipo-buttons">
+                <button
+                  type="button"
+                  className={`tz-gasto-tipo-btn ${modoEntrega === "tienda" ? "tz-gasto-tipo-active" : ""}`}
+                  onClick={() => setModoEntrega("tienda")}
+                >
+                  <Store size={14} /> Retiro en tienda
+                </button>
+                <button
+                  type="button"
+                  className={`tz-gasto-tipo-btn ${modoEntrega === "delivery" ? "tz-gasto-tipo-active" : ""}`}
+                  onClick={() => setModoEntrega("delivery")}
+                >
+                  <Bike size={14} /> Envío a domicilio
+                </button>
+              </div>
+              {modoEntrega === "delivery" && <MapPicker value={ubicacion} onChange={setUbicacion} />}
+            </div>
+
+            {esRetiro && (
+              <div className="tz-checkout-comprobante">
+                <label className="tz-field-label">Comprobante de pago (obligatorio)</label>
+                <label className="tz-scan-btn" style={{ cursor: "pointer" }}>
+                  <Camera size={16} /> {comprobanteFile ? "Cambiar imagen" : "Adjuntar comprobante"}
+                  <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleComprobante} />
+                </label>
+                {comprobantePreview && (
+                  <img src={comprobantePreview} alt="Comprobante" className="tz-checkout-comprobante-preview" />
+                )}
+                <p className="tz-stock-editor-sub">La tienda verifica tu pago antes de separar los productos.</p>
+              </div>
+            )}
+
             <PaymentMethodPicker
               metodo={metodo}
               onMetodoChange={setMetodo}
               total={total}
               montoRecibido={montoRecibido}
               onMontoRecibidoChange={setMontoRecibido}
+              methods={esRetiro ? METODOS_SIN_EFECTIVO : undefined}
             />
 
             {error && (
@@ -216,11 +317,7 @@ export default function PedidoCheckoutModal({
               </p>
             )}
 
-            <button
-              className="tz-submit-btn"
-              onClick={handleEnviarPedido}
-              disabled={!isPaymentValid || submitting || carrito.length === 0}
-            >
+            <button className="tz-submit-btn" onClick={handleEnviarPedido} disabled={!puedeEnviar}>
               {submitting ? <Loader2 size={16} className="tz-spin" /> : "Enviar pedido"}
             </button>
           </>
@@ -241,10 +338,18 @@ export default function PedidoCheckoutModal({
                   cajero: "-",
                 }}
                 cliente={{ nombre: misDatos?.nombre || "" }}
+                sede={sedeNombre}
+                entrega={
+                  esRetiro
+                    ? null
+                    : { repartidor: "", direccion: ubicacion?.direccion || "" }
+                }
                 productos={pedidoCreado.items}
                 totales={{
                   metodoPago: METODO_LABELS[pedidoCreado.metodoPago] || pedidoCreado.metodoPago,
                   totalPagar: pedidoCreado.total,
+                  efectivoRecibido: pedidoCreado.metodoPago === "EFECTIVO" ? pedidoCreado.montoRecibido : null,
+                  vuelto: pedidoCreado.vuelto,
                 }}
               />
             </div>

@@ -75,6 +75,14 @@ export function usePedidoMensajes(pedidoId) {
           });
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "pedido_mensajes", filter: `pedido_id=eq.${pedidoId}` },
+        (payload) => {
+          const row = payload.new;
+          setMensajes((prev) => prev.map((m) => (m.id === row.id ? { ...m, leido: row.leido } : m)));
+        }
+      )
       .subscribe((status, err) => {
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           console.error("[usePedidoMensajes] Realtime no se pudo conectar:", status, err || "");
@@ -85,6 +93,29 @@ export function usePedidoMensajes(pedidoId) {
       supabase.removeChannel(channel);
     };
   }, [pedidoId]);
+
+  const marcarLeidos = useCallback(
+    async (miRol) => {
+      if (!pedidoId || !miRol) return;
+      // Optimista: marca en el estado local los del OTRO lado. No recargamos
+      // (un load() con su spinner reiniciaría el scroll del chat al tope).
+      setMensajes((prev) =>
+        prev.map((m) =>
+          m.leido || m.remitente === miRol || m.remitente === REMITENTE_SISTEMA
+            ? m
+            : { ...m, leido: true }
+        )
+      );
+      const { error } = await supabase.rpc("rpc_pedido_mensajes_marcar_leidos", {
+        p_pedido_id: pedidoId,
+        p_mi_rol: miRol,
+      });
+      if (error) {
+        console.error("[usePedidoMensajes] rpc_pedido_mensajes_marcar_leidos:", error.message);
+      }
+    },
+    [pedidoId]
+  );
 
   const enviarMensaje = useCallback(
     async (remitente, mensaje) => {
@@ -100,5 +131,5 @@ export function usePedidoMensajes(pedidoId) {
     [pedidoId]
   );
 
-  return { mensajes, loading, enviarMensaje };
+  return { mensajes, loading, enviarMensaje, marcarLeidos, recargar: load };
 }

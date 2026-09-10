@@ -2347,6 +2347,11 @@ export default function Styles() {
         gap: 6px;
       }
       .tz-gc-sucursal-rename .tz-text-input { flex: 1 1 auto; min-width: 0; padding: 6px 10px; font-size: 13px; }
+      /* Coordenadas de sucursal (punto A del delivery) */
+      .tz-gc-sucursal-title { flex-wrap: wrap; }
+      .tz-gc-coords-set { color: var(--green, #39ffb0) !important; border-color: rgba(57,255,176,0.5) !important; }
+      .tz-gc-coords-edit { display: inline-flex; align-items: center; gap: 5px; }
+      .tz-gc-coords-input { width: 170px; padding: 5px 9px; font-size: 12px; }
       .tz-gc-caja-row {
         display: flex;
         flex-wrap: wrap;
@@ -5179,6 +5184,154 @@ export default function Styles() {
         gap: 10px;
         justify-content: center;
       }
+
+      /* ---- Petición de retiro en tienda (Gestor de Pedidos) ---- */
+      .tz-peticion-card { border-color: rgba(0,224,255,0.4); background: rgba(0,224,255,0.05); }
+      .tz-peticion-badge {
+        display: inline-block; padding: 2px 9px; border-radius: 999px;
+        background: rgba(0,224,255,0.16); border: 1px solid rgba(0,224,255,0.5);
+        color: #00e0ff; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em;
+      }
+      .tz-peticion-comprobante {
+        display: flex; align-items: center; gap: 10px; width: 100%; margin: 8px 0;
+        padding: 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15);
+        background: rgba(0,0,0,0.2); color: #cdd; font-size: 12.5px; font-weight: 600; cursor: pointer;
+      }
+      .tz-peticion-comprobante img { width: 54px; height: 54px; object-fit: cover; border-radius: 8px; }
+
+      /* ---- Comprobante en el checkout del cliente ---- */
+      .tz-checkout-comprobante { margin: 12px 0; }
+      .tz-checkout-comprobante-preview { width: 100%; border-radius: 10px; margin-top: 8px; max-height: 260px; object-fit: contain; background: rgba(0,0,0,0.2); }
+
+      /* ---- Círculo de aviso en botones de pedidos ---- */
+      .tz-badge-dot {
+        position: absolute;
+        top: -4px;
+        right: -4px;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 4px;
+        border-radius: 999px;
+        background: var(--danger, #ff5470);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 16px;
+        text-align: center;
+        box-shadow: 0 0 0 2px var(--bg, #0b0e14);
+      }
+
+      /* ---- Selector de entrega + MapPicker (checkout del cliente) ---- */
+      .tz-checkout-entrega { margin: 12px 0; }
+      .tz-mp { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+      .tz-mp-map { position: relative; height: 240px; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); }
+      .tz-mp-map .leaflet-container { background: #10141c; }
+      .tz-mp-loc {
+        position: absolute; z-index: 500; left: 8px; bottom: 8px;
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 6px 12px; border-radius: 999px;
+        background: rgba(0,224,255,0.16); border: 1px solid rgba(0,224,255,0.5);
+        color: #00e0ff; font-size: 12px; font-weight: 700; cursor: pointer;
+      }
+      .tz-mp-loc:disabled { opacity: 0.6; cursor: default; }
+      .tz-mp-pin-wrap { background: none; border: 0; }
+      .tz-mp-pin { font-size: 26px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5)); }
+      .tz-mp-dir { width: 100%; }
+
+      /* ---- Delivery (EntregaCajaModal, MapaEntregaCaja) ---- */
+      .tz-dlv-badge {
+        display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: 999px;
+        font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+        border: 1px solid rgba(255,255,255,0.18); color: #9aa;
+      }
+      .tz-dlv-badge-buscando  { color: #9aa; }
+      .tz-dlv-badge-aceptado  { color: #ff9d3d; border-color: rgba(255,157,61,0.5); background: rgba(255,157,61,0.12); }
+      .tz-dlv-badge-en_ruta   { color: #00e0ff; border-color: rgba(0,224,255,0.5); background: rgba(0,224,255,0.12); }
+      .tz-dlv-badge-entregado { color: #39ffac; border-color: rgba(57,255,172,0.5); background: rgba(57,255,172,0.12); }
+      .tz-dlv-badge-cancelado, .tz-dlv-badge-no_entregado { color: #ff5470; border-color: rgba(255,84,112,0.5); background: rgba(255,84,112,0.12); }
+
+      .tz-dlv-radar-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+      .tz-dlv-radar-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+        padding: 8px 10px; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; font-size: 13.5px; }
+      .tz-dlv-radar-list em { opacity: 0.65; font-style: normal; }
+      .tz-dlv-tag-ocupado { color: #ff9d3d; font-size: 11px; font-weight: 700; }
+      .tz-dlv-tag-rechazo { color: #ff5470; font-size: 11px; font-weight: 700; }
+      .tz-dlv-tag-espera { font-size: 11px; font-weight: 700; color: #9aa; }
+      .tz-dlv-rechazos { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+      .tz-dlv-rechazo { margin: 0; font-size: 12.5px; color: #ffb3c0; padding: 6px 10px;
+        border-radius: 8px; background: rgba(255,84,112,0.1); border: 1px solid rgba(255,84,112,0.35); }
+
+      .tz-btn-mini { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 8px;
+        border: 1px solid rgba(57,255,172,0.45); background: rgba(57,255,172,0.12); color: #39ffac;
+        font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+      .tz-btn-mini:disabled { opacity: 0.5; cursor: default; }
+      .tz-btn-verde { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px;
+        border: 1px solid rgba(57,255,172,0.5); background: rgba(57,255,172,0.14); color: #39ffac;
+        font-size: 13px; font-weight: 700; cursor: pointer; }
+      .tz-btn-ghost { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.2); background: transparent; color: #cdd; font-size: 12.5px; cursor: pointer; }
+      .tz-dlv-cancelar { border-color: rgba(255,84,112,0.5); color: #ff5470; }
+      .tz-dlv-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+      .tz-dlv-radar .tz-dlv-cancelar { margin-top: 10px; }
+
+      /* PIN + QR + cancelar, todos en la misma línea, empaquetados a la izquierda */
+      .tz-dlv-pin-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+      .tz-dlv-pin {
+        flex: 0 0 auto;                 /* solo lo que ocupa el contenido */
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 9px 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(0,224,255,0.35);
+        background: rgba(0,224,255,0.08);
+        font-size: 12px; font-weight: 600; color: #9fdcff; letter-spacing: 0.02em;
+      }
+      .tz-dlv-pin b { font-size: 19px; font-weight: 800; letter-spacing: 0.2em; color: #eafcff; }
+      .tz-dlv-qr-btn {
+        flex: 0 0 42px; width: 42px; height: 42px;
+        display: flex; align-items: center; justify-content: center;
+        border-radius: 12px;
+        border: 1px solid rgba(57,255,172,0.5);
+        background: rgba(57,255,172,0.14);
+        color: #39ffac; cursor: pointer;
+      }
+      .tz-dlv-pin-row .tz-dlv-cancelar { flex: 0 0 auto; }
+
+      /* ---- Chat: mismo estilo que el chat de Taxi-PE (burbujas, acento rosa a la derecha) ---- */
+      .tz-dlv-chat-tabs { display: flex; gap: 8px; margin-top: 14px; }
+      .tz-dlv-chat-tab { flex: 1; padding: 7px 0; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15);
+        background: transparent; color: #9aa; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+      .tz-dlv-chat-tab-active { border-color: #ff2f9e; color: #ff2f9e; background: rgba(255,47,158,0.1); }
+      .tz-dlv-chat-scroll { margin-top: 8px; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column;
+        gap: 8px; padding: 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px 12px 0 0; background: rgba(0,0,0,0.18); }
+      .tz-dlv-chat-empty { text-align: center; color: #9aa; font-size: 13px; margin: auto; }
+      .tz-dlv-bubble {
+        align-self: flex-start; max-width: 80%; min-width: 0;
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 12px 12px 12px 4px;
+        padding: 8px 12px;
+      }
+      .tz-dlv-bubble p { margin: 0; color: #eee; font-size: 14px; line-height: 1.4; white-space: pre-wrap;
+        overflow-wrap: anywhere; word-break: break-word; }
+      .tz-dlv-bubble-mine {
+        align-self: flex-end; text-align: right;
+        background: rgba(255,47,158,0.12);
+        border-color: rgba(255,47,158,0.45);
+        border-radius: 12px 12px 4px 12px;
+        box-shadow: 0 0 14px rgba(255,47,158,0.18);
+      }
+      .tz-dlv-bubble-time { display: flex; align-items: center; justify-content: flex-end; gap: 3px; margin-top: 3px; font-size: 10.5px; color: #8a8a98; }
+      .tz-dlv-check { color: #8a8a98; }
+      .tz-dlv-check-leido { color: #00e0ff; }
+      .tz-dlv-msg-sys { align-self: center; margin: 0; background: transparent; color: #9aa; font-size: 12px; font-style: italic; }
+      .tz-dlv-chat-input { display: flex; align-items: center; gap: 8px; padding: 8px;
+        border: 1px solid rgba(255,255,255,0.1); border-top: 0; border-radius: 0 0 12px 12px; }
+      .tz-dlv-chat-input .tz-input { flex: 1 1 auto; min-width: 0; padding: 10px 12px; border-radius: 10px;
+        border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.25); color: #eee; font-size: 14px; }
+      .tz-dlv-send { flex: 0 0 42px; width: 42px; height: 42px; padding: 0; display: flex; align-items: center;
+        justify-content: center; border-radius: 12px; border: 1px solid rgba(255,47,158,0.45);
+        background: rgba(255,47,158,0.14); color: #ff2f9e; cursor: pointer; }
+      .tz-dlv-send:disabled { opacity: 0.4; cursor: default; }
     `}</style>
   );
 }

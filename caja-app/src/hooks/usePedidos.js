@@ -28,6 +28,7 @@ export function usePedidos(sucursalId) {
       .from("pedidos")
       .select("*, pedido_items(*)")
       .eq("sucursal_id", sucursalId)
+      .eq("oculto_caja", false)
       .order("created_at", { ascending: false });
 
     if (loadError) {
@@ -48,6 +49,23 @@ export function usePedidos(sucursalId) {
         vuelto: row.vuelto != null ? Number(row.vuelto) : null,
         total: Number(row.total),
         createdAt: row.created_at,
+        // Delivery (ver DELIVERY.md): datos de entrega + enlace a la
+        // sesión en Taxi-PE que devuelve la Edge Function entrega-iniciar.
+        requiereDelivery: !!row.requiere_delivery,
+        direccionEntrega: row.direccion_entrega || null,
+        entregaLat: row.entrega_lat != null ? Number(row.entrega_lat) : null,
+        entregaLng: row.entrega_lng != null ? Number(row.entrega_lng) : null,
+        contactoNombre: row.contacto_nombre || null,
+        contactoTelefono: row.contacto_telefono || null,
+        entregaId: row.entrega_id || null,
+        entregaSessionToken: row.entrega_session_token || null,
+        entregaPin: row.entrega_pin || null,
+        comprobanteUrl: row.comprobante_url || null,
+        ventaPurchaseId: row.venta_purchase_id || null,
+        // Estado de la entrega en Taxi-PE (lo escribe el webhook
+        // taxi.entrega_estado): en_ruta | entregado | cancelado | no_entregado.
+        entregaEstado: row.entrega_estado || null,
+        ventaRevertida: !!row.venta_revertida,
         items: (row.pedido_items || []).map((it) => ({
           id: it.id,
           productoId: it.producto_id,

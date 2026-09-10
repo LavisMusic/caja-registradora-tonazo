@@ -49,10 +49,13 @@ const rowStyle = {
 // cambiar esto alcanza para que aparezca en TODAS las boletas.
 const EMISOR_RUC = "";
 
-export default function TicketBoleta({ orden, cliente, productos, totales }) {
+export default function TicketBoleta({ orden, cliente, productos, totales, sede, entrega }) {
   const nombreCliente = cliente?.nombre?.trim() ? cliente.nombre.trim() : "Público General";
   const rucCliente = cliente?.ruc?.trim() || "";
   const items = Array.isArray(productos) ? productos : [];
+  const efectivoRecibido = totales?.efectivoRecibido;
+  const vuelto = totales?.vuelto;
+  const muestraEfectivo = efectivoRecibido != null && !Number.isNaN(Number(efectivoRecibido));
 
   return (
     <div
@@ -95,6 +98,12 @@ export default function TicketBoleta({ orden, cliente, productos, totales }) {
         <span>Cajero</span>
         <span>{orden?.cajero ?? "-"}</span>
       </div>
+      {sede && (
+        <div style={rowStyle}>
+          <span>Sede</span>
+          <span>{sede}</span>
+        </div>
+      )}
       <div style={rowStyle}>
         <span>Cliente</span>
         <span>{nombreCliente}</span>
@@ -104,6 +113,36 @@ export default function TicketBoleta({ orden, cliente, productos, totales }) {
           <span>RUC Cliente</span>
           <span>{rucCliente}</span>
         </div>
+      )}
+
+      {entrega && (
+        <>
+          <div style={dividerStyle} />
+          <p
+            style={{
+              margin: "0 0 4px",
+              fontSize: 11,
+              fontWeight: 700,
+              color: COLORS.dim,
+              textTransform: "uppercase",
+              letterSpacing: 0.3,
+            }}
+          >
+            Entrega a domicilio
+          </p>
+          <div style={rowStyle}>
+            <span>Repartidor</span>
+            <span>{entrega.repartidor?.trim() || "Por asignar"}</span>
+          </div>
+          {entrega.direccion?.trim() && (
+            <div style={{ ...rowStyle, display: "block" }}>
+              <span>Dirección</span>
+              <div style={{ fontSize: 11.5, color: COLORS.dim, marginTop: 2, wordBreak: "break-word" }}>
+                {entrega.direccion.trim()}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <div style={dividerStyle} />
@@ -163,6 +202,19 @@ export default function TicketBoleta({ orden, cliente, productos, totales }) {
         <span>TOTAL</span>
         <span>{formatSoles(totales?.totalPagar ?? 0)}</span>
       </div>
+
+      {muestraEfectivo && (
+        <>
+          <div style={{ ...rowStyle, marginTop: 6 }}>
+            <span>Recibido (efectivo)</span>
+            <span>{formatSoles(Number(efectivoRecibido))}</span>
+          </div>
+          <div style={rowStyle}>
+            <span>Vuelto</span>
+            <span>{formatSoles(Number(vuelto) || 0)}</span>
+          </div>
+        </>
+      )}
 
       <div style={dividerStyle} />
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCatalog } from "../hooks/useCatalog";
+import { usePedidosBadge } from "../hooks/usePedidosBadge";
 import { supabase } from "../supabaseClient";
 import LoginModal from "../components/LoginModal";
 import ClienteFiadoView from "./ClienteFiadoView";
@@ -84,6 +85,7 @@ export default function CatalogPage() {
   const [carrito, setCarrito] = useState({});
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [misPedidosOpen, setMisPedidosOpen] = useState(false);
+  const misPedidosBadge = usePedidosBadge({ clienteId: session?.user?.id || null });
   const puedeComprar = !!session && isCliente;
 
   /* ---- Filtro Público de Sucursales: el cliente elige en qué
@@ -283,9 +285,13 @@ export default function CatalogPage() {
                 className="tz-header-btn"
                 onClick={() => setMisPedidosOpen(true)}
                 aria-label="Mis Pedidos"
+                style={{ position: "relative" }}
               >
                 <ClipboardList size={19} />
                 <span className="tz-header-btn-label">Mis Pedidos</span>
+                {misPedidosBadge > 0 && (
+                  <span className="tz-badge-dot">{misPedidosBadge > 9 ? "9+" : misPedidosBadge}</span>
+                )}
               </button>
             )}
           </div>

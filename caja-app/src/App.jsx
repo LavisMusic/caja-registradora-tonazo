@@ -48,6 +48,7 @@ import CartRow from "./components/CartRow";
 import GestorPedidosModal from "./components/GestorPedidosModal";
 import { safeGetItem, safeSetItem } from "./utils/safeStorage";
 import { useCatalog } from "./hooks/useCatalog";
+import { usePedidosBadge } from "./hooks/usePedidosBadge";
 import Styles from "./components/Styles";
 import CardDetail from "./components/CardDetail";
 import ComboIngredients from "./components/ComboIngredients";
@@ -866,6 +867,7 @@ export default function App() {
   /* ---- Fase 1 "Pedidos Delivery": Gestor de Pedidos (admin Y cajero,
      a diferencia del Gestor de Cajas que es solo admin) ---- */
   const [gestorPedidosOpen, setGestorPedidosOpen] = useState(false);
+  const pedidosBadge = usePedidosBadge({ sucursalId: sucursalOperativaId });
 
   /* ---- módulo de Libreta (Fiados / cuentas por cobrar) ---- */
   const [libretaOpen, setLibretaOpen] = useState(false);
@@ -1009,7 +1011,13 @@ export default function App() {
       (localidadesRows || []).map((r) => ({ id: r.id, nombre: r.nombre }))
     );
     setSucursales(
-      (sucursalesRows || []).map((r) => ({ id: r.id, localidadId: r.localidad_id, nombre: r.nombre }))
+      (sucursalesRows || []).map((r) => ({
+        id: r.id,
+        localidadId: r.localidad_id,
+        nombre: r.nombre,
+        lat: r.lat != null ? Number(r.lat) : null,
+        lng: r.lng != null ? Number(r.lng) : null,
+      }))
     );
     setCajas(
       (cajasRows || []).map((r) => ({
@@ -1193,6 +1201,56 @@ export default function App() {
 
     setSucursales((prev) => prev.map((s) => (s.id === sucursal.id ? { ...s, nombre } : s)));
     cancelRenombrarSucursal();
+  };
+
+  /* ---- Coordenadas de la sucursal (punto A del delivery). Se pega el
+     par "lat, lng" (formato de Google Maps) o se usa 📍 ubicación
+     actual. Quedan fijas hasta que se editen. ---- */
+  const [coordsSucursalId, setCoordsSucursalId] = useState(null);
+  const [coordsSucursalValor, setCoordsSucursalValor] = useState("");
+  const [coordsSucursalSaving, setCoordsSucursalSaving] = useState(false);
+
+  const startCoordsSucursal = (sucursal) => {
+    setCoordsSucursalId(sucursal.id);
+    setCoordsSucursalValor(
+      sucursal.lat != null && sucursal.lng != null ? `${sucursal.lat}, ${sucursal.lng}` : ""
+    );
+    setGestorCajaError("");
+  };
+  const cancelCoordsSucursal = () => {
+    setCoordsSucursalId(null);
+    setCoordsSucursalValor("");
+  };
+  const usarUbicacionActualSucursal = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (p) => setCoordsSucursalValor(`${p.coords.latitude.toFixed(6)}, ${p.coords.longitude.toFixed(6)}`),
+      () => setGestorCajaError("No se pudo obtener la ubicación actual."),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+  const guardarCoordsSucursal = async (sucursal) => {
+    const m = coordsSucursalValor.trim().match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (!m) {
+      setGestorCajaError('Formato inválido. Pegá "lat, lng" (ej. -12.046374, -77.042793).');
+      return;
+    }
+    const lat = Number(m[1]);
+    const lng = Number(m[2]);
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      setGestorCajaError("Coordenadas fuera de rango.");
+      return;
+    }
+    setCoordsSucursalSaving(true);
+    setGestorCajaError("");
+    const { error } = await supabase.from("sucursales").update({ lat, lng }).eq("id", sucursal.id);
+    setCoordsSucursalSaving(false);
+    if (error) {
+      setGestorCajaError(`No se pudieron guardar las coordenadas: ${error.message || "error"}`);
+      return;
+    }
+    setSucursales((prev) => prev.map((s) => (s.id === sucursal.id ? { ...s, lat, lng } : s)));
+    cancelCoordsSucursal();
   };
 
   /* ---- Parte 3 "Gestor de Cajas": panel de control total del admin
@@ -1735,10 +1793,13 @@ export default function App() {
   };
 
   /* ---- carga inicial: SELECT a Supabase (historial, comprobantes, libreta,
-     proveedores, gastos, cierres). El catálogo/stock los trae useCatalog. ---- */
-  useEffect(() => {
-    let cancelled = false;
-
+     proveedores, gastos, cierres). El catálogo/stock los trae useCatalog.
+     Extraída a useCallback ('recargarDatos') para poder re-disparar la
+     misma carga cuando una venta se registra desde FUERA del checkout
+     normal — p.ej. al aprobar una petición de retiro o confirmar una
+     entrega en el Gestor de Pedidos, que llaman a 'registrar_venta'
+     directo en la DB y no tocan este estado. ---- */
+  const recargarDatos = useCallback(async () => {
     async function load() {
       // 3) HISTORIAL
       const { data: historialRows, error: historialError } = await supabase
@@ -1959,25 +2020,24 @@ export default function App() {
         timestamp: new Date(row.created_at).getTime(),
       }));
 
-      if (!cancelled) {
-        setSales(loadedSales);
-        setComprobantes(loadedComprobantes);
-        setClientes(loadedClientes);
-        setFiadoItems(loadedFiadoItems);
-        setMovimientos(loadedMovimientos);
-        setProveedores(loadedProveedores);
-        setGastos(loadedGastos);
-        setCierres(loadedCierres);
-        setPagosPendientes(loadedPagosPendientes);
-        setRestLoading(false);
-      }
+      setSales(loadedSales);
+      setComprobantes(loadedComprobantes);
+      setClientes(loadedClientes);
+      setFiadoItems(loadedFiadoItems);
+      setMovimientos(loadedMovimientos);
+      setProveedores(loadedProveedores);
+      setGastos(loadedGastos);
+      setCierres(loadedCierres);
+      setPagosPendientes(loadedPagosPendientes);
+      setRestLoading(false);
     }
 
-    load();
-    return () => {
-      cancelled = true;
-    };
+    await load();
   }, []);
+
+  useEffect(() => {
+    recargarDatos();
+  }, [recargarDatos]);
 
   /* ---- activa la primera pestaña del catálogo apenas useCatalog la trae ---- */
   useEffect(() => {
@@ -5390,32 +5450,18 @@ export default function App() {
     return Object.values(porId).sort((a, b) => b.timestamp - a.timestamp);
   }, [salesVisibles, turnoCutoff]);
 
-  /* ---- Anula una venta del turno actual: repone el stock consumido,
+  /* ---- Núcleo de la reversión de una venta: repone el stock consumido,
      borra sus filas de 'historial' y revierte el efecto de su método
-     (fiado_items si fue FIADO, comprobante si fue digital). Pensada
-     para corregir un error de tipeo inmediato, no para editar ventas
-     viejas — por eso solo se ofrece dentro de "Mis Ventas (Hoy)". Si
-     el fiado de esa venta ya tiene abonos, se niega: revertir ahí
-     desarmaría un pago que el cliente ya hizo. ---- */
-  const anularVenta = async (purchaseId) => {
+     (fiado_items si fue FIADO, comprobante si fue digital). Devuelve
+     { error } — no toca estado de UI. Lo usan tanto "Anular venta" de
+     Mis Ventas como la devolución por no-show del Gestor de Pedidos. ---- */
+  const revertirVenta = async (purchaseId) => {
     const itemsDeVenta = sales.filter((s) => s.purchaseId === purchaseId);
-    if (itemsDeVenta.length === 0) return;
+    // 'sales' todavía no tiene esa venta (recién registrada, aún cargando)
+    // — que el llamador reintente en vez de darla por revertida.
+    if (itemsDeVenta.length === 0) return { error: null, vacio: true };
 
     const metodo = itemsDeVenta[0]?.metodoPago;
-
-    if (metodo === "FIADO") {
-      const itemsFiado = fiadoItems.filter((fi) => fi.purchaseId === purchaseId);
-      const yaAbonado = itemsFiado.some((fi) => fi.saldoRestante < fi.monto - 0.009);
-      if (yaAbonado) {
-        setAnularError(
-          "Esta venta fiada ya tiene abonos registrados — no se puede anular sola. Ajusta la deuda manualmente desde Fiados."
-        );
-        return;
-      }
-    }
-
-    setAnulandoVentaId(purchaseId);
-    setAnularError("");
 
     try {
       // 1) Reponer el stock que esta venta había descontado.
@@ -5493,13 +5539,100 @@ export default function App() {
       // 4) Reflejar en el estado local.
       setStock(newStock);
       setSales((prev) => prev.filter((s) => s.purchaseId !== purchaseId));
+      return { error: null };
     } catch (err) {
-      console.error("Error al anular venta:", err);
-      setAnularError("No se pudo anular la venta. Intenta de nuevo.");
-    } finally {
-      setAnulandoVentaId(null);
+      console.error("Error al revertir venta:", err);
+      return { error: err };
     }
   };
+
+  /* ---- Anula una venta del turno actual desde "Mis Ventas (Hoy)":
+     pensada para corregir un error de tipeo inmediato. Si el fiado de esa
+     venta ya tiene abonos, se niega: revertir ahí desarmaría un pago que
+     el cliente ya hizo. ---- */
+  const anularVenta = async (purchaseId) => {
+    const itemsDeVenta = sales.filter((s) => s.purchaseId === purchaseId);
+    if (itemsDeVenta.length === 0) return;
+
+    if (itemsDeVenta[0]?.metodoPago === "FIADO") {
+      const itemsFiado = fiadoItems.filter((fi) => fi.purchaseId === purchaseId);
+      const yaAbonado = itemsFiado.some((fi) => fi.saldoRestante < fi.monto - 0.009);
+      if (yaAbonado) {
+        setAnularError(
+          "Esta venta fiada ya tiene abonos registrados — no se puede anular sola. Ajusta la deuda manualmente desde Fiados."
+        );
+        return;
+      }
+    }
+
+    setAnulandoVentaId(purchaseId);
+    setAnularError("");
+    const { error } = await revertirVenta(purchaseId);
+    if (error) setAnularError("No se pudo anular la venta. Intenta de nuevo.");
+    setAnulandoVentaId(null);
+  };
+
+  /* ---- Reversión automática de la venta de un pedido que quedó
+     CANCELADO (lo canceló el cliente desde su app —que no tiene contexto
+     de stock— o el cajero). Corre mientras el admin/cajero tenga la app
+     abierta, sin depender de que el Gestor de Pedidos esté abierto.
+     Repone stock + borra 'historial' (misma lógica que "Anular venta") y
+     marca pedidos.venta_revertida para no repetir. ---- */
+  const revertirVentaRef = useRef(revertirVenta);
+  revertirVentaRef.current = revertirVenta;
+  const pedidosRevertidosRef = useRef(new Set());
+  useEffect(() => {
+    if (!sucursalOperativaId) return undefined;
+    let cancelled = false;
+
+    const revisarPedidosCancelados = async () => {
+      const { data, error } = await supabase
+        .from("pedidos")
+        .select("id, venta_purchase_id")
+        .eq("sucursal_id", sucursalOperativaId)
+        .eq("estado", "cancelado")
+        .eq("venta_revertida", false)
+        .not("venta_purchase_id", "is", null);
+      if (cancelled || error || !data?.length) return;
+
+      for (const p of data) {
+        if (pedidosRevertidosRef.current.has(p.id)) continue;
+        pedidosRevertidosRef.current.add(p.id);
+        const { error: revErr, vacio } = await revertirVentaRef.current(p.venta_purchase_id);
+        if (vacio || revErr) {
+          // Reintentar en la próxima pasada (venta aún no en memoria / error transitorio).
+          pedidosRevertidosRef.current.delete(p.id);
+          if (vacio) await recargarDatos();
+          continue;
+        }
+        await supabase.from("pedidos").update({ venta_revertida: true }).eq("id", p.id);
+        await supabase.from("pedido_mensajes").insert([
+          {
+            pedido_id: p.id,
+            remitente: "sistema",
+            mensaje: `↩️ Devolución: se revirtió la venta ${p.venta_purchase_id} y se repuso el stock.`,
+          },
+        ]);
+      }
+    };
+
+    revisarPedidosCancelados();
+    const timer = setInterval(revisarPedidosCancelados, 20000);
+    const channel = supabase
+      .channel(`pedidos-revert-${Math.random().toString(36).slice(2)}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "pedidos", filter: `sucursal_id=eq.${sucursalOperativaId}` },
+        revisarPedidosCancelados
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [sucursalOperativaId, recargarDatos]);
 
   /* ---- Usuarios: se cargan solo cuando el admin abre el modal (no en
      el efecto grande de arranque) — es una pantalla de gestión, no
@@ -6818,9 +6951,11 @@ export default function App() {
               className="tz-header-btn"
               onClick={() => setGestorPedidosOpen(true)}
               aria-label="Gestor de Pedidos"
+              style={{ position: "relative" }}
             >
               <ShoppingCart size={19} />
               <span className="tz-header-btn-label">Pedidos</span>
+              {pedidosBadge > 0 && <span className="tz-badge-dot">{pedidosBadge > 9 ? "9+" : pedidosBadge}</span>}
             </button>
             <button
               className="tz-header-btn"
@@ -8252,6 +8387,26 @@ export default function App() {
           sucursalId={sucursalOperativaId}
           cajaId={cajaOperativaId}
           vendedorLabel={cajeroNombre || (isAdmin ? "Admin" : "Cajero")}
+          onVentaRegistrada={() => {
+            recargarDatos();
+            refetchCatalog();
+          }}
+          resolverItemPedido={(it) => {
+            // Resuelve el producto real del ítem del pedido → nombre/detalle
+            // CANÓNICOS del catálogo (los mismos con los que revertirVenta
+            // busca los 'consumes' para reponer stock) + costo real.
+            const prod =
+              (it.productoId && productsById[it.productoId]) ||
+              Object.values(productsById).find((p) => p.name === it.nombre) ||
+              null;
+            return {
+              nombre: prod?.name || it.nombre,
+              detalle: prod?.detail || "",
+              costoUnitario: prod
+                ? unitCostFor(prod, stockCostos)
+                : (Number(it.precioUnitario) || 0) * DEFAULT_COST_RATIO,
+            };
+          }}
           onClose={() => setGestorPedidosOpen(false)}
         />
       )}
@@ -8354,6 +8509,41 @@ export default function App() {
                           >
                             <Pencil size={12} />
                           </button>
+                          {coordsSucursalId === suc.id ? (
+                            <span className="tz-gc-coords-edit">
+                              <input
+                                type="text"
+                                className="tz-text-input tz-gc-coords-input"
+                                placeholder="-12.046, -77.042"
+                                value={coordsSucursalValor}
+                                autoFocus
+                                onChange={(e) => setCoordsSucursalValor(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") guardarCoordsSucursal(suc);
+                                  if (e.key === "Escape") cancelCoordsSucursal();
+                                }}
+                              />
+                              <button type="button" className="tz-gc-sucursal-edit-btn" title="Usar mi ubicación actual" onClick={usarUbicacionActualSucursal}>
+                                <MapPin size={12} />
+                              </button>
+                              <button type="button" className="tz-gc-btn tz-gc-btn-abrir" disabled={coordsSucursalSaving} onClick={() => guardarCoordsSucursal(suc)}>
+                                {coordsSucursalSaving ? <Loader2 size={12} className="tz-spin" /> : <Check size={12} />}
+                              </button>
+                              <button type="button" className="tz-camera-cancel" onClick={cancelCoordsSucursal}>
+                                <X size={12} />
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className={`tz-gc-sucursal-edit-btn ${suc.lat != null ? "tz-gc-coords-set" : ""}`}
+                              title={suc.lat != null ? `Coordenadas: ${suc.lat}, ${suc.lng}` : "Fijar coordenadas de la tienda"}
+                              aria-label="Fijar coordenadas de la tienda"
+                              onClick={() => startCoordsSucursal(suc)}
+                            >
+                              <MapPin size={12} />
+                            </button>
+                          )}
                         </h4>
                       )}
                       {cajasPorSucursal(suc.id).map((caja) => {
