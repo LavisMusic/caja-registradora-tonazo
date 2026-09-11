@@ -288,6 +288,15 @@ export default function PedidoCheckoutModal({
               {modoEntrega === "delivery" && <MapPicker value={ubicacion} onChange={setUbicacion} />}
             </div>
 
+            <PaymentMethodPicker
+              metodo={metodo}
+              onMetodoChange={setMetodo}
+              total={total}
+              montoRecibido={montoRecibido}
+              onMontoRecibidoChange={setMontoRecibido}
+              methods={esRetiro ? METODOS_SIN_EFECTIVO : undefined}
+            />
+
             {esRetiro && (
               <div className="tz-checkout-comprobante">
                 <label className="tz-field-label">Comprobante de pago (obligatorio)</label>
@@ -301,15 +310,6 @@ export default function PedidoCheckoutModal({
                 <p className="tz-stock-editor-sub">La tienda verifica tu pago antes de separar los productos.</p>
               </div>
             )}
-
-            <PaymentMethodPicker
-              metodo={metodo}
-              onMetodoChange={setMetodo}
-              total={total}
-              montoRecibido={montoRecibido}
-              onMontoRecibidoChange={setMontoRecibido}
-              methods={esRetiro ? METODOS_SIN_EFECTIVO : undefined}
-            />
 
             {error && (
               <p className="tz-error">
