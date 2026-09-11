@@ -10,7 +10,11 @@ import { MAPBOX_TILE_URL, MAPBOX_ATTRIBUTION } from "../../lib/mapboxConfig";
 // Mapa en vivo de una entrega, para la app de Caja (cliente / cajero).
 // Mismo canal Broadcast `entrega-<id>` contra el Supabase de Taxi-PE que
 // usa el repartidor. Pin del repartidor con el ícono de su categoría
-// (rpc_conductor_marcador) + etiqueta LIBRE / EN CARRERA, sin asientos.
+// (rpc_conductor_marcador), sin asientos NI el badge LIBRE/EN CARRERA
+// que tenía antes: mostraba el switch de disponibilidad para VIAJES del
+// conductor (conductores.estado) — nada que ver con esta entrega, y
+// parecía cambiar solo al aceptar/entregar el pedido sin ninguna
+// relación real de causa.
 
 const NIVEL_COLOR = {
   economico: "#39ffac",
@@ -32,17 +36,14 @@ const ICONO_ORIGEN = L.divIcon({
   iconAnchor: [12, 12],
 });
 
-function iconoRepartidor(color, iconoUrl, libre) {
+function iconoRepartidor(color, iconoUrl) {
   const veh = iconoUrl
     ? `<img class="tz-dlv-veh-img" src="${iconoUrl}" alt="" />`
     : `<span class="tz-dlv-veh" style="--c:${color}">🚖</span>`;
-  const badge = `<span class="tz-dlv-estado ${libre ? "tz-dlv-libre" : "tz-dlv-carrera"}">${
-    libre ? "LIBRE" : "EN CARRERA"
-  }</span>`;
   return L.divIcon({
     className: "tz-dlv-marker-wrap",
-    html: `<div class="tz-dlv-veh-group" style="--c:${color}">${veh}${badge}</div>`,
-    iconSize: [120, 26],
+    html: `<div class="tz-dlv-veh-group" style="--c:${color}">${veh}</div>`,
+    iconSize: [26, 26],
     iconAnchor: [13, 13],
   });
 }
@@ -113,7 +114,6 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
   }, [entregaId]);
 
   const color = NIVEL_COLOR[mk.nivel] || NIVEL_COLOR.economico;
-  const libre = mk.estado === "activo";
   const centro = repartidor || destino || origen || { lat: -12.0464, lng: -77.0428 };
 
   const fr = frescura(posAt);
@@ -140,7 +140,7 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
             <TileLayer attribution={MAPBOX_ATTRIBUTION} url={MAPBOX_TILE_URL} />
             {origen && <Marker position={[origen.lat, origen.lng]} icon={ICONO_ORIGEN} />}
             {destino && <Marker position={[destino.lat, destino.lng]} icon={ICONO_DESTINO} />}
-            {repartidor && <Marker position={[repartidor.lat, repartidor.lng]} icon={iconoRepartidor(color, mk.iconoUrl, libre)} />}
+            {repartidor && <Marker position={[repartidor.lat, repartidor.lng]} icon={iconoRepartidor(color, mk.iconoUrl)} />}
           </MapContainer>
         </div>
       )}

@@ -285,7 +285,6 @@ export default function PedidoCheckoutModal({
                   <Bike size={14} /> Envío a domicilio
                 </button>
               </div>
-              {modoEntrega === "delivery" && <MapPicker value={ubicacion} onChange={setUbicacion} />}
             </div>
 
             <PaymentMethodPicker
@@ -296,6 +295,8 @@ export default function PedidoCheckoutModal({
               onMontoRecibidoChange={setMontoRecibido}
               methods={esRetiro ? METODOS_SIN_EFECTIVO : undefined}
             />
+
+            {modoEntrega === "delivery" && <MapPicker value={ubicacion} onChange={setUbicacion} />}
 
             {esRetiro && (
               <div className="tz-checkout-comprobante">

@@ -35,6 +35,11 @@ export default function MisPedidosModal({ session, onClose }) {
   const [boletaExtra, setBoletaExtra] = useState(null); // { sede, entrega }
   const [boletaMsg, setBoletaMsg] = useState("");
   const boletaRef = useRef(null);
+  // Ventana de WhatsApp abierta EN BLANCO de forma síncrona en el click
+  // (ver el botón "Enviar boleta por WhatsApp") y redirigida recién al
+  // terminar el trabajo async — si se llama window.open() después de un
+  // await, mobile Chrome lo bloquea como popup.
+  const whatsappWinRef = useRef(null);
   const { counts: noLeidos, refrescar: refrescarNoLeidos } = usePedidosNoLeidos(
     pedidos.map((p) => p.id),
     "cliente"
@@ -93,10 +98,18 @@ export default function MisPedidosModal({ session, onClose }) {
         const res = await copiarBoletaAlPortapapeles(boletaRef);
         setBoletaMsg(res?.descargado ? "Se descargó la boleta — adjuntala en tu chat." : "Boleta copiada. Pegala en tu chat.");
         const link = buildWhatsappLink(misDatos?.whatsapp, "Aquí está mi boleta");
-        if (link) window.open(link, "_blank");
+        const win = whatsappWinRef.current;
+        if (link) {
+          if (win && !win.closed) win.location.href = link;
+          else window.open(link, "_blank");
+        } else if (win && !win.closed) {
+          win.close();
+        }
       } catch (err) {
         setBoletaMsg(err?.message || "No se pudo generar la boleta.");
+        if (whatsappWinRef.current && !whatsappWinRef.current.closed) whatsappWinRef.current.close();
       } finally {
+        whatsappWinRef.current = null;
         if (alive) {
           setBoletaPedido(null);
           setBoletaExtra(null);
@@ -231,7 +244,11 @@ export default function MisPedidosModal({ session, onClose }) {
                   <button
                     type="button"
                     className="tz-pedido-action-btn"
-                    onClick={() => { setBoletaMsg(""); setBoletaPedido(pedido); }}
+                    onClick={() => {
+                      whatsappWinRef.current = window.open("", "_blank");
+                      setBoletaMsg("");
+                      setBoletaPedido(pedido);
+                    }}
                     disabled={boletaPedido?.id === pedido.id}
                   >
                     {boletaPedido?.id === pedido.id ? <Loader2 size={14} className="tz-spin" /> : <Copy size={14} />}

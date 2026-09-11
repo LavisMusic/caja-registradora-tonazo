@@ -545,7 +545,13 @@ export default function CatalogPage() {
           onClick={() => setCheckoutOpen(true)}
         >
           <span className="tz-cart-floating-bar-count">{carritoTotalItems}</span>
-          <ShoppingCart size={18} />
+          {/* Color explícito (no heredado): en algunos navegadores/SO en
+             modo claro, el ícono terminaba heredando el negro del
+             index.css base de Vite (:root { color } cambia con
+             prefers-color-scheme) en vez del blanco de la app — mismo
+             problema que ya se documentó y resolvió para h1/h2 más
+             arriba en Styles.jsx. */}
+          <ShoppingCart size={18} color="#f4f2ff" />
           <span className="tz-cart-floating-bar-total">{formatSoles(carritoTotalPrecio)}</span>
         </button>
       )}

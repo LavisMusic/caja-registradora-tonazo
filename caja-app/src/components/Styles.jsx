@@ -5014,6 +5014,28 @@ export default function Styles() {
       .tz-pedido-estado-en_atencion { background: rgba(215,255,59,0.15); color: var(--yellow); }
       .tz-pedido-estado-confirmado { background: var(--green-bg); color: var(--green); }
       .tz-pedido-estado-cancelado { background: rgba(255,84,112,0.15); color: var(--danger); }
+
+      /* Filtro secundario del Gestor de Pedidos (debajo de "Para
+         retirar"/"Para repartir"): mismas 3 etiquetas de color que ya
+         usan los badges de estado de la tarjeta, pero clickeables —
+         reutiliza el color, no la forma (acá son chips con borde, no
+         pastillas de solo lectura). Sin ninguna tocada = "Todos". */
+      .tz-filtro-estado-chip {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        padding: 4px 11px;
+        border-radius: 999px;
+        background: transparent;
+        border: 1px solid var(--border-soft);
+        color: var(--text-dim);
+        cursor: pointer;
+      }
+      .tz-filtro-estado-chip-activo.tz-filtro-estado-chip-en_carrera { background: rgba(255,149,0,0.15); border-color: var(--orange); color: var(--orange); }
+      .tz-filtro-estado-chip-activo.tz-filtro-estado-chip-entregado { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+      .tz-filtro-estado-chip-activo.tz-filtro-estado-chip-cancelado { background: rgba(255,84,112,0.15); border-color: var(--danger); color: var(--danger); }
+
       .tz-pedido-card-meta {
         font-size: 12px;
         color: var(--text-dim);
