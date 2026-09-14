@@ -5306,13 +5306,54 @@ export default function Styles() {
       .tz-dlv-details-row + .tz-dlv-details-row { margin-top: 5px; }
       .tz-dlv-details-row svg { flex-shrink: 0; color: var(--text-dim); }
 
-      /* Input de tarifa — fuera de la tarjeta, antes de ofertar. */
+      /* Tarifa de envío — fuera de la tarjeta, antes de ofertar. Mismos
+         chips ("mensajes directos") que ya usa el chat del conductor en
+         Taxi-PE para proponer tarifa (.tz-chat-quickreply-btn ahí),
+         portados acá con los mismos valores/tamaños/colores — solo que
+         un tap fija la tarifa en vez de mandar un mensaje. */
       .tz-dlv-tarifa-row { margin: 10px 0; }
-      .tz-dlv-tarifa-input {
-        width: 100%;
+      .tz-dlv-tarifa-quickrow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
         margin-top: 4px;
       }
-      .tz-dlv-tarifa-hint { margin: 4px 0 0; font-size: 11.5px; color: var(--text-dim); }
+      .tz-dlv-tarifa-chip {
+        flex-shrink: 0;
+        white-space: nowrap;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.15s, box-shadow 0.15s;
+        padding: 8px 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(43,232,255,0.4);
+        background: rgba(43,232,255,0.1);
+        color: var(--cyan);
+        font-size: 13px;
+      }
+      .tz-dlv-tarifa-chip:hover { background: rgba(43,232,255,0.2); box-shadow: 0 0 12px rgba(43,232,255,0.3); }
+      .tz-dlv-tarifa-chip-activo {
+        background: rgba(43,232,255,0.3);
+        box-shadow: 0 0 12px rgba(43,232,255,0.5);
+        border-color: var(--cyan);
+      }
+      .tz-dlv-tarifa-chip-plus {
+        width: 34px;
+        padding: 8px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tz-dlv-tarifa-custom-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .tz-dlv-tarifa-custom-input { flex: 1; margin: 0; }
+      .tz-dlv-tarifa-hint { margin: 6px 0 0; font-size: 11.5px; color: var(--text-dim); }
 
       .tz-dlv-radar-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
       .tz-dlv-radar-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px;

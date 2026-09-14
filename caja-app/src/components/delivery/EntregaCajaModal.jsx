@@ -1,12 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Bike, MapPin, ShoppingBag, Send, Loader2, Ban, QrCode, Check, CheckCheck, PackageX } from "lucide-react";
+import { X, Bike, MapPin, ShoppingBag, Send, Loader2, Ban, QrCode, Check, CheckCheck, PackageX, Plus } from "lucide-react";
 import QRCode from "qrcode";
 import { useEntregaCaja } from "../../hooks/useEntregaCaja";
 import { useRadarReparto } from "../../hooks/useRadarReparto";
 import { supabaseTaxi } from "../../lib/supabaseTaxi";
 import MapaEntregaCaja from "./MapaEntregaCaja";
 import { formatSoles } from "../../utils/format";
+
+// Montos rápidos para la tarifa de envío — MISMOS valores que
+// TARIFAS_RAPIDAS en el chat del conductor de Taxi-PE (mensajes
+// directos de tarifa), reusados acá por pedido explícito: mismos
+// chips, mismo "+" para un monto personalizado, solo que en vez de
+// mandar un mensaje de oferta fijan la tarifa que se le ofrece al
+// repartidor junto con el pedido.
+const TARIFAS_RAPIDAS_ENVIO = [1.5, 3, 4.5];
 
 // Modal único de una entrega delivery en la app de Caja — lo usan el
 // cajero/admin (desde el Gestor de Pedidos) y el cliente (desde Mis
@@ -140,6 +148,7 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
   // valor del pedido) — la carga el cajero antes de ofertar. Se manda
   // con cada oferta; el RPC la graba en la entrega la primera vez.
   const [tarifa, setTarifa] = useState("");
+  const [mostrarTarifaCustom, setMostrarTarifaCustom] = useState(false);
   const tarifaNum = parseFloat(tarifa);
   const tarifaValida = !Number.isNaN(tarifaNum) && tarifaNum > 0;
 
@@ -245,15 +254,56 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                 )}
                 <div className="tz-dlv-tarifa-row">
                   <label className="tz-field-label">Tarifa de envío (para el repartidor)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    className="tz-input tz-dlv-tarifa-input"
-                    value={tarifa}
-                    onChange={(e) => setTarifa(e.target.value)}
-                    placeholder="S/ 0.00"
-                  />
+                  <div className="tz-dlv-tarifa-quickrow">
+                    {TARIFAS_RAPIDAS_ENVIO.map((valor) => (
+                      <button
+                        key={valor}
+                        type="button"
+                        className={`tz-dlv-tarifa-chip ${
+                          tarifaValida && tarifaNum === valor ? "tz-dlv-tarifa-chip-activo" : ""
+                        }`}
+                        onClick={() => {
+                          setTarifa(String(valor));
+                          setMostrarTarifaCustom(false);
+                        }}
+                      >
+                        S/ {valor.toFixed(2)}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="tz-dlv-tarifa-chip tz-dlv-tarifa-chip-plus"
+                      onClick={() => setMostrarTarifaCustom((v) => !v)}
+                      aria-label="Tarifa personalizada"
+                      title="Tarifa personalizada"
+                    >
+                      <Plus size={15} />
+                    </button>
+                  </div>
+                  {mostrarTarifaCustom && (
+                    <div className="tz-dlv-tarifa-custom-row">
+                      <input
+                        type="number"
+                        min="0.5"
+                        step="0.10"
+                        inputMode="decimal"
+                        className="tz-input tz-dlv-tarifa-custom-input"
+                        placeholder="Ej. 10.50"
+                        value={tarifa}
+                        onChange={(e) => setTarifa(e.target.value)}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        className="tz-dlv-send"
+                        onClick={() => setMostrarTarifaCustom(false)}
+                        disabled={!tarifaValida}
+                        aria-label="Confirmar tarifa"
+                      >
+                        <Send size={15} />
+                      </button>
+                    </div>
+                  )}
                   <p className="tz-dlv-tarifa-hint">
                     El repartidor la ve antes de aceptar, aparte del monto del pedido que cobra en el mostrador.
                   </p>

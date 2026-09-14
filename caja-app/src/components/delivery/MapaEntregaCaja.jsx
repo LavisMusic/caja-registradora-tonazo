@@ -130,7 +130,11 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
       </div>
       {!oculto && (
         <div style={{ position: "relative" }}>
-          {!repartidor && (
+          {/* Vista previa del trayecto (todavía sin repartidor asignado,
+             ej. el radar de "Asignar repartidor"): solo sucursal +
+             destino, sin este aviso — "ubicando al repartidor" no tiene
+             sentido cuando todavía no hay NINGÚN repartidor elegido. */}
+          {conductorId && !repartidor && (
             <div className="tz-dlv-mapa-loading">
               <Loader2 size={14} className="tz-spin" /> <span>Ubicando al repartidor…</span>
             </div>
