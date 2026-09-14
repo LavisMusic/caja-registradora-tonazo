@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Bike, MapPin, Send, Loader2, Ban, QrCode, Check, CheckCheck, PackageX } from "lucide-react";
+import { X, Bike, MapPin, ShoppingBag, Send, Loader2, Ban, QrCode, Check, CheckCheck, PackageX } from "lucide-react";
 import QRCode from "qrcode";
 import { useEntregaCaja } from "../../hooks/useEntregaCaja";
 import { useRadarReparto } from "../../hooks/useRadarReparto";
@@ -136,6 +136,12 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
   const [aviso, setAviso] = useState("");
   const [accion, setAccion] = useState(false);
   const [verQr, setVerQr] = useState(false);
+  // Tarifa de envío (lo que la Caja le paga al repartidor, aparte del
+  // valor del pedido) — la carga el cajero antes de ofertar. Se manda
+  // con cada oferta; el RPC la graba en la entrega la primera vez.
+  const [tarifa, setTarifa] = useState("");
+  const tarifaNum = parseFloat(tarifa);
+  const tarifaValida = !Number.isNaN(tarifaNum) && tarifaNum > 0;
 
   const hilos = useMemo(
     () =>
@@ -146,9 +152,13 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
   );
 
   const onOfrecer = async (id) => {
+    if (!tarifaValida) {
+      setAviso("Cargá la tarifa de envío antes de ofertar.");
+      return;
+    }
     setBusyId(id);
     setAviso("");
-    const r = await ofertar(id);
+    const r = await ofertar(id, tarifaNum);
     setBusyId(null);
     if (r.status && r.status !== "ok") setAviso(`No se pudo ofrecer (${r.status}).`);
   };
@@ -191,11 +201,35 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
           <p className="tz-error">No se encontró la entrega.</p>
         ) : (
           <>
-            <p className="tz-stock-editor-sub" style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <MapPin size={13} /> {entrega.direccion_entrega || "Sin dirección"} · Total {formatSoles(entrega.total || 0)}
-              {entrega.conductor_nombre && ` · Repartidor: ${entrega.conductor_nombre}`}
-            </p>
+            <div className="tz-dlv-details-card">
+              <p className="tz-dlv-details-row">
+                <MapPin size={13} /> {entrega.direccion_entrega || "Sin dirección"}
+              </p>
+              <p className="tz-dlv-details-row">
+                <ShoppingBag size={13} /> Monto del pedido: {formatSoles(entrega.total || 0)}
+              </p>
+              <MapaEntregaCaja
+                entregaId={entrega.id}
+                conductorId={entrega.conductor_id}
+                destino={destino}
+                origen={origen}
+                posInicial={
+                  entrega.repartidor_lat != null
+                    ? { lat: Number(entrega.repartidor_lat), lng: Number(entrega.repartidor_lng), at: entrega.repartidor_pos_at }
+                    : null
+                }
+              />
+            </div>
+
             <span className={`tz-dlv-badge tz-dlv-badge-${entrega.estado}`}>{entrega.estado.replace("_", " ")}</span>
+            {entrega.conductor_nombre && (
+              <p className="tz-stock-editor-sub" style={{ marginTop: 4 }}>Repartidor: {entrega.conductor_nombre}</p>
+            )}
+            {entrega.tarifa != null && (
+              <p className="tz-stock-editor-sub" style={{ marginTop: 2, color: "var(--green)", fontWeight: 700 }}>
+                💰 Tarifa de envío: {formatSoles(entrega.tarifa)}
+              </p>
+            )}
 
             {/* --- BUSCANDO: radar de repartidores (solo cajero) --- */}
             {buscando && rol === "cajero" && (
@@ -209,6 +243,21 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                     ))}
                   </div>
                 )}
+                <div className="tz-dlv-tarifa-row">
+                  <label className="tz-field-label">Tarifa de envío (para el repartidor)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    className="tz-input tz-dlv-tarifa-input"
+                    value={tarifa}
+                    onChange={(e) => setTarifa(e.target.value)}
+                    placeholder="S/ 0.00"
+                  />
+                  <p className="tz-dlv-tarifa-hint">
+                    El repartidor la ve antes de aceptar, aparte del monto del pedido que cobra en el mostrador.
+                  </p>
+                </div>
                 <p className="tz-field-label" style={{ marginTop: 10 }}>
                   Repartidores en línea y verificados ({conductores.length})
                 </p>
@@ -228,7 +277,12 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                           {est === "pendiente" ? (
                             <span className="tz-dlv-tag-espera">Esperando…</span>
                           ) : (
-                            <button className="tz-btn-mini" disabled={busyId === c.id} onClick={() => onOfrecer(c.id)}>
+                            <button
+                              className="tz-btn-mini"
+                              disabled={busyId === c.id || !tarifaValida}
+                              title={!tarifaValida ? "Cargá la tarifa de envío primero" : undefined}
+                              onClick={() => onOfrecer(c.id)}
+                            >
                               {busyId === c.id ? <Loader2 size={13} className="tz-spin" /> : <Send size={13} />}
                               {est === "rechazada" ? " Ofrecer de nuevo" : " Ofrecer"}
                             </button>
@@ -253,21 +307,9 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
               </p>
             )}
 
-            {/* --- ASIGNADO: vista en vivo --- */}
+            {/* --- ASIGNADO: PIN/QR + chat (el mapa ya está arriba, en la tarjeta de detalles) --- */}
             {["aceptado", "en_ruta"].includes(entrega.estado) && (
               <>
-                <MapaEntregaCaja
-                  entregaId={entrega.id}
-                  conductorId={entrega.conductor_id}
-                  destino={destino}
-                  origen={origen}
-                  posInicial={
-                    entrega.repartidor_lat != null
-                      ? { lat: Number(entrega.repartidor_lat), lng: Number(entrega.repartidor_lng), at: entrega.repartidor_pos_at }
-                      : null
-                  }
-                />
-
                 {/* PIN + botón QR + cancelar/no-entregado — todo en una línea */}
                 <div className="tz-dlv-pin-row">
                   <span className="tz-dlv-pin">PIN <b>{String(entrega.pin || "").split("").join(" ")}</b></span>

@@ -142,6 +142,12 @@ export default function TicketBoleta({ orden, cliente, productos, totales, sede,
               </div>
             </div>
           )}
+          {entrega.tarifa != null && (
+            <div style={rowStyle}>
+              <span>Tarifa de envío</span>
+              <span>{formatSoles(entrega.tarifa)}</span>
+            </div>
+          )}
         </>
       )}
 

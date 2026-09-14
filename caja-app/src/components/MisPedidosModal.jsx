@@ -81,6 +81,7 @@ export default function MisPedidosModal({ session, onClose }) {
             extra.entrega = {
               repartidor: e.conductor_nombre || "",
               direccion: e.direccion_entrega || boletaPedido.direccion_entrega || "",
+              tarifa: e.tarifa != null ? Number(e.tarifa) : null,
             };
             if (e.caja_sucursal && !extra.sede) extra.sede = e.caja_sucursal;
           }

@@ -5285,6 +5285,35 @@ export default function Styles() {
       .tz-dlv-badge-entregado { color: #39ffac; border-color: rgba(57,255,172,0.5); background: rgba(57,255,172,0.12); }
       .tz-dlv-badge-cancelado, .tz-dlv-badge-no_entregado { color: #ff5470; border-color: rgba(255,84,112,0.5); background: rgba(255,84,112,0.12); }
 
+      /* Tarjeta de detalles del pedido (ubicación + monto) + el mapa en
+         vivo, todo junto — antes era una sola línea larga que se
+         desordenaba con la dirección + total + repartidor mezclados. */
+      .tz-dlv-details-card {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.1);
+      }
+      .tz-dlv-details-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        font-size: 13px;
+        color: var(--text);
+      }
+      .tz-dlv-details-row + .tz-dlv-details-row { margin-top: 5px; }
+      .tz-dlv-details-row svg { flex-shrink: 0; color: var(--text-dim); }
+
+      /* Input de tarifa — fuera de la tarjeta, antes de ofertar. */
+      .tz-dlv-tarifa-row { margin: 10px 0; }
+      .tz-dlv-tarifa-input {
+        width: 100%;
+        margin-top: 4px;
+      }
+      .tz-dlv-tarifa-hint { margin: 4px 0 0; font-size: 11.5px; color: var(--text-dim); }
+
       .tz-dlv-radar-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
       .tz-dlv-radar-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px;
         padding: 8px 10px; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; font-size: 13.5px; }

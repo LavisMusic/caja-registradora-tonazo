@@ -77,10 +77,11 @@ export function useEntregaCaja(sessionToken, { rol = "cajero" } = {}) {
   );
 
   const ofertar = useCallback(
-    async (conductorId) => {
+    async (conductorId, tarifa) => {
       const { data, error } = await supabaseTaxi.rpc("rpc_entrega_ofertar", {
         p_session_token: sessionToken,
         p_conductor_id: conductorId,
+        p_tarifa: tarifa ?? null,
       });
       await cargar();
       return { status: error ? "error" : data?.status, error };
