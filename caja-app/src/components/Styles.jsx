@@ -5403,7 +5403,7 @@ export default function Styles() {
 
       /* ---- Chat: mismo estilo que el chat de Taxi-PE (burbujas, acento rosa a la derecha) ---- */
       .tz-dlv-chat-tabs { display: flex; gap: 8px; margin-top: 14px; }
-      .tz-dlv-chat-tab { flex: 1; padding: 7px 0; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15);
+      .tz-dlv-chat-tab { position: relative; flex: 1; padding: 7px 0; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15);
         background: transparent; color: #9aa; font-size: 12.5px; font-weight: 700; cursor: pointer; }
       .tz-dlv-chat-tab-active { border-color: #ff2f9e; color: #ff2f9e; background: rgba(255,47,158,0.1); }
       .tz-dlv-chat-scroll { margin-top: 8px; max-height: 220px; overflow-y: auto; display: flex; flex-direction: column;

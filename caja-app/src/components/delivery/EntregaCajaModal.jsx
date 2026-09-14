@@ -61,6 +61,12 @@ function Chat({ hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
   const noLeidosDeOtro = delHilo.filter(
     (m) => !["sistema"].includes(m.emisor_rol) && m.emisor_rol !== propioRol && !m.leido
   ).length;
+  // Badge independiente por pestaña (Sucursal / Repartidor) — antes solo
+  // se sabía si HABÍA algo sin leer en el hilo ABIERTO; ahora cada tab
+  // muestra su propio contador aunque esté en la otra.
+  const noLeidosDe = (h) =>
+    mensajes.filter((m) => m.hilo === h && m.emisor_rol !== "sistema" && m.emisor_rol !== propioRol && !m.leido)
+      .length;
 
   useEffect(() => {
     if (noLeidosDeOtro > 0) marcarLeido?.(hilo);
@@ -78,7 +84,9 @@ function Chat({ hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
   return (
     <>
       <div className="tz-dlv-chat-tabs">
-        {hilos.map((h) => (
+        {hilos.map((h) => {
+          const n = noLeidosDe(h.key);
+          return (
           <button
             key={h.key}
             type="button"
@@ -86,8 +94,10 @@ function Chat({ hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
             onClick={() => setHilo(h.key)}
           >
             {h.label}
+            {n > 0 && <span className="tz-badge-dot">{n > 9 ? "9+" : n}</span>}
           </button>
-        ))}
+          );
+        })}
       </div>
       <div className="tz-dlv-chat-scroll">
         {delHilo.length === 0 ? (
@@ -187,14 +197,26 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
     setAccion(false);
   };
 
-  const destino =
-    entrega?.entrega_lat && entrega?.entrega_lng
-      ? { lat: Number(entrega.entrega_lat), lng: Number(entrega.entrega_lng) }
-      : null;
-  const origen =
-    entrega?.origen_lat != null
-      ? { lat: Number(entrega.origen_lat), lng: Number(entrega.origen_lng) }
-      : null;
+  // Memoizados por VALOR (no solo por referencia): 'entrega' es un
+  // objeto nuevo en cada poll/broadcast aunque las coordenadas no hayan
+  // cambiado — sin esto, MapaEntregaCaja recibía 'destino'/'origen' con
+  // identidad nueva todo el tiempo y su AjustarVista (fitBounds) se
+  // reencuadraba de más, cortando la vista justo cuando llegaba una
+  // posición nueva del repartidor.
+  const destino = useMemo(
+    () =>
+      entrega?.entrega_lat && entrega?.entrega_lng
+        ? { lat: Number(entrega.entrega_lat), lng: Number(entrega.entrega_lng) }
+        : null,
+    [entrega?.entrega_lat, entrega?.entrega_lng]
+  );
+  const origen = useMemo(
+    () =>
+      entrega?.origen_lat != null
+        ? { lat: Number(entrega.origen_lat), lng: Number(entrega.origen_lng) }
+        : null,
+    [entrega?.origen_lat, entrega?.origen_lng]
+  );
 
   return (
     <div className="tz-modal-backdrop">

@@ -51,6 +51,14 @@ function iconoRepartidor(color, iconoUrl) {
 function AjustarVista({ puntos }) {
   const map = useMap();
   useEffect(() => {
+    // Leaflet mide su contenedor UNA vez al crearse — este mapa vive
+    // dentro de un modal (a veces dos, anidado con Mis Pedidos), y si
+    // el tamaño final del contenedor no estaba listo todavía en ese
+    // momento (transición del modal, layout todavía asentándose),
+    // fitBounds encuadra mal (a veces ni error tira, solo centra en
+    // cualquier lado) — invalidateSize() le hace releer el tamaño real
+    // ANTES de calcular el encuadre.
+    map.invalidateSize();
     const v = puntos.filter(Boolean);
     if (v.length >= 2) map.fitBounds(v.map((p) => [p.lat, p.lng]), { padding: [40, 40], maxZoom: 16 });
     else if (v.length === 1) map.setView([v[0].lat, v[0].lng], 15, { animate: true });

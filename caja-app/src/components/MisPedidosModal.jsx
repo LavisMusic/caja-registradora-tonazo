@@ -19,6 +19,14 @@ const ESTADO_LABELS = {
   cancelado: "Cancelado",
 };
 
+// Mismo agrupamiento de 3 baldes que el filtro del Gestor de Pedidos
+// (GestorPedidosModal.jsx) — "en carrera" junta nuevo/en_atencion.
+function estadoGrupo(pedido) {
+  if (pedido.estado === "confirmado") return "entregado";
+  if (pedido.estado === "cancelado") return "cancelado";
+  return "en_carrera";
+}
+
 // "Mis Pedidos" del cliente: sus propios pedidos (RLS ya garantiza que
 // solo vea los suyos), con acceso directo al chat de cada uno — así el
 // cliente puede seguir hablando con la tienda incluso después de haber
@@ -34,6 +42,7 @@ export default function MisPedidosModal({ session, onClose }) {
   const [boletaPedido, setBoletaPedido] = useState(null);
   const [boletaExtra, setBoletaExtra] = useState(null); // { sede, entrega }
   const [boletaMsg, setBoletaMsg] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState(null); // 'en_carrera' | 'entregado' | 'cancelado' | null
   const boletaRef = useRef(null);
   // Ventana de WhatsApp abierta EN BLANCO de forma síncrona en el click
   // (ver el botón "Enviar boleta por WhatsApp") y redirigida recién al
@@ -184,6 +193,8 @@ export default function MisPedidosModal({ session, onClose }) {
     };
   }, [session, load]);
 
+  const pedidosVisibles = filtroEstado ? pedidos.filter((p) => estadoGrupo(p) === filtroEstado) : pedidos;
+
   return (
     <div className="tz-modal-backdrop">
       <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
@@ -192,15 +203,38 @@ export default function MisPedidosModal({ session, onClose }) {
         </button>
         <h2>Mis Pedidos</h2>
 
+        {pedidos.length > 0 && (
+          <div className="tz-gasto-tipo-buttons" style={{ margin: "0 0 12px", gap: 6 }}>
+            {[
+              ["en_carrera", "En carrera"],
+              ["entregado", "Entregado"],
+              ["cancelado", "Cancelado"],
+            ].map(([k, txt]) => (
+              <button
+                key={k}
+                type="button"
+                className={`tz-filtro-estado-chip tz-filtro-estado-chip-${k} ${
+                  filtroEstado === k ? "tz-filtro-estado-chip-activo" : ""
+                }`}
+                onClick={() => setFiltroEstado((prev) => (prev === k ? null : k))}
+              >
+                {txt}
+              </button>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <p className="tz-stock-editor-sub">
             <Loader2 className="tz-spin" size={16} /> Cargando...
           </p>
         ) : pedidos.length === 0 ? (
           <p className="tz-stock-editor-sub">Todavía no has hecho ningún pedido.</p>
+        ) : pedidosVisibles.length === 0 ? (
+          <p className="tz-stock-editor-sub">Ningún pedido coincide con ese filtro.</p>
         ) : (
           <div className="tz-pedidos-list">
-            {pedidos.map((pedido) => (
+            {pedidosVisibles.map((pedido) => (
               <div key={pedido.id} className="tz-pedido-card">
                 <div className="tz-pedido-card-head">
                   <span className="tz-pedido-cliente-nombre">
