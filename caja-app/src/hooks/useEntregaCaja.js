@@ -89,6 +89,25 @@ export function useEntregaCaja(sessionToken, { rol = "cajero" } = {}) {
     [sessionToken, cargar]
   );
 
+  // Timeout de 30s de una oferta sin responder (ver DELIVERY.md §9) — el
+  // cajero también puede detectarlo (su radar la muestra "Esperando…"
+  // con la misma cuenta regresiva que ve el conductor) y expirarla; el
+  // RPC es idempotente, no pasa nada si el conductor ya la resolvió.
+  const expirarOferta = useCallback(
+    async (ofertaId) => {
+      const { data, error } = await supabaseTaxi.rpc("rpc_entrega_oferta_expirar", { p_oferta_id: ofertaId });
+      if (!error && data?.status === "ok" && entrega?.id) {
+        await supabaseTaxi
+          .channel(canalEntrega(entrega.id))
+          .send({ type: "broadcast", event: "oferta", payload: { estado: "expirada" } })
+          .catch(() => {});
+      }
+      await cargar();
+      return { status: error ? "error" : data?.status, error };
+    },
+    [entrega?.id, cargar]
+  );
+
   const cancelar = useCallback(
     async (motivo) => {
       const { data, error } = await supabaseTaxi.rpc("rpc_entrega_cancelar", {
@@ -128,5 +147,5 @@ export function useEntregaCaja(sessionToken, { rol = "cajero" } = {}) {
     [sessionToken, rol, entrega?.id, cargar]
   );
 
-  return { entrega, mensajes, ofertas, loading, recargar: cargar, ofertar, cancelar, enviarMensaje, marcarLeido };
+  return { entrega, mensajes, ofertas, loading, recargar: cargar, ofertar, expirarOferta, cancelar, enviarMensaje, marcarLeido };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Bike, MapPin, ShoppingBag, Send, Loader2, Ban, QrCode, Check, CheckCheck, PackageX, Plus } from "lucide-react";
 import QRCode from "qrcode";
@@ -142,14 +142,43 @@ function Chat({ hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
 }
 
 export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin = false, onClose }) {
-  const { entrega, mensajes, ofertas, loading, ofertar, cancelar, enviarMensaje, marcarLeido, recargar } = useEntregaCaja(sessionToken, { rol });
+  const { entrega, mensajes, ofertas, loading, ofertar, expirarOferta, cancelar, enviarMensaje, marcarLeido, recargar } =
+    useEntregaCaja(sessionToken, { rol });
   const buscando = entrega?.estado === "buscando";
   const { conductores } = useRadarReparto(buscando);
   const ofertaPorConductor = useMemo(
     () => Object.fromEntries((ofertas || []).map((o) => [o.conductor_id, o.estado])),
     [ofertas]
   );
+  // Igual que arriba pero con el objeto completo (oferta_id/created_at)
+  // — para la cuenta regresiva de 30s por conductor.
+  const ofertaInfoPorConductor = useMemo(
+    () => Object.fromEntries((ofertas || []).map((o) => [o.conductor_id, o])),
+    [ofertas]
+  );
   const rechazos = useMemo(() => (ofertas || []).filter((o) => o.estado === "rechazada"), [ofertas]);
+
+  // Reloj de 30s por oferta pendiente (ver DELIVERY.md §9) — mismo
+  // mecanismo que EntregasRepartidorPanel.jsx del lado repartidor:
+  // quien vea la oferta vencida primero la expira, el RPC es idempotente.
+  const TIMEOUT_OFERTA_MS = 30000;
+  const [ahora, setAhora] = useState(() => Date.now());
+  const expirandoRef = useRef(new Set());
+  const ofertasPendientes = useMemo(() => (ofertas || []).filter((o) => o.estado === "pendiente"), [ofertas]);
+  useEffect(() => {
+    if (ofertasPendientes.length === 0) return undefined;
+    const t = setInterval(() => setAhora(Date.now()), 250);
+    return () => clearInterval(t);
+  }, [ofertasPendientes.length]);
+  useEffect(() => {
+    ofertasPendientes.forEach((o) => {
+      if (!o.created_at || expirandoRef.current.has(o.oferta_id)) return;
+      if (ahora - new Date(o.created_at).getTime() >= TIMEOUT_OFERTA_MS) {
+        expirandoRef.current.add(o.oferta_id);
+        expirarOferta(o.oferta_id);
+      }
+    });
+  }, [ahora, ofertasPendientes, expirarOferta]);
   const [busyId, setBusyId] = useState(null);
   const [aviso, setAviso] = useState("");
   const [accion, setAccion] = useState(false);
@@ -339,8 +368,13 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                   <ul className="tz-dlv-radar-list">
                     {conductores.map((c) => {
                       const est = ofertaPorConductor[c.id];
+                      const infoOferta = ofertaInfoPorConductor[c.id];
+                      const pct =
+                        est === "pendiente" && infoOferta?.created_at
+                          ? Math.max(0, Math.min(1, 1 - (ahora - new Date(infoOferta.created_at).getTime()) / TIMEOUT_OFERTA_MS))
+                          : null;
                       return (
-                        <li key={c.id}>
+                        <li key={c.id} className={pct != null ? "tz-dlv-radar-item-timeout" : ""}>
                           <span>
                             {c.nombre} <em>· {c.placa || "s/placa"}</em>
                             {c.estado === "ocupado" && <span className="tz-dlv-tag-ocupado"> en carrera</span>}
@@ -358,6 +392,11 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                               {busyId === c.id ? <Loader2 size={13} className="tz-spin" /> : <Send size={13} />}
                               {est === "rechazada" ? " Ofrecer de nuevo" : " Ofrecer"}
                             </button>
+                          )}
+                          {pct != null && (
+                            <div className="tz-dlv-radar-timeout-track">
+                              <div className="tz-dlv-radar-timeout-fill" style={{ width: `${pct * 100}%` }} />
+                            </div>
                           )}
                         </li>
                       );

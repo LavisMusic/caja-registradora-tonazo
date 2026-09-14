@@ -5359,6 +5359,17 @@ export default function Styles() {
       .tz-dlv-radar-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px;
         padding: 8px 10px; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; font-size: 13.5px; }
       .tz-dlv-radar-list em { opacity: 0.65; font-style: normal; }
+      /* Cuenta regresiva de 30s por conductor ofertado — misma barra
+         verde que ve el repartidor en su propia tarjeta de oferta. */
+      .tz-dlv-radar-item-timeout { position: relative; overflow: hidden; padding-bottom: 11px; }
+      .tz-dlv-radar-timeout-track {
+        position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+        background: rgba(255,255,255,0.06);
+      }
+      .tz-dlv-radar-timeout-fill {
+        height: 100%; background: var(--green); box-shadow: 0 0 8px rgba(57,255,176,0.7);
+        transition: width 0.25s linear;
+      }
       .tz-dlv-tag-ocupado { color: #ff9d3d; font-size: 11px; font-weight: 700; }
       .tz-dlv-tag-rechazo { color: #ff5470; font-size: 11px; font-weight: 700; }
       .tz-dlv-tag-espera { font-size: 11px; font-weight: 700; color: #9aa; }
