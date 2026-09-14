@@ -172,9 +172,15 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
   }, [ofertasPendientes.length]);
   useEffect(() => {
     ofertasPendientes.forEach((o) => {
-      if (!o.created_at || expirandoRef.current.has(o.oferta_id)) return;
+      if (!o.created_at) return;
+      // Clave por oferta_id + created_at: al reofertar a un conductor
+      // que ya había rechazado/expirado, la fila es la MISMA (mismo
+      // oferta_id) pero con created_at NUEVO — sin esto, una vez
+      // expirada una vez, este cliente nunca la volvía a chequear.
+      const clave = `${o.oferta_id}:${o.created_at}`;
+      if (expirandoRef.current.has(clave)) return;
       if (ahora - new Date(o.created_at).getTime() >= TIMEOUT_OFERTA_MS) {
-        expirandoRef.current.add(o.oferta_id);
+        expirandoRef.current.add(clave);
         expirarOferta(o.oferta_id);
       }
     });
