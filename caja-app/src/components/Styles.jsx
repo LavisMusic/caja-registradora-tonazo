@@ -222,10 +222,15 @@ export default function Styles() {
         margin: 0;
         font-family: 'Orbitron', sans-serif;
         font-size: 11px;
-        letter-spacing: 0.3em;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: var(--text-dim);
+        /* Limón neón con glow, mismo estilo que "Tu taxi, al toque" en
+           Taxi-PE (misma clase .tz-subtitle ahí) — reusa --yellow
+           (#d7ff3b), ya definido en :root más arriba. */
+        color: var(--yellow);
         text-align: center;
+        white-space: nowrap;
+        text-shadow: 0 0 8px rgba(215,255,59,0.85), 0 0 18px rgba(215,255,59,0.55);
       }
       .tz-conn-indicator {
         display: flex;

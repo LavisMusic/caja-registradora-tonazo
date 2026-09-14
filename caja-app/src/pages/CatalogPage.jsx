@@ -271,7 +271,7 @@ export default function CatalogPage() {
       <Styles />
       <header className="tz-header">
         <div className="tz-header-row">
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="tz-header-side tz-header-side-left">
             <button
               className="tz-header-btn"
               onClick={handleFiadosClick}
@@ -301,28 +301,30 @@ export default function CatalogPage() {
             <p className="tz-subtitle">Compra Ya</p>
           </div>
 
-          {authLoading ? (
-            <span className="tz-header-btn" style={{ visibility: "hidden" }} />
-          ) : session ? (
-            <button
-              className="tz-header-btn"
-              onClick={signOut}
-              aria-label="Cerrar sesión"
-              title="Cerrar sesión"
-            >
-              <LogOut size={19} />
-              <span className="tz-header-btn-label">Salir</span>
-            </button>
-          ) : (
-            <button
-              className="tz-header-btn"
-              onClick={() => setLoginOpen(true)}
-              aria-label="Ingresar"
-            >
-              <LogIn size={19} />
-              <span className="tz-header-btn-label">Login</span>
-            </button>
-          )}
+          <div className="tz-header-side tz-header-side-right">
+            {authLoading ? (
+              <span className="tz-header-btn" style={{ visibility: "hidden" }} />
+            ) : session ? (
+              <button
+                className="tz-header-btn"
+                onClick={signOut}
+                aria-label="Cerrar sesión"
+                title="Cerrar sesión"
+              >
+                <LogOut size={19} />
+                <span className="tz-header-btn-label">Salir</span>
+              </button>
+            ) : (
+              <button
+                className="tz-header-btn"
+                onClick={() => setLoginOpen(true)}
+                aria-label="Ingresar"
+              >
+                <LogIn size={19} />
+                <span className="tz-header-btn-label">Login</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
