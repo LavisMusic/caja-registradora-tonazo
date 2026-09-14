@@ -287,7 +287,7 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                         min="0.5"
                         step="0.10"
                         inputMode="decimal"
-                        className="tz-input tz-dlv-tarifa-custom-input"
+                        className="tz-text-input tz-dlv-tarifa-custom-input"
                         placeholder="Ej. 10.50"
                         value={tarifa}
                         onChange={(e) => setTarifa(e.target.value)}
