@@ -1192,11 +1192,19 @@ export default function Styles() {
       /* Lápiz de precio: solo admin, vive EN EL FLUJO normal junto al
          checkbox de selección (mismo wrapper .tz-card-top-actions),
          no flotando encima — position:absolute lo hacía superponerse
-         con el checkbox porque los dos "querían" la misma esquina. */
+         con el checkbox porque los dos "querían" la misma esquina.
+
+         Columna vertical (no fila): en modo admin son 3 controles
+         (descuento, editar, checkbox) — en fila le comían tanto ancho a
+         tz-card-info (nombre) que, en tarjetas con imagen, el nombre
+         terminaba partiéndose letra por letra aunque overflow-wrap ya
+         fuera 'break-word'. Apilados, esta columna ocupa el ancho de UN
+         solo ícono en vez de tres, y le devuelve ese espacio al nombre. */
       .tz-card-top-actions {
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         flex-shrink: 0;
       }
       .tz-card-edit-price-btn {
