@@ -588,6 +588,10 @@ export default function GestorPedidosModal({
                     <span className="tz-pedido-cliente-nombre">
                       {cliente?.nombre || "Cliente"}
                     </span>
+                    <span className={`tz-pedido-modo-tag ${pedido.requiereDelivery ? "tz-pedido-modo-delivery" : "tz-pedido-modo-tienda"}`}>
+                      {pedido.requiereDelivery ? <Bike size={12} /> : <Store size={12} />}
+                      {pedido.requiereDelivery ? "Delivery" : "Retiro en tienda"}
+                    </span>
                     <span className={`tz-pedido-estado tz-pedido-estado-${pedido.estado}`}>
                       {ESTADO_LABELS[pedido.estado] || pedido.estado}
                     </span>

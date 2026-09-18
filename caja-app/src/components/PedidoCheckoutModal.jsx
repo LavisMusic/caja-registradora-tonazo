@@ -282,7 +282,7 @@ export default function PedidoCheckoutModal({
                   className={`tz-gasto-tipo-btn ${modoEntrega === "delivery" ? "tz-gasto-tipo-active" : ""}`}
                   onClick={() => setModoEntrega("delivery")}
                 >
-                  <Bike size={14} /> Envío a domicilio
+                  <Bike size={14} /> Delivery
                 </button>
               </div>
             </div>

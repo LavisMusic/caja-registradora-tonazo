@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, MessageCircle, Loader2, Ban, Trash2, Bike, Copy } from "lucide-react";
+import { X, MessageCircle, Loader2, Ban, Trash2, Bike, Store, Copy } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { supabaseTaxi } from "../lib/supabaseTaxi";
 import ChatPedidoModal from "./ChatPedidoModal";
@@ -239,6 +239,10 @@ export default function MisPedidosModal({ session, onClose }) {
                 <div className="tz-pedido-card-head">
                   <span className="tz-pedido-cliente-nombre">
                     {formatDate(pedido.created_at)} {formatTime(pedido.created_at)}
+                  </span>
+                  <span className={`tz-pedido-modo-tag ${pedido.requiere_delivery ? "tz-pedido-modo-delivery" : "tz-pedido-modo-tienda"}`}>
+                    {pedido.requiere_delivery ? <Bike size={12} /> : <Store size={12} />}
+                    {pedido.requiere_delivery ? "Delivery" : "Retiro en tienda"}
                   </span>
                   <span className={`tz-pedido-estado tz-pedido-estado-${pedido.estado}`}>
                     {ESTADO_LABELS[pedido.estado] || pedido.estado}

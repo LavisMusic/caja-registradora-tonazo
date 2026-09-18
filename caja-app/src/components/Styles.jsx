@@ -5028,6 +5028,19 @@ export default function Styles() {
       .tz-pedido-estado-confirmado { background: var(--green-bg); color: var(--green); }
       .tz-pedido-estado-cancelado { background: rgba(255,84,112,0.15); color: var(--danger); }
 
+      .tz-pedido-modo-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 9px;
+        border-radius: 999px;
+        flex-shrink: 0;
+      }
+      .tz-pedido-modo-tienda { background: rgba(0,224,255,0.12); color: var(--cyan); }
+      .tz-pedido-modo-delivery { background: rgba(255,157,61,0.14); color: #ff9d3d; }
+
       /* Filtro secundario del Gestor de Pedidos (debajo de "Para
          retirar"/"Para repartir"): mismas 3 etiquetas de color que ya
          usan los badges de estado de la tarjeta, pero clickeables —
@@ -5391,7 +5404,7 @@ export default function Styles() {
       .tz-dlv-radar .tz-dlv-cancelar { margin-top: 10px; }
 
       /* PIN + QR + cancelar, todos en la misma línea, empaquetados a la izquierda */
-      .tz-dlv-pin-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+      .tz-dlv-pin-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
       .tz-dlv-pin {
         flex: 0 0 auto;                 /* solo lo que ocupa el contenido */
         display: inline-flex; align-items: center; gap: 8px;

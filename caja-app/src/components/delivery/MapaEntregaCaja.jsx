@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, Maximize2 } from "lucide-react";
 import { supabaseTaxi } from "../../lib/supabaseTaxi";
 import { canalEntrega } from "../../hooks/useEntregaCaja";
 import { MAPBOX_TILE_URL, MAPBOX_ATTRIBUTION } from "../../lib/mapboxConfig";
@@ -48,21 +48,41 @@ function iconoRepartidor(color, iconoUrl) {
   });
 }
 
-function AjustarVista({ puntos }) {
+function encuadrar(map, puntos) {
+  // Leaflet mide su contenedor UNA vez al crearse — este mapa vive
+  // dentro de un modal (a veces dos, anidado con Mis Pedidos), y si el
+  // tamaño final del contenedor no estaba listo todavía en ese momento
+  // (transición del modal, layout todavía asentándose), fitBounds
+  // encuadra mal (a veces ni error tira, solo centra en cualquier
+  // lado) — invalidateSize() le hace releer el tamaño real ANTES de
+  // calcular el encuadre.
+  map.invalidateSize();
+  const v = puntos.filter(Boolean);
+  if (v.length >= 2) map.fitBounds(v.map((p) => [p.lat, p.lng]), { padding: [40, 40], maxZoom: 16 });
+  else if (v.length === 1) map.setView([v[0].lat, v[0].lng], 15, { animate: true });
+}
+
+// Auto-encuadra SOLO la primera vez que hay suficientes puntos —
+// después de eso, cajero/cliente pueden mover y hacer zoom en el mapa
+// libremente sin que cada tick de GPS nuevo se lo pise. El botón
+// "Centrar" (recentrarTick) es la única forma de volver a encuadrar.
+function AjustarVista({ puntos, recentrarTick }) {
   const map = useMap();
+  const yaAjustado = useRef(false);
+
   useEffect(() => {
-    // Leaflet mide su contenedor UNA vez al crearse — este mapa vive
-    // dentro de un modal (a veces dos, anidado con Mis Pedidos), y si
-    // el tamaño final del contenedor no estaba listo todavía en ese
-    // momento (transición del modal, layout todavía asentándose),
-    // fitBounds encuadra mal (a veces ni error tira, solo centra en
-    // cualquier lado) — invalidateSize() le hace releer el tamaño real
-    // ANTES de calcular el encuadre.
-    map.invalidateSize();
-    const v = puntos.filter(Boolean);
-    if (v.length >= 2) map.fitBounds(v.map((p) => [p.lat, p.lng]), { padding: [40, 40], maxZoom: 16 });
-    else if (v.length === 1) map.setView([v[0].lat, v[0].lng], 15, { animate: true });
+    if (yaAjustado.current) return;
+    if (puntos.filter(Boolean).length === 0) return;
+    encuadrar(map, puntos);
+    yaAjustado.current = true;
   }, [puntos, map]);
+
+  useEffect(() => {
+    if (recentrarTick === 0) return;
+    encuadrar(map, puntos);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentrarTick]);
+
   return null;
 }
 
@@ -81,6 +101,7 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
   const [mk, setMk] = useState({ iconoUrl: null, nivel: "economico", estado: null });
   const [oculto, setOculto] = useState(false);
   const [posAt, setPosAt] = useState(posInicial?.at ? new Date(posInicial.at).getTime() : 0);
+  const [recentrarTick, setRecentrarTick] = useState(0);
   const ultimo = useRef(0);
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -147,8 +168,17 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
               <Loader2 size={14} className="tz-spin" /> <span>Ubicando al repartidor…</span>
             </div>
           )}
-          <MapContainer center={[centro.lat, centro.lng]} zoom={15} className="tz-dlv-mapa" zoomControl={false} scrollWheelZoom={false}>
-            <AjustarVista puntos={[repartidor, destino, origen]} />
+          <button
+            type="button"
+            className="tz-dlv-mapa-recentrar"
+            onClick={() => setRecentrarTick((n) => n + 1)}
+            aria-label="Volver a vista amplia"
+            title="Volver a vista amplia"
+          >
+            <Maximize2 size={15} />
+          </button>
+          <MapContainer center={[centro.lat, centro.lng]} zoom={15} className="tz-dlv-mapa" zoomControl={false} scrollWheelZoom>
+            <AjustarVista puntos={[repartidor, destino, origen]} recentrarTick={recentrarTick} />
             <TileLayer attribution={MAPBOX_ATTRIBUTION} url={MAPBOX_TILE_URL} />
             {origen && <Marker position={[origen.lat, origen.lng]} icon={ICONO_ORIGEN} />}
             {destino && <Marker position={[destino.lat, destino.lng]} icon={ICONO_DESTINO} />}
@@ -184,6 +214,11 @@ function StyleOnce() {
       .tz-dlv-mapa-loading { position: absolute; z-index: 500; top: 8px; left: 50%; transform: translateX(-50%);
         display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px;
         background: rgba(0,0,0,0.6); color: #fff; }
+      .tz-dlv-mapa-recentrar { position: absolute; z-index: 500; top: 8px; right: 8px;
+        display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+        border-radius: 999px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.15);
+        color: #00e0ff; cursor: pointer; }
+      .tz-dlv-mapa-recentrar:active { transform: scale(0.92); }
       .tz-dlv-marker-wrap { background: none; border: 0; }
       .tz-dlv-veh-group { position: relative; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
       .tz-dlv-veh, .tz-dlv-veh-img {
