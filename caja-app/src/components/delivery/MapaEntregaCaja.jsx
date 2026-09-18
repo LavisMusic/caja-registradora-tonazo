@@ -202,7 +202,7 @@ function StyleOnce() {
       .tz-dlv-mapa-wrap > div { width: 100%; }
       .tz-dlv-mapa { height: 220px; width: 100%; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); }
       .tz-dlv-mapa .leaflet-container { background: #10141c; }
-      .tz-dlv-mapa-bar { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 6px; }
+      .tz-dlv-mapa-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
       .tz-dlv-mapa-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px;
         border-radius: 999px; background: rgba(0,224,255,0.12); border: 1px solid rgba(0,224,255,0.4); color: #00e0ff;
         font-size: 12px; font-weight: 600; cursor: pointer; }
