@@ -5009,6 +5009,18 @@ export default function Styles() {
          segunda línea si no entran (.tz-pedido-card-head ya tiene
          flex-wrap). */
       .tz-pedido-cliente-nombre-fijo { flex: 0 1 auto; }
+      /* Grupo de etiquetas (sucursal, tipo de pedido, estado) — pegado
+         a la derecha vía margin-left:auto, dejando el nombre solo a la
+         izquierda. Envuelve a una segunda línea (alineada a la
+         derecha) si no entran todas en una sola. */
+      .tz-pedido-card-tags {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-left: auto;
+      }
       .tz-pedido-sucursal-tag {
         display: inline-flex;
         align-items: center;

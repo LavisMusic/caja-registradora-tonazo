@@ -611,16 +611,18 @@ export default function GestorPedidosModal({
                     <span className="tz-pedido-cliente-nombre tz-pedido-cliente-nombre-fijo">
                       {cliente?.nombre || "Cliente"}
                     </span>
-                    {sucursalNombre && (
-                      <span className="tz-pedido-sucursal-tag">{sucursalNombre}</span>
-                    )}
-                    <span className={`tz-pedido-modo-tag ${pedido.requiereDelivery ? "tz-pedido-modo-delivery" : "tz-pedido-modo-tienda"}`}>
-                      {pedido.requiereDelivery ? <Bike size={12} /> : <Store size={12} />}
-                      {pedido.requiereDelivery ? "Delivery" : "Retiro en tienda"}
-                    </span>
-                    <span className={`tz-pedido-estado tz-pedido-estado-${pedido.estado}`}>
-                      {ESTADO_LABELS[pedido.estado] || pedido.estado}
-                    </span>
+                    <div className="tz-pedido-card-tags">
+                      {sucursalNombre && (
+                        <span className="tz-pedido-sucursal-tag">{sucursalNombre}</span>
+                      )}
+                      <span className={`tz-pedido-modo-tag ${pedido.requiereDelivery ? "tz-pedido-modo-delivery" : "tz-pedido-modo-tienda"}`}>
+                        {pedido.requiereDelivery ? <Bike size={12} /> : <Store size={12} />}
+                        {pedido.requiereDelivery ? "Delivery" : "Retiro en tienda"}
+                      </span>
+                      <span className={`tz-pedido-estado tz-pedido-estado-${pedido.estado}`}>
+                        {ESTADO_LABELS[pedido.estado] || pedido.estado}
+                      </span>
+                    </div>
                   </div>
                   <div className="tz-pedido-card-meta">
                     {formatDate(pedido.createdAt)} {formatTime(pedido.createdAt)} ·{" "}
