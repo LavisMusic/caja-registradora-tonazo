@@ -2354,6 +2354,7 @@ export default function Styles() {
         cursor: pointer;
       }
       .tz-gc-sucursal-edit-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+      .tz-gc-sucursal-delete-btn:hover { color: var(--danger); border-color: var(--danger); }
       .tz-gc-sucursal-rename {
         display: flex;
         align-items: center;

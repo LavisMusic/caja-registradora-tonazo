@@ -1194,6 +1194,44 @@ export default function App() {
     cancelRenombrarSucursal();
   };
 
+  /* ---- Eliminar sucursal (Gestor de Cajas, junto al botón de
+     coordenadas). No se intenta un borrado en cascada acá — si la
+     sucursal todavía tiene cajas, ventas, pedidos o cajeros asociados,
+     la propia base de datos rechaza el DELETE por la restricción de
+     llave foránea, y ese es el mensaje que se muestra: la forma segura
+     de evitar borrar historial real por accidente es dejar que el
+     admin primero vacíe/reasigne lo que la esté usando. ---- */
+  const [eliminandoSucursalId, setEliminandoSucursalId] = useState(null);
+
+  const eliminarSucursal = async (sucursal) => {
+    if (
+      !window.confirm(
+        `¿Eliminar la sucursal "${sucursal.nombre}"? Esta acción no se puede deshacer.`
+      )
+    ) {
+      return;
+    }
+
+    setEliminandoSucursalId(sucursal.id);
+    setGestorCajaError("");
+
+    const { error } = await supabase.from("sucursales").delete().eq("id", sucursal.id);
+
+    setEliminandoSucursalId(null);
+
+    if (error) {
+      console.error("Error al eliminar sucursal:", error);
+      setGestorCajaError(
+        /foreign key|violat/i.test(error.message || "")
+          ? `No se pudo eliminar "${sucursal.nombre}": todavía tiene cajas, ventas, pedidos o cajeros asociados. Primero hay que vaciarla o reasignar eso.`
+          : `No se pudo eliminar "${sucursal.nombre}": ${error.message || "error desconocido"}`
+      );
+      return;
+    }
+
+    setSucursales((prev) => prev.filter((s) => s.id !== sucursal.id));
+  };
+
   /* ---- Coordenadas de la sucursal (punto A del delivery). Se pega el
      par "lat, lng" (formato de Google Maps) o se usa 📍 ubicación
      actual. Quedan fijas hasta que se editen. ---- */
@@ -8552,6 +8590,22 @@ export default function App() {
                               onClick={() => startCoordsSucursal(suc)}
                             >
                               <MapPin size={12} />
+                            </button>
+                          )}
+                          {coordsSucursalId !== suc.id && (
+                            <button
+                              type="button"
+                              className="tz-gc-sucursal-edit-btn tz-gc-sucursal-delete-btn"
+                              title="Eliminar sucursal"
+                              aria-label="Eliminar sucursal"
+                              disabled={eliminandoSucursalId === suc.id}
+                              onClick={() => eliminarSucursal(suc)}
+                            >
+                              {eliminandoSucursalId === suc.id ? (
+                                <Loader2 size={12} className="tz-spin" />
+                              ) : (
+                                <Trash2 size={12} />
+                              )}
                             </button>
                           )}
                         </h4>
