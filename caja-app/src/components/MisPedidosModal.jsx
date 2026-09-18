@@ -43,6 +43,7 @@ export default function MisPedidosModal({ session, onClose }) {
   const [boletaExtra, setBoletaExtra] = useState(null); // { sede, entrega }
   const [boletaMsg, setBoletaMsg] = useState("");
   const [filtroEstado, setFiltroEstado] = useState(null); // 'en_carrera' | 'entregado' | 'cancelado' | null
+  const [sucursalesInfo, setSucursalesInfo] = useState({}); // { [sucursalId]: nombre }
   const boletaRef = useRef(null);
   // Ventana de WhatsApp abierta EN BLANCO de forma síncrona en el click
   // (ver el botón "Enviar boleta por WhatsApp") y redirigida recién al
@@ -151,6 +152,30 @@ export default function MisPedidosModal({ session, onClose }) {
     load();
   }, [load]);
 
+  // Nombre de la sucursal de cada pedido (a diferencia del Gestor de
+  // Pedidos del cajero, acá SÍ puede variar de una tarjeta a otra — el
+  // cliente ve su historial completo, no una sola sucursal).
+  useEffect(() => {
+    const ids = [...new Set(pedidos.map((p) => p.sucursal_id).filter(Boolean))];
+    if (ids.length === 0) return;
+    let active = true;
+    supabase
+      .from("sucursales")
+      .select("id, nombre")
+      .in("id", ids)
+      .then(({ data }) => {
+        if (!active || !data) return;
+        const map = {};
+        data.forEach((row) => {
+          map[row.id] = row.nombre;
+        });
+        setSucursalesInfo(map);
+      });
+    return () => {
+      active = false;
+    };
+  }, [pedidos]);
+
   const cancelarPedido = async (pedidoId) => {
     setCancelandoId(pedidoId);
     const { error } = await supabase.from("pedidos").update({ estado: "cancelado" }).eq("id", pedidoId);
@@ -237,16 +262,21 @@ export default function MisPedidosModal({ session, onClose }) {
             {pedidosVisibles.map((pedido) => (
               <div key={pedido.id} className="tz-pedido-card">
                 <div className="tz-pedido-card-head">
-                  <span className="tz-pedido-cliente-nombre">
+                  <span className="tz-pedido-cliente-nombre tz-pedido-cliente-nombre-fijo">
                     {formatDate(pedido.created_at)} {formatTime(pedido.created_at)}
                   </span>
-                  <span className={`tz-pedido-modo-tag ${pedido.requiere_delivery ? "tz-pedido-modo-delivery" : "tz-pedido-modo-tienda"}`}>
-                    {pedido.requiere_delivery ? <Bike size={12} /> : <Store size={12} />}
-                    {pedido.requiere_delivery ? "Delivery" : "Retiro en tienda"}
-                  </span>
-                  <span className={`tz-pedido-estado tz-pedido-estado-${pedido.estado}`}>
-                    {ESTADO_LABELS[pedido.estado] || pedido.estado}
-                  </span>
+                  <div className="tz-pedido-card-tags">
+                    {sucursalesInfo[pedido.sucursal_id] && (
+                      <span className="tz-pedido-sucursal-tag">{sucursalesInfo[pedido.sucursal_id]}</span>
+                    )}
+                    <span className={`tz-pedido-modo-tag ${pedido.requiere_delivery ? "tz-pedido-modo-delivery" : "tz-pedido-modo-tienda"}`}>
+                      {pedido.requiere_delivery ? <Bike size={12} /> : <Store size={12} />}
+                      {pedido.requiere_delivery ? "Delivery" : "Retiro en tienda"}
+                    </span>
+                    <span className={`tz-pedido-estado tz-pedido-estado-${pedido.estado}`}>
+                      {ESTADO_LABELS[pedido.estado] || pedido.estado}
+                    </span>
+                  </div>
                 </div>
                 <ul className="tz-pedido-items-list">
                   {(pedido.pedido_items || []).map((it) => (
