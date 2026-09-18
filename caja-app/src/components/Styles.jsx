@@ -5002,6 +5002,26 @@ export default function Styles() {
         color: var(--text);
         flex: 1;
       }
+      /* Con la etiqueta de sucursal + la de tipo de pedido compitiendo
+         por espacio en la misma línea, el nombre YA NO se estira
+         (flex:1) — queda pegado a la izquierda, del tamaño de su
+         propio texto, y son las etiquetas las que se envuelven a una
+         segunda línea si no entran (.tz-pedido-card-head ya tiene
+         flex-wrap). */
+      .tz-pedido-cliente-nombre-fijo { flex: 0 1 auto; }
+      .tz-pedido-sucursal-tag {
+        display: inline-flex;
+        align-items: center;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 9px;
+        border-radius: 999px;
+        flex-shrink: 0;
+        color: var(--pink);
+        background: rgba(255,47,158,0.12);
+        border: 1px solid rgba(255,47,158,0.4);
+        text-shadow: 0 0 10px rgba(255,47,158,0.5);
+      }
       .tz-chat-dot {
         width: 9px;
         height: 9px;

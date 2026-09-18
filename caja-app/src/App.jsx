@@ -299,15 +299,6 @@ function toPeruWhatsappNumber(whatsapp) {
   return cleaned.length === 9 && cleaned.startsWith("9") ? `51${cleaned}` : cleaned;
 }
 
-/* Medianoche (hora local) del día que contiene el timestamp dado.
-   Se usa como respaldo del corte de turno cuando todavía no se ha
-   hecho ningún Cierre de Caja. */
-function startOfDay(ts) {
-  const d = new Date(ts);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
-}
-
 // Stock "virtual" de un Combo: NO lee 'product.consumes' (ese aplanado
 // queda congelado desde que se crea el combo — ver migración 0041, el
 // mismo problema de frescura que ya se resolvió para el descuento real
@@ -5411,13 +5402,22 @@ export default function App() {
     }
   };
 
-  /* ---- corte del "turno actual": desde el último Cierre de Caja, o
-     desde la medianoche de hoy si todavía no se ha cerrado ningún
-     turno. Todos los medidores de "Hoy" (Recaudado, Ganancia Neta,
-     Ticket General, etc.) usan este corte en vez de la medianoche
-     fija, para que un turno que cruza la medianoche (ej. cierra a las
-     2am) siga sumando correctamente hasta que se presione "Cerrar
-     Caja". */
+  /* ---- corte del "turno actual": arranca en el último Cierre de Caja
+     — o, si todavía no se ha cerrado NINGUNO, desde siempre (no
+     resetea solo porque cambió el día). Todos los medidores de "Hoy"
+     (Recaudado, Ganancia Neta, Ticket General, etc.) usan este corte.
+
+     Antes el fallback sin cierre era "medianoche de hoy" — pensado
+     para que un turno que cruza la medianoche (ej. cierra a las 2am)
+     siguiera sumando hasta presionar "Cerrar Caja". Pero si un
+     cajero/admin directamente NUNCA presiona "Cerrar Caja" (nada
+     inusual — hay negocios que no usan esa función), ese fallback
+     igual reseteaba los medidores en cada medianoche aunque el turno
+     jamás se hubiera cerrado — el dato no se borraba de la base, pero
+     el dashboard mostraba "Hoy" en cero apenas pasaba la hora, aunque
+     el turno siguiera activo. Pedido explícito: los datos deben vivir
+     hasta que se cierre caja A MANO, sin importar cuántas medianoches
+     pasen mientras tanto. */
   /* ---- Multi-Sucursal: 'cierresVisibles' (ya filtrado por la caja
      operativa) en vez de 'cierres' — sin esto, el último cierre de
      CUALQUIER sucursal adelantaba el corte de turno de todas las
@@ -5433,7 +5433,7 @@ export default function App() {
     // antes del Math.max evita que un solo registro corrupto rompa el
     // corte de turno de toda la caja.
     const validos = cierresVisibles.map((c) => c.timestamp).filter((t) => Number.isFinite(t));
-    if (validos.length === 0) return startOfDay(Date.now());
+    if (validos.length === 0) return 0;
     return Math.max(...validos);
   }, [cierresVisibles]);
 

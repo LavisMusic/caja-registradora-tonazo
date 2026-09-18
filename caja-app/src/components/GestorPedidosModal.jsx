@@ -64,6 +64,29 @@ export default function GestorPedidosModal({
   // pedido puntual. null = sin filtrar (todos).
   const [filtroEstado, setFiltroEstado] = useState(null); // 'en_carrera' | 'entregado' | 'cancelado' | null
   const [comprobanteVer, setComprobanteVer] = useState(null); // url
+  // Sucursal que el cliente eligió al hacer el pedido — es la misma
+  // 'sucursalId' operativa del cajero (los pedidos ya vienen filtrados
+  // por ella), pero se muestra igual en cada tarjeta a pedido explícito
+  // (contexto rápido sin tener que mirar la cabecera).
+  const [sucursalNombre, setSucursalNombre] = useState("");
+  useEffect(() => {
+    if (!sucursalId) {
+      setSucursalNombre("");
+      return;
+    }
+    let active = true;
+    supabase
+      .from("sucursales")
+      .select("nombre")
+      .eq("id", sucursalId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setSucursalNombre(data?.nombre || "");
+      });
+    return () => {
+      active = false;
+    };
+  }, [sucursalId]);
   const { counts: noLeidos, refrescar: refrescarNoLeidos } = usePedidosNoLeidos(
     pedidos.map((p) => p.id),
     "cajero"
@@ -585,9 +608,12 @@ export default function GestorPedidosModal({
                 <div key={pedido.id} className="tz-pedido-card">
                   <div className="tz-pedido-card-head">
                     <span className={`tz-chat-dot ${activo ? "tz-chat-dot-activo" : ""}`} />
-                    <span className="tz-pedido-cliente-nombre">
+                    <span className="tz-pedido-cliente-nombre tz-pedido-cliente-nombre-fijo">
                       {cliente?.nombre || "Cliente"}
                     </span>
+                    {sucursalNombre && (
+                      <span className="tz-pedido-sucursal-tag">{sucursalNombre}</span>
+                    )}
                     <span className={`tz-pedido-modo-tag ${pedido.requiereDelivery ? "tz-pedido-modo-delivery" : "tz-pedido-modo-tienda"}`}>
                       {pedido.requiereDelivery ? <Bike size={12} /> : <Store size={12} />}
                       {pedido.requiereDelivery ? "Delivery" : "Retiro en tienda"}
