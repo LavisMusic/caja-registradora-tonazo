@@ -16,6 +16,7 @@
 // objeto totalmente distinto del supabase client que corre en el navegador.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { mirrorCuentaATaxi } from "../_shared/mirrorTaxi.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -208,6 +209,14 @@ Deno.serve(async (req) => {
   if (clienteErr) {
     await admin.auth.admin.deleteUser(newUserId); // profiles cascadea por FK
     return json(500, { error: "No se pudo crear el registro de cliente." });
+  }
+
+  // Espejo a Taxi-PE: solo si de verdad ya hay un PIN real (si el admin
+  // registró solo nombre+teléfono, el espejo pasa recién cuando el
+  // cliente lo cree en set-initial-pin — nunca con el password
+  // placeholder aleatorio).
+  if (pinConfigurado) {
+    await mirrorCuentaATaxi({ telefono: celular, pin: pinProvided, nombre });
   }
 
   return json(200, {

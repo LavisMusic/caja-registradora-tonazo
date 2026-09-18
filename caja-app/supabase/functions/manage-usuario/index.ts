@@ -19,6 +19,7 @@
 // se borra acá, solo pierde su acceso de login.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { mirrorCuentaATaxi } from "../_shared/mirrorTaxi.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -89,6 +90,25 @@ Deno.serve(async (req) => {
     }
     const { error } = await admin.auth.admin.updateUserById(userId, { password: pin });
     if (error) return json(500, { error: error.message || "No se pudo cambiar el PIN." });
+
+    // Espejo a Taxi-PE: SOLO si el usuario reseteado es un cliente —
+    // un cajero/admin es personal interno de Caja, nunca un pasajero.
+    const { data: targetProfile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+    if (targetProfile?.role === "cliente") {
+      const { data: cliente } = await admin
+        .from("clientes_fiado")
+        .select("whatsapp, nombre")
+        .eq("auth_user_id", userId)
+        .maybeSingle();
+      if (cliente?.whatsapp) {
+        await mirrorCuentaATaxi({ telefono: cliente.whatsapp, pin, nombre: cliente.nombre });
+      }
+    }
+
     return json(200, { ok: true });
   }
 
