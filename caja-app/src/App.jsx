@@ -5423,8 +5423,18 @@ export default function App() {
      CUALQUIER sucursal adelantaba el corte de turno de todas las
      demás. ---- */
   const turnoCutoff = useMemo(() => {
-    if (cierresVisibles.length === 0) return startOfDay(Date.now());
-    return Math.max(...cierresVisibles.map((c) => c.timestamp));
+    // Blindaje: si CUALQUIER cierre histórico de esta caja tiene un
+    // 'fecha' nulo/corrupto en la base, 'timestamp' sale NaN — y
+    // Math.max con un solo NaN en la mezcla devuelve NaN para SIEMPRE,
+    // sin importar qué tan viejo sea ese cierre. Con NaN, "venta.timestamp
+    // > turnoCutoff" es false para TODAS las ventas, así que todos los
+    // medidores de "Hoy" (menos Producto Estrella, que no usa este
+    // corte) se van a cero de golpe. Filtrar los timestamps inválidos
+    // antes del Math.max evita que un solo registro corrupto rompa el
+    // corte de turno de toda la caja.
+    const validos = cierresVisibles.map((c) => c.timestamp).filter((t) => Number.isFinite(t));
+    if (validos.length === 0) return startOfDay(Date.now());
+    return Math.max(...validos);
   }, [cierresVisibles]);
 
   /* ---- Mis Ventas (Hoy): agrupa 'salesVisibles' (ya filtrado por la
