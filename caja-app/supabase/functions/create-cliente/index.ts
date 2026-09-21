@@ -105,8 +105,12 @@ Deno.serve(async (req) => {
   // la cuenta se crea con un password placeholder aleatorio que nadie
   // conoce, y 'pin_configurado' queda en false hasta que el cliente
   // mismo lo reemplace por su PIN real (ver set-initial-pin).
-  if (tipo === "cajero" && !/^\d{4,10}$/.test(pinProvided)) {
-    return json(400, { error: "El PIN/clave debe tener entre 4 y 10 dígitos." });
+  // Mínimo 6: es la política real de Supabase Auth para el password
+  // (createUser lo rechaza con "Password should be at least 6
+  // characters" por debajo de eso) — validar acá el mismo mínimo evita
+  // el 500 genérico y confuso que salía antes con un PIN de 4-5 dígitos.
+  if (tipo === "cajero" && !/^\d{6,10}$/.test(pinProvided)) {
+    return json(400, { error: "El PIN/clave debe tener entre 6 y 10 dígitos." });
   }
   // Bug: este bloque validaba nombre/usuario/pin pero nunca la
   // sucursal/caja — un cajero se creaba SIEMPRE con sucursal_id/caja_id
@@ -117,8 +121,8 @@ Deno.serve(async (req) => {
   if (tipo === "cajero" && (!sucursalId || !cajaId)) {
     return json(400, { error: "Falta la sucursal/caja del cajero." });
   }
-  if (tipo === "cliente" && pinWasSent && !/^\d{4,10}$/.test(pinProvided)) {
-    return json(400, { error: "El PIN debe tener entre 4 y 10 dígitos." });
+  if (tipo === "cliente" && pinWasSent && !/^\d{6,10}$/.test(pinProvided)) {
+    return json(400, { error: "El PIN debe tener entre 6 y 10 dígitos." });
   }
 
   let dummyEmail: string;
@@ -194,7 +198,12 @@ Deno.serve(async (req) => {
   }
 
   // 5) clientes_fiado row — reutiliza el esquema existente (whatsapp =
-  // el mismo celular usado para el login).
+  // el mismo celular usado para el login). fiado_habilitado siempre
+  // true acá: esta función solo la llama un admin/cajero ya autenticado
+  // (ver el chequeo de callerRole arriba) creando la cuenta A PROPÓSITO
+  // desde la Libreta de Fiados — a diferencia de registro-cliente
+  // (auto-registro público), que nace sin fiado hasta que el admin lo
+  // asigne.
   const { data: clienteRow, error: clienteErr } = await admin
     .from("clientes_fiado")
     .insert({
@@ -202,6 +211,7 @@ Deno.serve(async (req) => {
       whatsapp: celular,
       fecha: Date.now(),
       auth_user_id: newUserId,
+      fiado_habilitado: true,
     })
     .select()
     .single();

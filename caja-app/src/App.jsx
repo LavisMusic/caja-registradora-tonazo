@@ -4,6 +4,7 @@ import {
   Pencil,
   X,
   Plus,
+  UserCheck,
   Minus,
   ShoppingCart,
   Check,
@@ -46,6 +47,7 @@ import * as XLSX from "xlsx";
 import { formatSoles, formatDate, formatQty, formatTime } from "./utils/format";
 import CartRow from "./components/CartRow";
 import GestorPedidosModal from "./components/GestorPedidosModal";
+import AsignarFiadoModal from "./components/AsignarFiadoModal";
 import { safeGetItem, safeSetItem } from "./utils/safeStorage";
 import { useCatalog } from "./hooks/useCatalog";
 import { usePedidosBadge } from "./hooks/usePedidosBadge";
@@ -872,6 +874,7 @@ export default function App() {
   const [pagosPendientesError, setPagosPendientesError] = useState("");
 
   const [addClienteOpen, setAddClienteOpen] = useState(false);
+  const [asignarFiadoOpen, setAsignarFiadoOpen] = useState(false);
   const [newClienteName, setNewClienteName] = useState("");
   const [newClienteWhatsapp, setNewClienteWhatsapp] = useState("");
   const [clienteSaving, setClienteSaving] = useState(false);
@@ -1612,7 +1615,10 @@ export default function App() {
     [cierres, cajaOperativaId, tieneVistaActiva]
   );
   const clientesVisibles = useMemo(
-    () => (tieneVistaActiva ? clientes.filter((c) => c.sucursalId === sucursalOperativaId) : []),
+    () =>
+      tieneVistaActiva
+        ? clientes.filter((c) => c.sucursalId === sucursalOperativaId && c.fiadoHabilitado)
+        : [],
     [clientes, sucursalOperativaId, tieneVistaActiva]
   );
   const fiadoItemsVisibles = useMemo(
@@ -1915,6 +1921,12 @@ export default function App() {
         authUserId: row.auth_user_id || null,
         sucursalId: row.sucursal_id || null,
         cajaId: row.caja_id || null,
+        // Fiados restringido a usuarios asignados (migración 0068) — el
+        // Gestor de Usuarios/Libreta lo usa para mostrar solo cuentas
+        // con Fiados de verdad habilitado, no cualquier cliente
+        // registrado.
+        fiadoHabilitado: row.fiado_habilitado === true,
+        dni: row.dni || null,
         timestamp: Number(row.fecha),
       }));
 
@@ -5736,8 +5748,8 @@ export default function App() {
   const savePinModal = async () => {
     if (!pinModalUser) return;
     const pin = pinModalValue.trim();
-    if (!/^\d{4,10}$/.test(pin)) {
-      setPinModalError("La clave debe tener entre 4 y 10 dígitos.");
+    if (!/^\d{6,10}$/.test(pin)) {
+      setPinModalError("La clave debe tener entre 6 y 10 dígitos.");
       return;
     }
     setPinModalSaving(true);
@@ -5805,8 +5817,8 @@ export default function App() {
       setCajeroError("El usuario debe tener 3 a 20 caracteres (letras, números, . _ -).");
       return;
     }
-    if (!/^\d{4,10}$/.test(pin)) {
-      setCajeroError("La clave debe tener entre 4 y 10 dígitos.");
+    if (!/^\d{6,10}$/.test(pin)) {
+      setCajeroError("La clave debe tener entre 6 y 10 dígitos.");
       return;
     }
     if (!newCajeroLocalidadId || !newCajeroSucursalId) {
@@ -8459,6 +8471,17 @@ export default function App() {
         />
       )}
 
+      {asignarFiadoOpen && (
+        <AsignarFiadoModal
+          onClose={() => setAsignarFiadoOpen(false)}
+          onAsignado={(cliente) => {
+            setClientes((prev) =>
+              prev.map((c) => (c.id === cliente.id ? { ...c, fiadoHabilitado: true } : c))
+            );
+          }}
+        />
+      )}
+
       {/* ---------------- MODAL: GESTOR DE CAJAS (Parte 3, solo admin) ----------------
          Control total sobre TODAS las cajas del sistema, agrupadas por
          Localidad -> Sucursal. Reutiliza 'localidades'/'sucursales'/
@@ -9877,7 +9900,7 @@ export default function App() {
                     value={newCajeroUsuario}
                     onChange={(e) => setNewCajeroUsuario(e.target.value)}
                   />
-                  <label className="tz-field-label">Clave (4 a 10 dígitos)</label>
+                  <label className="tz-field-label">Clave (6 a 10 dígitos)</label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -9984,7 +10007,7 @@ export default function App() {
             <div className="tz-add-entry">
               <h2>Cambiar PIN</h2>
               <p className="tz-stock-editor-sub">{pinModalUser.nombre || "(sin nombre)"}</p>
-              <label className="tz-field-label">Nueva clave (4 a 10 dígitos)</label>
+              <label className="tz-field-label">Nueva clave (6 a 10 dígitos)</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -10216,12 +10239,20 @@ export default function App() {
                   <p className="tz-method-history-empty">
                     No hay cuentas por cobrar activas.
                   </p>
-                  <button
-                    className="tz-scan-btn tz-add-entry-toggle"
-                    onClick={() => setAddClienteOpen(true)}
-                  >
-                    <Plus size={16} /> Añadir cuenta
-                  </button>
+                  <div className="tz-gasto-tipo-buttons">
+                    <button
+                      className="tz-scan-btn tz-add-entry-toggle"
+                      onClick={() => setAddClienteOpen(true)}
+                    >
+                      <Plus size={16} /> Añadir cuenta nueva
+                    </button>
+                    <button
+                      className="tz-scan-btn tz-add-entry-toggle"
+                      onClick={() => setAsignarFiadoOpen(true)}
+                    >
+                      <UserCheck size={16} /> Asignar a usuario existente
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <>
@@ -10240,12 +10271,20 @@ export default function App() {
 
                   {/* ---- agregar cliente ---- */}
                   {!addClienteOpen ? (
-                    <button
-                      className="tz-scan-btn tz-add-entry-toggle"
-                      onClick={() => setAddClienteOpen(true)}
-                    >
-                      <Plus size={16} /> Añadir cuenta
-                    </button>
+                    <div className="tz-gasto-tipo-buttons">
+                      <button
+                        className="tz-scan-btn tz-add-entry-toggle"
+                        onClick={() => setAddClienteOpen(true)}
+                      >
+                        <Plus size={16} /> Añadir cuenta nueva
+                      </button>
+                      <button
+                        className="tz-scan-btn tz-add-entry-toggle"
+                        onClick={() => setAsignarFiadoOpen(true)}
+                      >
+                        <UserCheck size={16} /> Asignar a usuario existente
+                      </button>
+                    </div>
                   ) : (
                     <div className="tz-add-entry">
                       <label className="tz-field-label">Nombre del cliente</label>

@@ -2621,6 +2621,61 @@ export default function Styles() {
         cursor: pointer;
       }
 
+      /* Pantalla de éxito (registro, entrega confirmada) — idéntico a
+         taxi-pe-app. */
+      .tz-qr-confirmado {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 30px 10px;
+        text-align: center;
+      }
+      .tz-qr-confirmado-icono {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--green-bg);
+        color: var(--green);
+        box-shadow: 0 0 24px rgba(57,255,176,0.5);
+      }
+      .tz-qr-confirmado h3 { margin: 0; color: var(--green); font-family: 'Orbitron', sans-serif; font-size: 16px; }
+
+      /* Efecto de serpentinas (Confetti.jsx) — piezas con
+         'var(--tz-confetti-rotate)'/'var(--tz-confetti-drift)' puestos
+         inline por pieza — 'forwards' la deja invisible al terminar sin
+         que haga falta desmontar el componente en el momento exacto.
+         Idéntico a taxi-pe-app. */
+      .tz-confetti-wrap {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 4000;
+        overflow: hidden;
+      }
+      .tz-confetti-piece {
+        position: absolute;
+        top: -12px;
+        width: 9px;
+        height: 14px;
+        border-radius: 2px;
+        opacity: 0;
+        animation-name: tz-confetti-fall;
+        animation-timing-function: ease-in;
+        animation-fill-mode: forwards;
+      }
+      @keyframes tz-confetti-fall {
+        0% { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+        100% {
+          opacity: 0.9;
+          transform: translate(var(--tz-confetti-drift, 0px), 100vh) rotate(var(--tz-confetti-rotate, 180deg));
+        }
+      }
+
       .tz-pw-form {
         display: flex;
         flex-direction: column;
@@ -5073,6 +5128,47 @@ export default function Styles() {
       }
       .tz-pedido-modo-tienda { background: rgba(0,224,255,0.12); color: var(--cyan); }
       .tz-pedido-modo-delivery { background: rgba(255,157,61,0.14); color: #ff9d3d; }
+
+      .tz-asignar-fiado-search {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 10px 0 12px;
+        padding: 0 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.03);
+        color: var(--text-dim);
+      }
+      .tz-asignar-fiado-search .tz-text-input {
+        border: none;
+        background: transparent;
+        padding: 10px 0;
+      }
+      .tz-asignar-fiado-sugerencias {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 320px;
+        overflow-y: auto;
+      }
+      .tz-asignar-fiado-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.03);
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+      }
+      .tz-asignar-fiado-item:hover { border-color: var(--cyan); }
+      .tz-asignar-fiado-info { display: flex; flex-direction: column; gap: 2px; }
+      .tz-asignar-fiado-nombre { font-weight: 700; }
+      .tz-asignar-fiado-meta { font-size: 12px; color: var(--text-dim); }
 
       /* Filtro secundario del Gestor de Pedidos (debajo de "Para
          retirar"/"Para repartir"): mismas 3 etiquetas de color que ya

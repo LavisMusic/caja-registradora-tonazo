@@ -6,6 +6,7 @@ import { useEntregaCaja } from "../../hooks/useEntregaCaja";
 import { useRadarReparto } from "../../hooks/useRadarReparto";
 import { supabaseTaxi } from "../../lib/supabaseTaxi";
 import MapaEntregaCaja from "./MapaEntregaCaja";
+import Confetti from "../Confetti";
 import { formatSoles } from "../../utils/format";
 
 // Montos rápidos para la tarifa de envío — MISMOS valores que
@@ -146,6 +147,20 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
     useEntregaCaja(sessionToken, { rol });
   const buscando = entrega?.estado === "buscando";
   const { conductores } = useRadarReparto(buscando);
+
+  // Confeti al ver, en vivo, que el repartidor confirmó la entrega —
+  // solo en la TRANSICIÓN real mientras el modal está abierto (no al
+  // abrir el modal de un pedido que ya estaba entregado de antes).
+  const [mostrarConfeti, setMostrarConfeti] = useState(false);
+  const estadoAnteriorRef = useRef(entrega?.estado);
+  useEffect(() => {
+    const anterior = estadoAnteriorRef.current;
+    estadoAnteriorRef.current = entrega?.estado;
+    if (anterior && anterior !== "entregado" && entrega?.estado === "entregado") {
+      setMostrarConfeti(true);
+      setTimeout(() => setMostrarConfeti(false), 2000);
+    }
+  }, [entrega?.estado]);
   const ofertaPorConductor = useMemo(
     () => Object.fromEntries((ofertas || []).map((o) => [o.conductor_id, o.estado])),
     [ofertas]
@@ -255,6 +270,7 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
 
   return (
     <div className="tz-modal-backdrop">
+      {mostrarConfeti && <Confetti />}
       <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
         <button className="tz-modal-close" onClick={onClose} aria-label="Cerrar">
           <X size={18} />

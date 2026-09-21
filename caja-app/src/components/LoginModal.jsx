@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { X, Lock, ShieldCheck } from "lucide-react";
+import { X, Lock, ShieldCheck, UserPlus, PartyPopper } from "lucide-react";
 import { supabase, setAuthPersistence } from "../supabaseClient";
 import { celularToDummyEmail } from "../lib/auth";
 import Styles from "./Styles";
+import Confetti from "./Confetti";
 import logo from "../assets/logo.png";
 
 /* Login de clientes: solo Celular + PIN, sin correo, sin SMS. Por
@@ -32,6 +33,8 @@ import logo from "../assets/logo.png";
    encima del catálogo público, que sigue con su propio tema claro/oscuro. */
 export default function LoginModal({ onClose, onSuccess }) {
   // 'screen': 'login' (celular + PIN juntos) | 'crear-pin' (primer login)
+  // | 'registro' (alta propia, nombre+celular+PIN) | 'registro-exito'
+  // (confeti antes de entrar)
   const [screen, setScreen] = useState("login");
   const [celular, setCelular] = useState("");
   const [pin, setPin] = useState("");
@@ -39,6 +42,13 @@ export default function LoginModal({ onClose, onSuccess }) {
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Registro propio — campos separados de los de login para no
+  // pisarlos si el visitante va y vuelve entre las dos pestañas.
+  const [regNombre, setRegNombre] = useState("");
+  const [regCelular, setRegCelular] = useState("");
+  const [regPin, setRegPin] = useState("");
+  const [regPinConfirm, setRegPinConfirm] = useState("");
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -119,8 +129,8 @@ export default function LoginModal({ onClose, onSuccess }) {
     e.preventDefault();
     setError("");
 
-    if (!/^\d{4,10}$/.test(pin)) {
-      setError("El PIN debe tener entre 4 y 10 dígitos.");
+    if (!/^\d{6,10}$/.test(pin)) {
+      setError("El PIN debe tener entre 6 y 10 dígitos.");
       return;
     }
     if (pin !== pinConfirm) {
@@ -166,6 +176,63 @@ export default function LoginModal({ onClose, onSuccess }) {
     onSuccess?.();
   };
 
+  // Registro propio (sin admin de por medio): nombre + celular + PIN.
+  // Nace SIN Fiados habilitado (ver registro-cliente / migración
+  // 0068) — el admin lo asigna después si corresponde. Al terminar
+  // muestra la pantalla de confeti (screen 'registro-exito') antes de
+  // entrar de verdad, en vez de cerrar de una.
+  const handleRegistroSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+
+    const nombreTrim = regNombre.trim();
+    const celularTrim = regCelular.trim();
+    if (!nombreTrim) {
+      setError("Ingresa tu nombre.");
+      return;
+    }
+    if (!/^\d{6,15}$/.test(celularTrim)) {
+      setError("Ingresa un celular válido (solo números).");
+      return;
+    }
+    if (!/^\d{6,10}$/.test(regPin)) {
+      setError("El PIN debe tener entre 6 y 10 dígitos.");
+      return;
+    }
+    if (regPin !== regPinConfirm) {
+      setError("Los dos PIN no coinciden.");
+      return;
+    }
+
+    setSubmitting(true);
+    const { error: fnError } = await supabase.functions.invoke("registro-cliente", {
+      body: { nombre: nombreTrim, celular: celularTrim, pin: regPin },
+    });
+
+    if (fnError) {
+      setSubmitting(false);
+      const body = await fnError?.context?.json?.().catch(() => null);
+      setError(body?.error || "No se pudo crear tu cuenta. Intenta de nuevo.");
+      return;
+    }
+
+    setAuthPersistence(rememberMe);
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: celularToDummyEmail(celularTrim),
+      password: regPin,
+    });
+    setSubmitting(false);
+
+    if (signInError) {
+      setError("Tu cuenta se creó, pero no se pudo iniciar sesión. Intenta ingresar de nuevo.");
+      setScreen("login");
+      return;
+    }
+
+    setScreen("registro-exito");
+    setTimeout(() => onSuccess?.(), 1900);
+  };
+
   return (
     <div className="tz-root" style={{ minHeight: 0, width: "auto", background: "transparent" }}>
       <Styles />
@@ -176,6 +243,31 @@ export default function LoginModal({ onClose, onSuccess }) {
           </button>
 
           <img src={logo} alt="TONAZO" className="tz-modal-logo" />
+
+          {(screen === "login" || screen === "registro") && (
+            <div className="tz-gasto-tipo-buttons" style={{ marginBottom: 14 }}>
+              <button
+                type="button"
+                className={`tz-gasto-tipo-btn ${screen === "login" ? "tz-gasto-tipo-active" : ""}`}
+                onClick={() => {
+                  setScreen("login");
+                  setError("");
+                }}
+              >
+                Ingresar
+              </button>
+              <button
+                type="button"
+                className={`tz-gasto-tipo-btn ${screen === "registro" ? "tz-gasto-tipo-active" : ""}`}
+                onClick={() => {
+                  setScreen("registro");
+                  setError("");
+                }}
+              >
+                Registrarme
+              </button>
+            </div>
+          )}
 
           {screen === "login" && (
             <>
@@ -232,6 +324,97 @@ export default function LoginModal({ onClose, onSuccess }) {
             </>
           )}
 
+          {screen === "registro" && (
+            <>
+              <p className="tz-brand-sub">Regístrate con tu nombre, celular y un PIN</p>
+              <form onSubmit={handleRegistroSubmit}>
+                <div className="tz-login-field">
+                  <label className="tz-field-label" htmlFor="reg-nombre">
+                    Nombre
+                  </label>
+                  <input
+                    id="reg-nombre"
+                    type="text"
+                    autoFocus
+                    className="tz-text-input"
+                    value={regNombre}
+                    onChange={(e) => setRegNombre(e.target.value)}
+                    placeholder="Tu nombre"
+                  />
+                </div>
+                <div className="tz-login-field">
+                  <label className="tz-field-label" htmlFor="reg-celular">
+                    Celular
+                  </label>
+                  <input
+                    id="reg-celular"
+                    type="tel"
+                    inputMode="numeric"
+                    className="tz-text-input"
+                    value={regCelular}
+                    onChange={(e) => setRegCelular(e.target.value)}
+                    placeholder="999999999"
+                  />
+                </div>
+                <div className="tz-login-field">
+                  <label className="tz-field-label" htmlFor="reg-pin">
+                    PIN (6 a 10 dígitos)
+                  </label>
+                  <input
+                    id="reg-pin"
+                    type="password"
+                    inputMode="numeric"
+                    className="tz-text-input"
+                    value={regPin}
+                    onChange={(e) => setRegPin(e.target.value)}
+                    placeholder="••••••"
+                  />
+                </div>
+                <div className="tz-login-field">
+                  <label className="tz-field-label" htmlFor="reg-pin-confirm">
+                    Confirma tu PIN
+                  </label>
+                  <input
+                    id="reg-pin-confirm"
+                    type="password"
+                    inputMode="numeric"
+                    className="tz-text-input"
+                    value={regPinConfirm}
+                    onChange={(e) => setRegPinConfirm(e.target.value)}
+                    placeholder="••••••"
+                  />
+                </div>
+
+                <label className="tz-checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                  />
+                  Mantener sesión iniciada
+                </label>
+
+                {error && <p className="tz-error">{error}</p>}
+                <button type="submit" className="tz-scan-btn tz-payment-save" disabled={submitting}>
+                  <UserPlus size={16} />
+                  {submitting ? "Creando cuenta..." : "Crear mi cuenta"}
+                </button>
+              </form>
+            </>
+          )}
+
+          {screen === "registro-exito" && (
+            <>
+              <Confetti />
+              <div className="tz-qr-confirmado">
+                <div className="tz-qr-confirmado-icono">
+                  <PartyPopper size={32} />
+                </div>
+                <h3>¡Cuenta creada! Bienvenido a Tonazo.</h3>
+              </div>
+            </>
+          )}
+
           {screen === "crear-pin" && (
             <>
               <p className="tz-brand-sub">
@@ -241,7 +424,7 @@ export default function LoginModal({ onClose, onSuccess }) {
               <form onSubmit={handleCrearPinSubmit}>
                 <div className="tz-login-field">
                   <label className="tz-field-label" htmlFor="crear-pin">
-                    Nuevo PIN (4 a 10 dígitos)
+                    Nuevo PIN (6 a 10 dígitos)
                   </label>
                   <input
                     id="crear-pin"

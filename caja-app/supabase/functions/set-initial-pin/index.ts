@@ -57,8 +57,10 @@ Deno.serve(async (req) => {
   if (!/^\d{6,15}$/.test(celular)) {
     return json(400, { error: "Celular inválido." });
   }
-  if (!/^\d{4,10}$/.test(pin)) {
-    return json(400, { error: "El PIN debe tener entre 4 y 10 dígitos." });
+  // Mínimo 6: política real de Supabase Auth para el password (ver
+  // mismo comentario en registro-cliente/create-cliente).
+  if (!/^\d{6,10}$/.test(pin)) {
+    return json(400, { error: "El PIN debe tener entre 6 y 10 dígitos." });
   }
 
   const { data: cliente, error: clienteErr } = await admin

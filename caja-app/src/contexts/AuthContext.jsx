@@ -7,6 +7,10 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Fiados restringido a usuarios asignados: 'clientes_fiado.fiado_habilitado'
+  // (no alcanza con tener cuenta — ver migración 0068). Solo tiene
+  // sentido consultarlo para un rol 'cliente'.
+  const [tieneFiado, setTieneFiado] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -21,6 +25,7 @@ export function AuthProvider({ children }) {
       setSession(newSession);
       if (!newSession) {
         setProfile(null);
+        setTieneFiado(false);
         setLoading(false);
       }
     });
@@ -58,6 +63,25 @@ export function AuthProvider({ children }) {
     };
   }, [session?.user?.id]);
 
+  useEffect(() => {
+    if (!session?.user?.id || profile?.role !== "cliente") {
+      setTieneFiado(false);
+      return;
+    }
+    let active = true;
+    supabase
+      .from("clientes_fiado")
+      .select("fiado_habilitado")
+      .eq("auth_user_id", session.user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setTieneFiado(data?.fiado_habilitado === true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [session?.user?.id, profile?.role]);
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
@@ -79,6 +103,7 @@ export function AuthProvider({ children }) {
     isAdmin: profile?.role === "admin",
     isCliente: profile?.role === "cliente",
     isCajero: profile?.role === "cajero",
+    tieneFiado,
     signOut,
   };
 

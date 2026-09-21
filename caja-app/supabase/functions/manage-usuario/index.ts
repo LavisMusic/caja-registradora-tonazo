@@ -66,7 +66,14 @@ Deno.serve(async (req) => {
   }
 
   // 2) Validar input
-  let body: { action?: string; userId?: string; pin?: string; sucursalId?: string; cajaId?: string };
+  let body: {
+    action?: string;
+    userId?: string;
+    pin?: string;
+    sucursalId?: string;
+    cajaId?: string;
+    habilitado?: boolean;
+  };
   try {
     body = await req.json();
   } catch {
@@ -85,8 +92,10 @@ Deno.serve(async (req) => {
 
   if (action === "reset-pin") {
     const pin = body.pin || "";
-    if (!/^\d{4,10}$/.test(pin)) {
-      return json(400, { error: "El PIN/clave debe tener entre 4 y 10 dígitos." });
+    // Mínimo 6: política real de Supabase Auth para el password (ver
+    // mismo comentario en create-cliente/registro-cliente).
+    if (!/^\d{6,10}$/.test(pin)) {
+      return json(400, { error: "El PIN/clave debe tener entre 6 y 10 dígitos." });
     }
     const { error } = await admin.auth.admin.updateUserById(userId, { password: pin });
     if (error) return json(500, { error: error.message || "No se pudo cambiar el PIN." });
@@ -134,6 +143,28 @@ Deno.serve(async (req) => {
       .update({ sucursal_id: sucursalId, caja_id: cajaId })
       .eq("id", userId);
     if (error) return json(500, { error: error.message || "No se pudo reasignar la sucursal." });
+    return json(200, { ok: true });
+  }
+
+  // Asigna (o quita) el acceso a Fiados de un cliente YA existente —
+  // botón "Asignar a un usuario existente" de la Libreta. Un
+  // auto-registro propio (registro-cliente) nace SIN esto; recién acá
+  // el admin lo autoriza a mano.
+  if (action === "set-fiado") {
+    const habilitado = body.habilitado !== false; // default true (es el uso normal: "asignar")
+    const { data: targetProfile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+    if (targetProfile?.role !== "cliente") {
+      return json(400, { error: "Ese usuario no es un cliente." });
+    }
+    const { error } = await admin
+      .from("clientes_fiado")
+      .update({ fiado_habilitado: habilitado })
+      .eq("auth_user_id", userId);
+    if (error) return json(500, { error: error.message || "No se pudo asignar Fiados." });
     return json(200, { ok: true });
   }
 

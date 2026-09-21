@@ -75,7 +75,7 @@ function formatDescuentoBadge(product) {
 // de venta. Los productos se ven, no se seleccionan: sin onClick, sin
 // checkbox, sin selector de cantidad (ver .tz-card-readonly abajo).
 export default function CatalogPage() {
-  const { session, loading: authLoading, signOut, isCliente } = useAuth();
+  const { session, loading: authLoading, signOut, isCliente, tieneFiado } = useAuth();
 
   /* ---- Fase 1 "Pedidos Delivery": carrito del cliente logueado.
      Mismo shape que 'selection' en App.jsx ({ productId: qty }) — un
@@ -272,14 +272,16 @@ export default function CatalogPage() {
       <header className="tz-header">
         <div className="tz-header-row">
           <div className="tz-header-side tz-header-side-left">
-            <button
-              className="tz-header-btn"
-              onClick={handleFiadosClick}
-              aria-label="Fiados"
-            >
-              <BookOpen size={19} />
-              <span className="tz-header-btn-label">Fiados</span>
-            </button>
+            {isCliente && tieneFiado && (
+              <button
+                className="tz-header-btn"
+                onClick={handleFiadosClick}
+                aria-label="Fiados"
+              >
+                <BookOpen size={19} />
+                <span className="tz-header-btn-label">Fiados</span>
+              </button>
+            )}
             {puedeComprar && (
               <button
                 className="tz-header-btn"
