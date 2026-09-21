@@ -48,6 +48,8 @@ import { formatSoles, formatDate, formatQty, formatTime } from "./utils/format";
 import CartRow from "./components/CartRow";
 import GestorPedidosModal from "./components/GestorPedidosModal";
 import AsignarFiadoModal from "./components/AsignarFiadoModal";
+import AnimacionNeonBienvenida from "./components/AnimacionNeonBienvenida";
+import { useBienvenidaNeon } from "./hooks/useBienvenidaNeon";
 import { safeGetItem, safeSetItem } from "./utils/safeStorage";
 import { useCatalog } from "./hooks/useCatalog";
 import { usePedidosBadge } from "./hooks/usePedidosBadge";
@@ -554,6 +556,15 @@ export default function App() {
   // el nombre real del perfil autenticado si existe, y solo si no hay
   // uno cargado cae al rol genérico.
   const currentUserLabel = cajeroNombre || (isAdmin ? "Admin" : "Cajero");
+
+  // Bienvenida neon para admin/cajero (el cliente ya la tiene en
+  // CatalogPage.jsx) — mismo mecanismo "una vez por cuenta", pero con
+  // un mensaje de arranque de turno en vez de "ya podés comprar" (no
+  // tiene sentido para quien maneja la caja).
+  const { mostrar: mostrarBienvenidaStaff, marcarVista: marcarBienvenidaStaffVista } = useBienvenidaNeon(
+    session?.user?.id,
+    isAdmin || isCajero
+  );
 
   /* ---- Parte 3 "Filtros Superiores" (barra de navegación del admin):
      'localidadFiltroId' es solo un filtro DE UI (angosta las opciones
@@ -6983,6 +6994,24 @@ export default function App() {
   // mostrarle "Caja Cerrada, esperando apertura" (nunca podría abrir
   // nada sin una fila de 'cajas' que le pertenezca): se le avisa
   // explícitamente en vez de dejarlo atascado sin explicación.
+  // Bienvenida neon de admin/cajero — toma prioridad sobre CUALQUIER
+  // otra pantalla (incluida "Sin Caja Asignada"/"Caja Cerrada" de más
+  // abajo): recién entrado, antes de cualquier otro aviso operativo.
+  if (mostrarBienvenidaStaff) {
+    return (
+      <AnimacionNeonBienvenida
+        eyebrow="✦ Bienvenido a Tonazo ✦"
+        titulo={currentUserLabel}
+        descripcion={
+          isAdmin
+            ? "Otro día para hacer crecer el negocio — ¡vamos con todo! 💪"
+            : "Que tengas un excelente turno — ¡vamos con todo! 💪"
+        }
+        onTerminar={marcarBienvenidaStaffVista}
+      />
+    );
+  }
+
   if (isCajero && !authCajaId) {
     return (
       <div className="tz-root tz-caja-blocked">
