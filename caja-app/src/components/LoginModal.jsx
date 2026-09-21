@@ -173,7 +173,11 @@ export default function LoginModal({ onClose, onSuccess }) {
       return;
     }
 
-    onSuccess?.();
+    // Confeti: este es el primer ingreso REAL de esta cuenta (recién
+    // ahora deja de tener el password placeholder aleatorio) — mismo
+    // criterio que el registro propio, no en un login normal.
+    setScreen("crear-pin-exito");
+    setTimeout(() => onSuccess?.(), 1900);
   };
 
   // Registro propio (sin admin de por medio): nombre + celular + PIN.
@@ -403,14 +407,18 @@ export default function LoginModal({ onClose, onSuccess }) {
             </>
           )}
 
-          {screen === "registro-exito" && (
+          {(screen === "registro-exito" || screen === "crear-pin-exito") && (
             <>
               <Confetti />
               <div className="tz-qr-confirmado">
                 <div className="tz-qr-confirmado-icono">
                   <PartyPopper size={32} />
                 </div>
-                <h3>¡Cuenta creada! Bienvenido a Tonazo.</h3>
+                <h3>
+                  {screen === "registro-exito"
+                    ? "¡Cuenta creada! Bienvenido a Tonazo."
+                    : "¡Listo! Tu PIN quedó configurado."}
+                </h3>
               </div>
             </>
           )}

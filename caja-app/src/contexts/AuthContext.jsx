@@ -66,7 +66,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!session?.user?.id || profile?.role !== "cliente") {
       setTieneFiado(false);
-      return;
+      return undefined;
     }
     let active = true;
     supabase
@@ -77,8 +77,24 @@ export function AuthProvider({ children }) {
       .then(({ data }) => {
         if (active) setTieneFiado(data?.fiado_habilitado === true);
       });
+
+    // Realtime: el admin puede asignar Fiados (AsignarFiadoModal) MIENTRAS
+    // este mismo cliente sigue con la tienda abierta — sin esto, recién
+    // se enteraba recargando la página.
+    const channel = supabase
+      .channel(`tiene-fiado-${session.user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "clientes_fiado", filter: `auth_user_id=eq.${session.user.id}` },
+        (payload) => {
+          setTieneFiado(payload.new?.fiado_habilitado === true);
+        }
+      )
+      .subscribe();
+
     return () => {
       active = false;
+      supabase.removeChannel(channel);
     };
   }, [session?.user?.id, profile?.role]);
 

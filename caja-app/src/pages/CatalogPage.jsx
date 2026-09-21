@@ -5,6 +5,8 @@ import { useCatalog } from "../hooks/useCatalog";
 import { usePedidosBadge } from "../hooks/usePedidosBadge";
 import { supabase } from "../supabaseClient";
 import LoginModal from "../components/LoginModal";
+import AnimacionNeonBienvenida from "../components/AnimacionNeonBienvenida";
+import { useBienvenidaNeon } from "../hooks/useBienvenidaNeon";
 import ClienteFiadoView from "./ClienteFiadoView";
 import Styles from "../components/Styles";
 import CardDetail from "../components/CardDetail";
@@ -75,7 +77,11 @@ function formatDescuentoBadge(product) {
 // de venta. Los productos se ven, no se seleccionan: sin onClick, sin
 // checkbox, sin selector de cantidad (ver .tz-card-readonly abajo).
 export default function CatalogPage() {
-  const { session, loading: authLoading, signOut, isCliente, tieneFiado } = useAuth();
+  const { session, loading: authLoading, signOut, isCliente, tieneFiado, nombre } = useAuth();
+  const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
+    session?.user?.id,
+    isCliente
+  );
 
   /* ---- Fase 1 "Pedidos Delivery": carrito del cliente logueado.
      Mismo shape que 'selection' en App.jsx ({ productId: qty }) — un
@@ -248,13 +254,9 @@ export default function CatalogPage() {
     .map((g, gi) => ({ id: gi, label: g.title }))
     .filter((it) => it.label);
 
-  const handleFiadosClick = () => {
-    if (session) {
-      setFiadoOpen(true);
-    } else {
-      setLoginOpen(true);
-    }
-  };
+  // El botón que llama a esto solo se muestra con isCliente && tieneFiado
+  // (o sea, ya con sesión) — sin rama "sin sesión" que abra el login.
+  const handleFiadosClick = () => setFiadoOpen(true);
 
   if (catalogLoading) {
     return (
@@ -269,18 +271,28 @@ export default function CatalogPage() {
   return (
     <div className="tz-root">
       <Styles />
+      {mostrarBienvenida && (
+        <AnimacionNeonBienvenida
+          eyebrow="✦ Bienvenido a Tonazo ✦"
+          titulo={nombre}
+          descripcion="Ya podés comprar en la tienda — ¡Qué disfrutes! 😉"
+          onTerminar={marcarBienvenidaVista}
+        />
+      )}
       <header className="tz-header">
         <div className="tz-header-row">
           <div className="tz-header-side tz-header-side-left">
             {isCliente && tieneFiado && (
-              <button
-                className="tz-header-btn"
-                onClick={handleFiadosClick}
-                aria-label="Fiados"
-              >
-                <BookOpen size={19} />
-                <span className="tz-header-btn-label">Fiados</span>
-              </button>
+              <span className="tz-fiados-pop-wrap">
+                <button
+                  className="tz-header-btn"
+                  onClick={handleFiadosClick}
+                  aria-label="Fiados"
+                >
+                  <BookOpen size={19} />
+                  <span className="tz-header-btn-label">Fiados</span>
+                </button>
+              </span>
             )}
             {puedeComprar && (
               <button
@@ -561,13 +573,7 @@ export default function CatalogPage() {
       )}
 
       {loginOpen && (
-        <LoginModal
-          onClose={() => setLoginOpen(false)}
-          onSuccess={() => {
-            setLoginOpen(false);
-            setFiadoOpen(true);
-          }}
-        />
+        <LoginModal onClose={() => setLoginOpen(false)} onSuccess={() => setLoginOpen(false)} />
       )}
       {fiadoOpen && <ClienteFiadoView onClose={() => setFiadoOpen(false)} />}
       {checkoutOpen && (

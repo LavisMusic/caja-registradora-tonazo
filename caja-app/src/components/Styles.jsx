@@ -200,6 +200,24 @@ export default function Styles() {
       }
       .tz-header-side-left { align-items: flex-start; }
       .tz-header-side-right { align-items: flex-end; }
+
+      /* Botón "Fiados" apareciendo por primera vez (asignado en vivo, o
+         recién iniciada sesión) — "explosión de chicle": crece de
+         golpe y de más (overshoot) antes de asentarse. .tz-header-side
+         es flex-direction:column, así que animar max-height (no width)
+         es lo que hace que "Mis Pedidos" (el hermano de abajo) se
+         deslice solo hacia su posición final a medida que este crece —
+         reflow real de layout, no un simple fundido. */
+      .tz-fiados-pop-wrap {
+        display: block;
+        overflow: hidden;
+        animation: tz-fiados-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      }
+      @keyframes tz-fiados-pop {
+        0% { max-height: 0; opacity: 0; transform: scale(0.4); }
+        60% { max-height: 80px; opacity: 1; transform: scale(1.08); }
+        100% { max-height: 80px; opacity: 1; transform: scale(1); }
+      }
       .tz-header-center {
         flex: 1.6 1 0;
         min-width: 0;
@@ -4501,6 +4519,7 @@ export default function Styles() {
       .tz-metodo-tag-yape { color: var(--yape); border-color: rgba(182,33,255,0.5); background: rgba(182,33,255,0.1); }
       .tz-metodo-tag-plin { color: var(--plin); border-color: rgba(0,224,198,0.5); background: rgba(0,224,198,0.1); }
       .tz-metodo-tag-otros { color: var(--gris); border-color: rgba(156,163,175,0.5); background: rgba(156,163,175,0.1); }
+      .tz-metodo-tag-fiado { color: var(--pink); border-color: rgba(255,47,158,0.5); background: rgba(255,47,158,0.12); }
       .tz-metodo-tag-fiado { color: var(--orange); border-color: rgba(255,149,0,0.5); background: rgba(255,149,0,0.1); }
       .tz-metodo-tag-efectivo { color: var(--green); border-color: rgba(57,255,176,0.5); background: rgba(57,255,176,0.1); }
 

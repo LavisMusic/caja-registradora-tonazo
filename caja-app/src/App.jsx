@@ -944,6 +944,12 @@ export default function App() {
   const [cajerosOpen, setCajerosOpen] = useState(false);
   const [cajeros, setCajeros] = useState([]);
   const [cajerosLoading, setCajerosLoading] = useState(false);
+  // Filtros del Gestor de Usuarios: por rol (todos/cajero/cliente), y
+  // dentro de cada rol un sub-filtro propio — clientes por si pueden
+  // fiar o no, cajeros por sucursal.
+  const [filtroRolUsuarios, setFiltroRolUsuarios] = useState("todos"); // 'todos' | 'cajero' | 'cliente'
+  const [filtroFiadoUsuarios, setFiltroFiadoUsuarios] = useState("todos"); // 'todos' | 'con' | 'sin'
+  const [filtroSucursalUsuarios, setFiltroSucursalUsuarios] = useState("todas");
   const [addCajeroOpen, setAddCajeroOpen] = useState(false);
   const [newCajeroNombre, setNewCajeroNombre] = useState("");
   const [newCajeroUsuario, setNewCajeroUsuario] = useState("");
@@ -5699,39 +5705,100 @@ export default function App() {
      algo que haga falta tener listo apenas carga el POS. Trae cajeros
      Y clientes en una sola consulta (profiles ya tiene 'nombre' para
      ambos — ver create-cliente/migración 0033), ordenados por rol para
-     que la lista salga agrupada visualmente. ---- */
+     que la lista salga agrupada visualmente, más 'fiado_habilitado' de
+     clientes_fiado (una segunda consulta — vive en otra tabla) para el
+     filtro/etiqueta de Fiado.
+     Realtime: 'fiado_habilitado' se asigna desde OTRO modal
+     (AsignarFiadoModal) que puede estar abierto AL MISMO TIEMPO que
+     este panel — sin este canal, el admin tenía que cerrar y reabrir
+     Usuarios para ver reflejado un cambio recién hecho. ---- */
   useEffect(() => {
     if (!cajerosOpen) return;
     let active = true;
     setCajerosLoading(true);
 
-    supabase
-      .from("profiles")
-      .select("id, nombre, role, sucursal_id, caja_id")
-      .in("role", ["cajero", "cliente"])
-      .order("role", { ascending: true })
-      .then(({ data, error }) => {
-        if (!active) return;
-        if (error) {
-          console.error("Error cargando usuarios:", error);
+    const cargarUsuarios = async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, nombre, role, sucursal_id, caja_id")
+        .in("role", ["cajero", "cliente"])
+        .order("role", { ascending: true });
+
+      if (!active) return;
+      if (error) {
+        console.error("Error cargando usuarios:", error);
+        setCajerosLoading(false);
+        return;
+      }
+
+      const clienteIds = (data || []).filter((r) => r.role === "cliente").map((r) => r.id);
+      let fiadoPorUserId = {};
+      if (clienteIds.length > 0) {
+        const { data: fiadoRows, error: fiadoErr } = await supabase
+          .from("clientes_fiado")
+          .select("auth_user_id, fiado_habilitado")
+          .in("auth_user_id", clienteIds);
+        if (fiadoErr) {
+          console.error("Error cargando fiado_habilitado de usuarios:", fiadoErr);
         } else {
-          setCajeros(
-            (data || []).map((row) => ({
-              id: row.id,
-              nombre: row.nombre,
-              role: row.role,
-              sucursalId: row.sucursal_id || null,
-              cajaId: row.caja_id || null,
-            }))
+          fiadoPorUserId = Object.fromEntries(
+            (fiadoRows || []).map((r) => [r.auth_user_id, r.fiado_habilitado === true])
           );
         }
-        setCajerosLoading(false);
-      });
+      }
+
+      if (!active) return;
+      setCajeros(
+        (data || []).map((row) => ({
+          id: row.id,
+          nombre: row.nombre,
+          role: row.role,
+          sucursalId: row.sucursal_id || null,
+          cajaId: row.caja_id || null,
+          fiadoHabilitado: row.role === "cliente" ? !!fiadoPorUserId[row.id] : false,
+        }))
+      );
+      setCajerosLoading(false);
+    };
+
+    cargarUsuarios();
+
+    const channel = supabase
+      .channel(`usuarios-fiado-realtime-${Math.random().toString(36).slice(2)}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "clientes_fiado" },
+        (payload) => {
+          const row = payload.new;
+          if (!row?.auth_user_id) return;
+          setCajeros((prev) =>
+            prev.map((c) =>
+              c.id === row.auth_user_id ? { ...c, fiadoHabilitado: row.fiado_habilitado === true } : c
+            )
+          );
+        }
+      )
+      .subscribe();
 
     return () => {
       active = false;
+      supabase.removeChannel(channel);
     };
   }, [cajerosOpen]);
+
+  const cajerosVisibles = useMemo(() => {
+    return cajeros.filter((c) => {
+      if (filtroRolUsuarios !== "todos" && c.role !== filtroRolUsuarios) return false;
+      if (c.role === "cliente" && filtroFiadoUsuarios !== "todos") {
+        const puedeFiar = filtroFiadoUsuarios === "con";
+        if (c.fiadoHabilitado !== puedeFiar) return false;
+      }
+      if (c.role === "cajero" && filtroSucursalUsuarios !== "todas") {
+        if (c.sucursalId !== filtroSucursalUsuarios) return false;
+      }
+      return true;
+    });
+  }, [cajeros, filtroRolUsuarios, filtroFiadoUsuarios, filtroSucursalUsuarios]);
 
   const openPinModal = (usuario) => {
     setPinModalUser(usuario);
@@ -8947,7 +9014,19 @@ export default function App() {
                           if (!b.numero) return -1;
                           return a.numero.localeCompare(b.numero, undefined, { numeric: true });
                         })
-                        .map((g) => g.title);
+                        // Bug: acá se sugería 'g.title' (el subgrupo ya
+                        // parseado, SIN el número — ej. "RON CARTAVIO"),
+                        // pero el string real que agrupa en la base es
+                        // el subgrupo CRUDO ("01 RON CARTAVIO",
+                        // 'subgrupoRaw' de cualquiera de sus items —
+                        // todos comparten el mismo por construcción, es
+                        // justo la clave de agrupación). Elegir la
+                        // sugerencia guardaba el producto SIN el número,
+                        // un string distinto que buildSectionsFromRows
+                        // (comparación exacta) trataba como un subgrupo
+                        // nuevo en vez de sumarlo al existente.
+                        .map((g) => g.items[0]?.subgrupoRaw || g.title)
+                        .filter(Boolean);
                     })()}
                     onChange={setNewProductoSubgrupo}
                   />
@@ -9722,9 +9801,61 @@ export default function App() {
                 <Users size={17} /> Usuarios
               </h2>
               <p className="tz-stock-editor-sub">
-                Cajeros (acceso operativo sin cifras financieras) y clientes con cuenta de fiado.
+                Cajeros (acceso operativo sin cifras financieras) y clientes registrados.
                 Cambia su PIN de acceso o elimina la cuenta si ya no corresponde.
               </p>
+
+              <div className="tz-gasto-tipo-buttons" style={{ marginBottom: 8 }}>
+                {[
+                  ["todos", "Todos"],
+                  ["cajero", "Cajeros"],
+                  ["cliente", "Clientes"],
+                ].map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    className={`tz-gasto-tipo-btn ${filtroRolUsuarios === val ? "tz-gasto-tipo-active" : ""}`}
+                    onClick={() => setFiltroRolUsuarios(val)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {filtroRolUsuarios === "cliente" && (
+                <div className="tz-gasto-tipo-buttons" style={{ marginBottom: 12 }}>
+                  {[
+                    ["todos", "Todos"],
+                    ["con", "Pueden fiar"],
+                    ["sin", "Sin fiado"],
+                  ].map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      className={`tz-gasto-tipo-btn ${filtroFiadoUsuarios === val ? "tz-gasto-tipo-active" : ""}`}
+                      onClick={() => setFiltroFiadoUsuarios(val)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {filtroRolUsuarios === "cajero" && (
+                <select
+                  className="tz-text-input"
+                  style={{ marginBottom: 12 }}
+                  value={filtroSucursalUsuarios}
+                  onChange={(e) => setFiltroSucursalUsuarios(e.target.value)}
+                >
+                  <option value="todas">Todas las sucursales</option>
+                  {sucursales.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre}
+                    </option>
+                  ))}
+                </select>
+              )}
 
               {usuarioActionError && <p className="tz-error">{usuarioActionError}</p>}
 
@@ -9732,9 +9863,11 @@ export default function App() {
                 <p className="tz-method-history-empty">Cargando…</p>
               ) : cajeros.length === 0 ? (
                 <p className="tz-method-history-empty">Todavía no hay cajeros ni clientes registrados.</p>
+              ) : cajerosVisibles.length === 0 ? (
+                <p className="tz-method-history-empty">Ningún usuario coincide con ese filtro.</p>
               ) : (
                 <ul className="tz-history-rows">
-                  {cajeros.map((c) => {
+                  {cajerosVisibles.map((c) => {
                     const cSucursal = sucursales.find((s) => s.id === c.sucursalId);
                     const cCaja = cajas.find((cj) => cj.id === c.cajaId);
                     return (
@@ -9742,6 +9875,9 @@ export default function App() {
                         <div className="tz-history-row-head" style={{ cursor: "default" }}>
                           <Users size={14} />
                           <span>{c.nombre || "(sin nombre)"}</span>
+                          {c.role === "cliente" && c.fiadoHabilitado && (
+                            <span className="tz-metodo-tag tz-metodo-tag-fiado">Fiado</span>
+                          )}
                           <span
                             className={`tz-metodo-tag ${
                               c.role === "cajero" ? "tz-metodo-tag-yape" : "tz-metodo-tag-otros"

@@ -60,7 +60,7 @@ export default function AsignarFiadoModal({ onClose, onAsignado }) {
   };
 
   return (
-    <div className="tz-modal-backdrop" onClick={onClose}>
+    <div className="tz-modal-backdrop" style={{ zIndex: 90 }} onClick={onClose}>
       <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
         <button className="tz-modal-close" onClick={onClose} aria-label="Cerrar">
           <X size={18} />
