@@ -5872,30 +5872,32 @@ export default function App() {
     setCajeros((prev) => prev.filter((c) => c.id !== usuario.id));
   };
 
-  /* ---- Quitar Fiados de un cliente (fila por fila, Gestor de
-     Usuarios) — reverso de "Asignar a usuario existente"
-     (AsignarFiadoModal). El Realtime que ya escucha AuthContext/este
-     mismo panel (ver migración 0068) también refleja este cambio del
-     lado del cliente, con la animación de salida del botón. ---- */
-  const [quitandoFiadoId, setQuitandoFiadoId] = useState(null);
-  const quitarFiado = async (usuario) => {
+  /* ---- Asignar/Quitar Fiados de un cliente (fila por fila, Gestor de
+     Usuarios) — mismo destino que "Asignar a usuario existente"
+     (AsignarFiadoModal, buscador), pero directo desde acá cuando el
+     admin ya está mirando la fila del cliente puntual. El Realtime que
+     ya escucha AuthContext/este mismo panel (ver migraciones
+     0068/0069) también refleja este cambio del lado del cliente, con
+     la animación de entrada/salida del botón Fiados. ---- */
+  const [cambiandoFiadoId, setCambiandoFiadoId] = useState(null);
+  const cambiarFiado = async (usuario, habilitado) => {
     setUsuarioActionError("");
-    setQuitandoFiadoId(usuario.id);
+    setCambiandoFiadoId(usuario.id);
 
     const { error } = await supabase.functions.invoke("manage-usuario", {
-      body: { action: "set-fiado", userId: usuario.id, habilitado: false },
+      body: { action: "set-fiado", userId: usuario.id, habilitado },
     });
 
-    setQuitandoFiadoId(null);
+    setCambiandoFiadoId(null);
 
     if (error) {
-      console.error("Error al quitar Fiados vía Edge Function:", error);
+      console.error(`Error al ${habilitado ? "asignar" : "quitar"} Fiados vía Edge Function:`, error);
       const body = await error.context?.json?.().catch(() => null);
-      setUsuarioActionError(body?.error || "No se pudo quitar Fiados. Intenta de nuevo.");
+      setUsuarioActionError(body?.error || `No se pudo ${habilitado ? "asignar" : "quitar"} Fiados. Intenta de nuevo.`);
       return;
     }
 
-    setCajeros((prev) => prev.map((c) => (c.id === usuario.id ? { ...c, fiadoHabilitado: false } : c)));
+    setCajeros((prev) => prev.map((c) => (c.id === usuario.id ? { ...c, fiadoHabilitado: habilitado } : c)));
   };
 
   const resetCajeroForm = () => {
@@ -10046,19 +10048,19 @@ export default function App() {
                           >
                             <Lock size={13} /> Cambiar PIN
                           </button>
-                          {c.role === "cliente" && c.fiadoHabilitado && (
+                          {c.role === "cliente" && (
                             <button
                               type="button"
                               className="tz-camera-cancel tz-usuario-action-btn"
-                              onClick={() => quitarFiado(c)}
-                              disabled={quitandoFiadoId === c.id}
+                              onClick={() => cambiarFiado(c, !c.fiadoHabilitado)}
+                              disabled={cambiandoFiadoId === c.id}
                             >
-                              {quitandoFiadoId === c.id ? (
+                              {cambiandoFiadoId === c.id ? (
                                 <Loader2 size={13} className="tz-spin" />
                               ) : (
                                 <UserCheck size={13} />
                               )}
-                              Quitar Fiado
+                              {c.fiadoHabilitado ? "Quitar Fiado" : "Asignar Fiado"}
                             </button>
                           )}
                           <button
