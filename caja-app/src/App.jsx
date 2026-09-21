@@ -5861,6 +5861,32 @@ export default function App() {
     setCajeros((prev) => prev.filter((c) => c.id !== usuario.id));
   };
 
+  /* ---- Quitar Fiados de un cliente (fila por fila, Gestor de
+     Usuarios) — reverso de "Asignar a usuario existente"
+     (AsignarFiadoModal). El Realtime que ya escucha AuthContext/este
+     mismo panel (ver migración 0068) también refleja este cambio del
+     lado del cliente, con la animación de salida del botón. ---- */
+  const [quitandoFiadoId, setQuitandoFiadoId] = useState(null);
+  const quitarFiado = async (usuario) => {
+    setUsuarioActionError("");
+    setQuitandoFiadoId(usuario.id);
+
+    const { error } = await supabase.functions.invoke("manage-usuario", {
+      body: { action: "set-fiado", userId: usuario.id, habilitado: false },
+    });
+
+    setQuitandoFiadoId(null);
+
+    if (error) {
+      console.error("Error al quitar Fiados vía Edge Function:", error);
+      const body = await error.context?.json?.().catch(() => null);
+      setUsuarioActionError(body?.error || "No se pudo quitar Fiados. Intenta de nuevo.");
+      return;
+    }
+
+    setCajeros((prev) => prev.map((c) => (c.id === usuario.id ? { ...c, fiadoHabilitado: false } : c)));
+  };
+
   const resetCajeroForm = () => {
     setAddCajeroOpen(false);
     setNewCajeroNombre("");
@@ -9875,16 +9901,17 @@ export default function App() {
                         <div className="tz-history-row-head" style={{ cursor: "default" }}>
                           <Users size={14} />
                           <span>{c.nombre || "(sin nombre)"}</span>
-                          {c.role === "cliente" && c.fiadoHabilitado && (
-                            <span className="tz-metodo-tag tz-metodo-tag-fiado">Fiado</span>
-                          )}
-                          <span
-                            className={`tz-metodo-tag ${
-                              c.role === "cajero" ? "tz-metodo-tag-yape" : "tz-metodo-tag-otros"
-                            }`}
-                            style={{ marginLeft: "auto" }}
-                          >
-                            {c.role === "cajero" ? "Cajero" : "Cliente"}
+                          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+                            {c.role === "cliente" && c.fiadoHabilitado && (
+                              <span className="tz-metodo-tag tz-metodo-tag-fiado">Fiado</span>
+                            )}
+                            <span
+                              className={`tz-metodo-tag ${
+                                c.role === "cajero" ? "tz-metodo-tag-yape" : "tz-metodo-tag-otros"
+                              }`}
+                            >
+                              {c.role === "cajero" ? "Cajero" : "Cliente"}
+                            </span>
                           </span>
                         </div>
                         {c.role === "cajero" && (
@@ -9990,6 +10017,21 @@ export default function App() {
                           >
                             <Lock size={13} /> Cambiar PIN
                           </button>
+                          {c.role === "cliente" && c.fiadoHabilitado && (
+                            <button
+                              type="button"
+                              className="tz-camera-cancel tz-usuario-action-btn"
+                              onClick={() => quitarFiado(c)}
+                              disabled={quitandoFiadoId === c.id}
+                            >
+                              {quitandoFiadoId === c.id ? (
+                                <Loader2 size={13} className="tz-spin" />
+                              ) : (
+                                <UserCheck size={13} />
+                              )}
+                              Quitar Fiado
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="tz-camera-cancel tz-usuario-action-btn tz-usuario-delete-btn"

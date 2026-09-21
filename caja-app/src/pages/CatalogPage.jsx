@@ -83,6 +83,25 @@ export default function CatalogPage() {
     isCliente
   );
 
+  // Animación del botón "Fiados": 'hidden' (no renderizado) -> 'in'
+  // (recién asignado, pop de entrada) -> al QUITAR el fiado, primero
+  // 'out' (reproduce la animación en reversa) y RECIÉN AHÍ 'hidden' —
+  // sin este estado intermedio, tieneFiado pasando a false desmontaría
+  // el botón de golpe, sin poder verse ninguna salida animada.
+  const [fiadosAnim, setFiadosAnim] = useState(isCliente && tieneFiado ? "in" : "hidden");
+  useEffect(() => {
+    const mostrar = isCliente && tieneFiado;
+    setFiadosAnim((prev) => {
+      if (mostrar) return "in";
+      return prev === "hidden" ? "hidden" : "out";
+    });
+  }, [isCliente, tieneFiado]);
+  useEffect(() => {
+    if (fiadosAnim !== "out") return undefined;
+    const t = setTimeout(() => setFiadosAnim("hidden"), 600);
+    return () => clearTimeout(t);
+  }, [fiadosAnim]);
+
   /* ---- Fase 1 "Pedidos Delivery": carrito del cliente logueado.
      Mismo shape que 'selection' en App.jsx ({ productId: qty }) — un
      cliente sin sesión (o logueado pero no como 'cliente', ej. un
@@ -282,8 +301,10 @@ export default function CatalogPage() {
       <header className="tz-header">
         <div className="tz-header-row">
           <div className="tz-header-side tz-header-side-left">
-            {isCliente && tieneFiado && (
-              <span className="tz-fiados-pop-wrap">
+            {fiadosAnim !== "hidden" && (
+              <span
+                className={`tz-fiados-pop-wrap ${fiadosAnim === "out" ? "tz-fiados-pop-wrap-out" : ""}`}
+              >
                 <button
                   className="tz-header-btn"
                   onClick={handleFiadosClick}

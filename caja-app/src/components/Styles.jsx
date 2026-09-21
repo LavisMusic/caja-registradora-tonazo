@@ -218,6 +218,16 @@ export default function Styles() {
         60% { max-height: 80px; opacity: 1; transform: scale(1.08); }
         100% { max-height: 80px; opacity: 1; transform: scale(1); }
       }
+      /* Reverso al quitar Fiados — mismo "rebote" pero encogiendo, no
+         un simple fundido. */
+      .tz-fiados-pop-wrap-out {
+        animation-name: tz-fiados-pop-out;
+      }
+      @keyframes tz-fiados-pop-out {
+        0% { max-height: 80px; opacity: 1; transform: scale(1); }
+        40% { max-height: 60px; opacity: 1; transform: scale(1.08); }
+        100% { max-height: 0; opacity: 0; transform: scale(0.4); }
+      }
       .tz-header-center {
         flex: 1.6 1 0;
         min-width: 0;
@@ -3928,7 +3938,11 @@ export default function Styles() {
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
-        filter: drop-shadow(0 0 18px rgba(43,232,255,0.35));
+        /* text-shadow en vez de filter:drop-shadow — con
+           background-clip:text, drop-shadow recorta el glow al
+           bounding-box del texto en varios navegadores (bug de diseño
+           reportado: "cortes en los bordes"). text-shadow no lo sufre. */
+        text-shadow: 0 0 18px rgba(43,232,255,0.35);
       }
       .tz-brand-sub {
         text-align: center;
