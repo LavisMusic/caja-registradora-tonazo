@@ -1,7 +1,36 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { ShieldAlert } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
 const AuthContext = createContext(null);
+
+// Aviso a pantalla completa cuando el Admin elimina la cuenta MIENTRAS
+// la persona la sigue teniendo abierta en su dispositivo — mismo
+// patrón que TaxiAuthContext.jsx en taxi-pe-app.
+function CuentaEliminadaOverlay({ onCerrar }) {
+  return (
+    <div className="tz-modal-backdrop" style={{ zIndex: 999999 }}>
+      <div className="tz-modal" style={{ textAlign: "center" }} onClick={(e) => e.stopPropagation()}>
+        <ShieldAlert size={40} color="var(--danger, #ff5470)" style={{ margin: "0 auto" }} />
+        <h2 style={{ marginTop: 12 }}>Tu cuenta ha sido eliminada</h2>
+        <p className="tz-brand-sub" style={{ marginTop: 8 }}>
+          Un administrador eliminó esta cuenta. Si crees que es un error, comunícate con soporte.
+        </p>
+        <button
+          type="button"
+          className="tz-scan-btn tz-payment-save"
+          style={{ marginTop: 16, width: "100%" }}
+          onClick={() => {
+            onCerrar();
+            window.location.href = "/";
+          }}
+        >
+          Entendido
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function AuthProvider({ children }) {
   const [session, setSession] = useState(null);
@@ -11,6 +40,7 @@ export function AuthProvider({ children }) {
   // (no alcanza con tener cuenta — ver migración 0068). Solo tiene
   // sentido consultarlo para un rol 'cliente'.
   const [tieneFiado, setTieneFiado] = useState(false);
+  const [cuentaEliminada, setCuentaEliminada] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -98,6 +128,33 @@ export function AuthProvider({ children }) {
     };
   }, [session?.user?.id, profile?.role]);
 
+  // Cuenta eliminada por el Admin (manage-usuario action:'delete')
+  // MIENTRAS esta sesión sigue abierta en este dispositivo —
+  // profiles.id cascadea al borrar auth.users, así que basta con
+  // escuchar el DELETE de 'profiles' sobre la propia fila. Sin esto,
+  // la sesión local seguía "viva" (JWT de Supabase Auth no se invalida
+  // solo al borrar el usuario) mostrando datos de una cuenta que ya no
+  // existe hasta que alguien recargara a mano.
+  useEffect(() => {
+    if (!session?.user?.id) return undefined;
+    const channel = supabase
+      .channel(`profile-eliminado-${session.user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "profiles", filter: `id=eq.${session.user.id}` },
+        () => {
+          supabase.auth.signOut();
+          setSession(null);
+          setProfile(null);
+          setCuentaEliminada(true);
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id]);
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
@@ -123,7 +180,12 @@ export function AuthProvider({ children }) {
     signOut,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {cuentaEliminada && <CuentaEliminadaOverlay onCerrar={() => setCuentaEliminada(false)} />}
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

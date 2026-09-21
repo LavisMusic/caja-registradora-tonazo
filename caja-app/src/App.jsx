@@ -958,7 +958,7 @@ export default function App() {
   // Filtros del Gestor de Usuarios: por rol (todos/cajero/cliente), y
   // dentro de cada rol un sub-filtro propio — clientes por si pueden
   // fiar o no, cajeros por sucursal.
-  const [filtroRolUsuarios, setFiltroRolUsuarios] = useState("todos"); // 'todos' | 'cajero' | 'cliente'
+  const [filtroRolUsuarios, setFiltroRolUsuarios] = useState("cajero"); // 'cajero' | 'cliente'
   const [filtroFiadoUsuarios, setFiltroFiadoUsuarios] = useState("todos"); // 'todos' | 'con' | 'sin'
   const [filtroSucursalUsuarios, setFiltroSucursalUsuarios] = useState("todas");
   const [addCajeroOpen, setAddCajeroOpen] = useState(false);
@@ -5799,7 +5799,7 @@ export default function App() {
 
   const cajerosVisibles = useMemo(() => {
     return cajeros.filter((c) => {
-      if (filtroRolUsuarios !== "todos" && c.role !== filtroRolUsuarios) return false;
+      if (c.role !== filtroRolUsuarios) return false;
       if (c.role === "cliente" && filtroFiadoUsuarios !== "todos") {
         const puedeFiar = filtroFiadoUsuarios === "con";
         if (c.fiadoHabilitado !== puedeFiar) return false;
@@ -9864,7 +9864,6 @@ export default function App() {
 
               <div className="tz-gasto-tipo-buttons" style={{ marginBottom: 8 }}>
                 {[
-                  ["todos", "Todos"],
                   ["cajero", "Cajeros"],
                   ["cliente", "Clientes"],
                 ].map(([val, label]) => (
