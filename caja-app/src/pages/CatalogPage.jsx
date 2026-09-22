@@ -294,7 +294,7 @@ export default function CatalogPage() {
         <AnimacionNeonBienvenida
           eyebrow="✦ Bienvenido a Tonazo ✦"
           titulo={nombre}
-          descripcion="Ya podés comprar en la tienda — ¡Qué disfrutes! 😉"
+          descripcion="Ya puedes comprar en la tienda — ¡Qué disfrutes! 😉"
           onTerminar={marcarBienvenidaVista}
         />
       )}
