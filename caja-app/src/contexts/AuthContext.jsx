@@ -93,30 +93,49 @@ export function AuthProvider({ children }) {
     let active = true;
     setLoading(true);
 
-    supabase
-      .from("profiles")
-      .select("role, nombre, sucursal_id, caja_id")
-      .eq("id", session.user.id)
-      // maybeSingle (no single): 0 filas es un resultado VÁLIDO acá —
-      // significa que esta cuenta ya fue eliminada por el admin, no un
-      // error de red. single() lo hubiera reportado como error
-      // (PGRST116), indistinguible de una falla real.
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (!active) return;
-        if (error) {
-          console.error("Error cargando profile:", error);
-          setProfile(null);
-        } else if (!data) {
-          marcarCuentaEliminada();
-        } else {
-          setProfile(data);
-        }
-        setLoading(false);
-      });
+    const cargarProfile = () =>
+      supabase
+        .from("profiles")
+        .select("role, nombre, sucursal_id, caja_id")
+        .eq("id", session.user.id)
+        // maybeSingle (no single): 0 filas es un resultado VÁLIDO acá —
+        // significa que esta cuenta ya fue eliminada por el admin, no un
+        // error de red. single() lo hubiera reportado como error
+        // (PGRST116), indistinguible de una falla real.
+        .maybeSingle()
+        .then(({ data, error }) => {
+          if (!active) return;
+          if (error) {
+            console.error("Error cargando profile:", error);
+            setProfile(null);
+          } else if (!data) {
+            marcarCuentaEliminada();
+          } else {
+            setProfile(data);
+          }
+          setLoading(false);
+        });
+
+    cargarProfile();
+
+    // Con dos pestañas abiertas a la vez, probado en vivo (Taxi-PE):
+    // el navegador suspende/cierra el WebSocket de Realtime de la
+    // pestaña en segundo plano (o entra al back-forward cache), así
+    // que esa pestaña se pierde el DELETE en vivo del listener de más
+    // abajo. Sin este re-chequeo al volver a mirarla, se quedaba
+    // mostrando la cuenta borrada como si nada.
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") cargarProfile();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pageshow", cargarProfile);
+    window.addEventListener("focus", cargarProfile);
 
     return () => {
       active = false;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pageshow", cargarProfile);
+      window.removeEventListener("focus", cargarProfile);
     };
   }, [session?.user?.id, marcarCuentaEliminada]);
 
