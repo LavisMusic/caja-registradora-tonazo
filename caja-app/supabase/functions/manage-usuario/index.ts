@@ -19,7 +19,7 @@
 // se borra acá, solo pierde su acceso de login.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { mirrorCuentaATaxi } from "../_shared/mirrorTaxi.ts";
+import { mirrorCuentaATaxi, eliminarCuentaEnTaxi } from "../_shared/mirrorTaxi.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -122,8 +122,35 @@ Deno.serve(async (req) => {
   }
 
   if (action === "delete") {
+    // Capturar el whatsapp ANTES de borrar: unificación pasajero/cliente
+    // (ver 20260918140000_mirror_cuenta_caja.sql) — al eliminar un
+    // cliente acá hay que avisarle a Taxi-PE para que borre la misma
+    // cuenta ('usuarios' rol 'pasajero'), si no queda huérfana del otro
+    // lado. Después del deleteUser, clientes_fiado.auth_user_id ya
+    // quedó en NULL (on delete set null), así que hay que leerlo antes.
+    const { data: targetProfile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+
+    let telefonoParaEspejo: string | null = null;
+    if (targetProfile?.role === "cliente") {
+      const { data: cliente } = await admin
+        .from("clientes_fiado")
+        .select("whatsapp")
+        .eq("auth_user_id", userId)
+        .maybeSingle();
+      telefonoParaEspejo = cliente?.whatsapp || null;
+    }
+
     const { error } = await admin.auth.admin.deleteUser(userId);
     if (error) return json(500, { error: error.message || "No se pudo eliminar el usuario." });
+
+    if (telefonoParaEspejo) {
+      await eliminarCuentaEnTaxi({ telefono: telefonoParaEspejo });
+    }
+
     return json(200, { ok: true });
   }
 

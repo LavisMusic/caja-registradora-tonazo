@@ -70,3 +70,43 @@ export async function mirrorCuentaATaxi(params: {
     console.error("[mirrorCuentaATaxi] error de red", err);
   }
 }
+
+// Espejo de BORRADO (Caja -> Taxi-PE): el admin eliminó un cliente acá
+// -> borrar también su cuenta de 'pasajero' en Taxi-PE. Mismo patrón
+// best-effort que mirrorCuentaATaxi (no bloquea ni revierte nada del
+// lado de Caja si Taxi-PE no responde). Ver
+// 20260922130000_mirror_cuenta_eliminar.sql en taxi-pe-app.
+export async function eliminarCuentaEnTaxi(params: { telefono: string }): Promise<void> {
+  if (!WEBHOOK_SECRET) {
+    console.error("[eliminarCuentaEnTaxi] falta WEBHOOK_SECRET_CAJA_TO_TAXI — se omite el espejo.");
+    return;
+  }
+  try {
+    const eventId = crypto.randomUUID();
+    const sobre = JSON.stringify({
+      event_id: eventId,
+      event_type: "caja.mirror_cliente_eliminado",
+      occurred_at: new Date().toISOString(),
+      source: "caja",
+      data: { telefono: params.telefono },
+    });
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = await hmacB64(WEBHOOK_SECRET, `${ts}.${sobre}`);
+
+    const r = await fetch(TAXI_MIRROR_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Webhook-Id": eventId,
+        "X-Webhook-Timestamp": String(ts),
+        "X-Webhook-Signature": sig,
+      },
+      body: sobre,
+    });
+    if (!r.ok) {
+      console.error("[eliminarCuentaEnTaxi] Taxi-PE respondió", r.status, await r.text());
+    }
+  } catch (err) {
+    console.error("[eliminarCuentaEnTaxi] error de red", err);
+  }
+}
