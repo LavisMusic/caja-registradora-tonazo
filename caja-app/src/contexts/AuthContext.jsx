@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
@@ -48,6 +48,21 @@ export function AuthProvider({ children }) {
   const [tieneFiado, setTieneFiado] = useState(false);
   const [cuentaEliminada, setCuentaEliminada] = useState(false);
 
+  // Único punto de entrada para "esta cuenta ya no existe" — lo usan
+  // TANTO el listener de Realtime (la cuenta se borra MIENTRAS esta
+  // pestaña sigue conectada) COMO el fetch inicial de perfil (la
+  // cuenta YA estaba borrada de antes: alguien reabre/recarga la
+  // pestaña después de que el admin la eliminó — un DELETE que ya
+  // pasó es invisible para un canal de Realtime que recién se
+  // suscribe ahora, así que antes esto solo hacía setProfile(null) en
+  // silencio, sin avisar nada ni cerrar la sesión).
+  const marcarCuentaEliminada = useCallback(() => {
+    supabase.auth.signOut();
+    setSession(null);
+    setProfile(null);
+    setCuentaEliminada(true);
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -82,12 +97,18 @@ export function AuthProvider({ children }) {
       .from("profiles")
       .select("role, nombre, sucursal_id, caja_id")
       .eq("id", session.user.id)
-      .single()
+      // maybeSingle (no single): 0 filas es un resultado VÁLIDO acá —
+      // significa que esta cuenta ya fue eliminada por el admin, no un
+      // error de red. single() lo hubiera reportado como error
+      // (PGRST116), indistinguible de una falla real.
+      .maybeSingle()
       .then(({ data, error }) => {
         if (!active) return;
         if (error) {
           console.error("Error cargando profile:", error);
           setProfile(null);
+        } else if (!data) {
+          marcarCuentaEliminada();
         } else {
           setProfile(data);
         }
@@ -97,7 +118,7 @@ export function AuthProvider({ children }) {
     return () => {
       active = false;
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, marcarCuentaEliminada]);
 
   useEffect(() => {
     if (!session?.user?.id || profile?.role !== "cliente") {
@@ -148,18 +169,13 @@ export function AuthProvider({ children }) {
       .on(
         "postgres_changes",
         { event: "DELETE", schema: "public", table: "profiles", filter: `id=eq.${session.user.id}` },
-        () => {
-          supabase.auth.signOut();
-          setSession(null);
-          setProfile(null);
-          setCuentaEliminada(true);
-        }
+        marcarCuentaEliminada
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, marcarCuentaEliminada]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
