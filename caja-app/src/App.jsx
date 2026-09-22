@@ -959,7 +959,7 @@ export default function App() {
   // dentro de cada rol un sub-filtro propio — clientes por si pueden
   // fiar o no, cajeros por sucursal.
   const [filtroRolUsuarios, setFiltroRolUsuarios] = useState("cajero"); // 'cajero' | 'cliente'
-  const [filtroFiadoUsuarios, setFiltroFiadoUsuarios] = useState("todos"); // 'todos' | 'con' | 'sin'
+  const [filtroFiadoUsuarios, setFiltroFiadoUsuarios] = useState("con"); // 'con' | 'sin'
   const [filtroSucursalUsuarios, setFiltroSucursalUsuarios] = useState("todas");
   const [addCajeroOpen, setAddCajeroOpen] = useState(false);
   const [newCajeroNombre, setNewCajeroNombre] = useState("");
@@ -5789,6 +5789,46 @@ export default function App() {
           );
         }
       )
+      // Altas nuevas (auto-registro del cliente, "Añadir Cliente"/
+      // "Añadir cajero" de este mismo panel desde OTRA sesión de admin,
+      // o el propio create-cliente de acá) — sin esto había que cerrar
+      // y volver a abrir Usuarios para verlas. Nace con fiado_habilitado
+      // en false SIEMPRE (default real de la columna, migración 0068),
+      // así que no hace falta una consulta aparte para saberlo.
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "profiles" },
+        (payload) => {
+          const row = payload.new;
+          if (!row || !["cajero", "cliente"].includes(row.role)) return;
+          setCajeros((prev) =>
+            prev.some((c) => c.id === row.id)
+              ? prev
+              : [
+                  ...prev,
+                  {
+                    id: row.id,
+                    nombre: row.nombre,
+                    role: row.role,
+                    sucursalId: row.sucursal_id || null,
+                    cajaId: row.caja_id || null,
+                    fiadoHabilitado: false,
+                  },
+                ]
+          );
+        }
+      )
+      // Bajas (eliminado desde este mismo panel, desde OTRA sesión de
+      // admin, o directo desde el Table Editor) — mismo motivo.
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "profiles" },
+        (payload) => {
+          const oldId = payload.old?.id;
+          if (!oldId) return;
+          setCajeros((prev) => prev.filter((c) => c.id !== oldId));
+        }
+      )
       .subscribe();
 
     return () => {
@@ -5800,10 +5840,7 @@ export default function App() {
   const cajerosVisibles = useMemo(() => {
     return cajeros.filter((c) => {
       if (c.role !== filtroRolUsuarios) return false;
-      if (c.role === "cliente" && filtroFiadoUsuarios !== "todos") {
-        const puedeFiar = filtroFiadoUsuarios === "con";
-        if (c.fiadoHabilitado !== puedeFiar) return false;
-      }
+      if (c.role === "cliente" && c.fiadoHabilitado !== (filtroFiadoUsuarios === "con")) return false;
       if (c.role === "cajero" && filtroSucursalUsuarios !== "todas") {
         if (c.sucursalId !== filtroSucursalUsuarios) return false;
       }
@@ -9881,7 +9918,6 @@ export default function App() {
               {filtroRolUsuarios === "cliente" && (
                 <div className="tz-gasto-tipo-buttons" style={{ marginBottom: 12 }}>
                   {[
-                    ["todos", "Todos"],
                     ["con", "Pueden fiar"],
                     ["sin", "Sin fiado"],
                   ].map(([val, label]) => (
@@ -10082,14 +10118,14 @@ export default function App() {
                 </ul>
               )}
 
-              {!addCajeroOpen ? (
+              {filtroRolUsuarios === "cajero" && !addCajeroOpen ? (
                 <button
                   className="tz-scan-btn tz-add-entry-toggle"
                   onClick={() => setAddCajeroOpen(true)}
                 >
                   <Plus size={16} /> Añadir cajero
                 </button>
-              ) : (
+              ) : filtroRolUsuarios === "cajero" ? (
                 <div className="tz-add-entry">
                   <label className="tz-field-label">Nombre</label>
                   <input
@@ -10196,6 +10232,58 @@ export default function App() {
                           <Check size={16} /> Guardar
                         </>
                       )}
+                    </button>
+                  </div>
+                </div>
+              ) : !addClienteOpen ? (
+                <button
+                  className="tz-scan-btn tz-add-entry-toggle"
+                  onClick={() => setAddClienteOpen(true)}
+                >
+                  <Plus size={16} /> Añadir Cliente
+                </button>
+              ) : (
+                <div className="tz-add-entry">
+                  <label className="tz-field-label">Nombre del cliente</label>
+                  <input
+                    type="text"
+                    autoFocus
+                    className="tz-text-input"
+                    placeholder="Ej. Juan Pérez"
+                    value={newClienteName}
+                    onChange={(e) => setNewClienteName(e.target.value)}
+                  />
+                  <label className="tz-field-label">
+                    Celular (será su usuario para iniciar sesión)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="tz-text-input"
+                    placeholder="999999999"
+                    value={newClienteWhatsapp}
+                    onChange={(e) => setNewClienteWhatsapp(e.target.value)}
+                  />
+                  <p className="tz-field-hint">
+                    El cliente crea su propio PIN la primera vez que inicia sesión con este
+                    celular. Nace sin Fiados habilitado — se asigna aparte, fila por fila.
+                  </p>
+                  {clienteError && <p className="tz-error">{clienteError}</p>}
+                  <div className="tz-add-entry-actions">
+                    <button className="tz-camera-cancel" onClick={resetClienteForm}>
+                      Cancelar
+                    </button>
+                    <button
+                      className="tz-pw-submit tz-payment-save"
+                      onClick={saveCliente}
+                      disabled={clienteSaving}
+                    >
+                      {clienteSaving ? (
+                        <Loader2 size={16} className="tz-spin" />
+                      ) : (
+                        <Save size={16} />
+                      )}
+                      Guardar
                     </button>
                   </div>
                 </div>
@@ -10441,26 +10529,18 @@ export default function App() {
                 </div>
               )}
 
-              {clientesVisibles.length === 0 && !addClienteOpen ? (
+              {clientesVisibles.length === 0 ? (
                 /* ---- estado vacío ---- */
                 <div className="tz-libreta-empty">
                   <p className="tz-method-history-empty">
                     No hay cuentas por cobrar activas.
                   </p>
-                  <div className="tz-gasto-tipo-buttons">
-                    <button
-                      className="tz-scan-btn tz-add-entry-toggle"
-                      onClick={() => setAddClienteOpen(true)}
-                    >
-                      <Plus size={16} /> Añadir cuenta nueva
-                    </button>
-                    <button
-                      className="tz-scan-btn tz-add-entry-toggle"
-                      onClick={() => setAsignarFiadoOpen(true)}
-                    >
-                      <UserCheck size={16} /> Asignar a usuario existente
-                    </button>
-                  </div>
+                  <button
+                    className="tz-scan-btn tz-add-entry-toggle"
+                    onClick={() => setAsignarFiadoOpen(true)}
+                  >
+                    <UserCheck size={16} /> Asignar a usuario existente
+                  </button>
                 </div>
               ) : (
                 <>
@@ -10477,68 +10557,17 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* ---- agregar cliente ---- */}
-                  {!addClienteOpen ? (
-                    <div className="tz-gasto-tipo-buttons">
-                      <button
-                        className="tz-scan-btn tz-add-entry-toggle"
-                        onClick={() => setAddClienteOpen(true)}
-                      >
-                        <Plus size={16} /> Añadir cuenta nueva
-                      </button>
-                      <button
-                        className="tz-scan-btn tz-add-entry-toggle"
-                        onClick={() => setAsignarFiadoOpen(true)}
-                      >
-                        <UserCheck size={16} /> Asignar a usuario existente
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="tz-add-entry">
-                      <label className="tz-field-label">Nombre del cliente</label>
-                      <input
-                        type="text"
-                        autoFocus
-                        className="tz-text-input"
-                        placeholder="Ej. Juan Pérez"
-                        value={newClienteName}
-                        onChange={(e) => setNewClienteName(e.target.value)}
-                      />
-                      <label className="tz-field-label">
-                        Celular (será su usuario para iniciar sesión)
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="tz-text-input"
-                        placeholder="999999999"
-                        value={newClienteWhatsapp}
-                        onChange={(e) => setNewClienteWhatsapp(e.target.value)}
-                      />
-                      <p className="tz-field-hint">
-                        El cliente crea su propio PIN la primera vez que inicia sesión con este
-                        celular.
-                      </p>
-                      {clienteError && <p className="tz-error">{clienteError}</p>}
-                      <div className="tz-add-entry-actions">
-                        <button className="tz-camera-cancel" onClick={resetClienteForm}>
-                          Cancelar
-                        </button>
-                        <button
-                          className="tz-pw-submit tz-payment-save"
-                          onClick={saveCliente}
-                          disabled={clienteSaving}
-                        >
-                          {clienteSaving ? (
-                            <Loader2 size={16} className="tz-spin" />
-                          ) : (
-                            <Save size={16} />
-                          )}
-                          Guardar
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  {/* ---- agregar cliente: se mudó al Gestor de Usuarios
+                     ("Añadir Cliente", tab Clientes) — acá solo queda
+                     asignar fiado a alguien que YA tiene cuenta. ---- */}
+                  <div className="tz-gasto-tipo-buttons">
+                    <button
+                      className="tz-scan-btn tz-add-entry-toggle"
+                      onClick={() => setAsignarFiadoOpen(true)}
+                    >
+                      <UserCheck size={16} /> Asignar a usuario existente
+                    </button>
+                  </div>
 
                   {/* ---- lista de clientes ---- */}
                   {clientesVisibles.length > 0 && (

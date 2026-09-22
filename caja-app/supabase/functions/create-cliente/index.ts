@@ -199,11 +199,11 @@ Deno.serve(async (req) => {
 
   // 5) clientes_fiado row — reutiliza el esquema existente (whatsapp =
   // el mismo celular usado para el login). fiado_habilitado siempre
-  // true acá: esta función solo la llama un admin/cajero ya autenticado
-  // (ver el chequeo de callerRole arriba) creando la cuenta A PROPÓSITO
-  // desde la Libreta de Fiados — a diferencia de registro-cliente
-  // (auto-registro público), que nace sin fiado hasta que el admin lo
-  // asigne.
+  // false acá: esta función ya no es un flujo "de Fiados" (el botón
+  // que la llamaba se mudó del Gestor de Fiados al Gestor de Usuarios,
+  // "Añadir Cliente", de alta general) — el fiado se asigna aparte,
+  // fila por fila, mismo criterio que registro-cliente (auto-registro
+  // público).
   const { data: clienteRow, error: clienteErr } = await admin
     .from("clientes_fiado")
     .insert({
@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
       whatsapp: celular,
       fecha: Date.now(),
       auth_user_id: newUserId,
-      fiado_habilitado: true,
+      fiado_habilitado: false,
     })
     .select()
     .single();
