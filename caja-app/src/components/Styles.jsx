@@ -2708,14 +2708,22 @@ export default function Styles() {
          mismo círculo que .tz-admin-filter-add-btn, pero con el logo
          de la otra app adentro en vez de un ícono, sin texto (pedido
          explícito). Abre en pestaña nueva, no toca la sesión de Caja. */
+      /* Mismas proporciones que .tz-header-saldo/.tz-stat-chip (el
+         recuadro de créditos/membresía del header) — antes era un
+         círculo de 40x40; ahora un rectángulo del mismo ancho/alto/
+         radio de borde que ese badge, para que se vean "del mismo
+         juego" aunque uno tenga texto y el otro solo el logo.
+         margin-left lo separa del grupo Sucursal de al lado (antes
+         quedaban pegados, sin aire entre los dos). */
       .tz-admin-filter-taxipe-btn {
         flex: 0 0 auto;
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 40px;
-        height: 40px;
-        border-radius: 999px;
+        width: 87px;
+        height: 62px;
+        margin-left: 14px;
+        border-radius: 12px;
         background: rgba(43,232,255,0.1);
         border: 1px solid rgba(43,232,255,0.4);
         cursor: pointer;
@@ -2728,8 +2736,8 @@ export default function Styles() {
         box-shadow: 0 0 14px rgba(43,232,255,0.4);
       }
       .tz-admin-filter-taxipe-btn img {
-        width: 26px;
-        height: 26px;
+        width: 34px;
+        height: 34px;
         object-fit: contain;
         border-radius: 50%;
       }
@@ -2756,7 +2764,7 @@ export default function Styles() {
            de alto (créditos) o el texto de vencimiento es más largo
            (membresía), a diferencia de un top fijo calculado a mano
            restando la mitad del alto. */
-        top: 167px;
+        top: 221px;
         transform: translateY(-50%);
         right: 0;
         min-width: 80px;
