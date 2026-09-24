@@ -2733,34 +2733,18 @@ export default function Styles() {
         border-radius: 50%;
       }
 
-      /* Mini-badge de membresía+créditos (cliente) — versión chica del
-         tz-stat-chip que ya usa el conductor en Taxi-PE, pensada para
-         vivir debajo del botón Login en la esquina superior derecha del
-         header, sin competir en tamaño con nada del layout existente. */
+      /* Badge de membresía/créditos (cliente) — mismo tz-stat-chip que
+         ya usa el conductor en Taxi-PE para este mismo par (Créditos/
+         Vigencia), solo que acá se muestra UNO SOLO (el que corresponda
+         según lo que el cliente tiene) en vez de los dos juntos. Vive
+         como segundo renglón de la columna derecha del header, a la
+         altura de "Compra Ya" del centro — tz-header-side-right ya es
+         flex-direction:column + align-items:flex-end, así que con
+         sumarlo ahí alcanza para que quede pegado al lateral derecho.
+         min-width fija el tamaño para que no se vea como una migaja al
+         lado del botón Login. */
       .tz-header-saldo {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-top: 4px;
-      }
-      .tz-header-saldo-chip {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        padding: 3px 8px;
-        border-radius: 999px;
-        background: rgba(43,232,255,0.08);
-        border: 1px solid rgba(43,232,255,0.3);
-        font-family: 'Rajdhani', sans-serif;
-        font-weight: 700;
-        font-size: 11px;
-        color: var(--cyan);
-        white-space: nowrap;
-      }
-      .tz-header-saldo-chip-membresia-activa {
-        background: rgba(70,230,150,0.1);
-        border-color: rgba(70,230,150,0.4);
-        color: var(--green);
+        min-width: 96px;
       }
 
       /* Efecto de serpentinas (Confetti.jsx) — piezas con

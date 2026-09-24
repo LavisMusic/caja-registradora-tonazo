@@ -371,17 +371,26 @@ export default function CatalogPage() {
                 <span className="tz-header-btn-label">Login</span>
               </button>
             )}
-            {isCliente && session && saldoTaxi && (
-              <div className="tz-header-saldo">
-                <span className="tz-header-saldo-chip">
-                  <CreditCard size={11} /> {saldoTaxi.creditos_disponibles ?? 0}
+            {/* Mismo tz-stat-chip que usa el conductor en Taxi-PE para
+               este par (Créditos/Vigencia) — acá se muestra UNO SOLO,
+               el que corresponda a lo que el cliente tiene: si tiene
+               membresía vigente, esa; si no, sus créditos (si tiene
+               algo); si no tiene ninguno de los dos, no se muestra
+               nada. */}
+            {isCliente && session && saldoTaxi && membresiaTaxiVigente && (
+              <div className="tz-header-saldo tz-stat-chip tz-stat-chip-green">
+                <span className="tz-stat-label">
+                  <CalendarClock size={13} /> Vigencia
                 </span>
-                <span
-                  className={`tz-header-saldo-chip ${membresiaTaxiVigente ? "tz-header-saldo-chip-membresia-activa" : ""}`}
-                >
-                  <CalendarClock size={11} />
-                  {membresiaTaxiVigente ? formatDate(saldoTaxi.membresia_vencimiento) : "Sin membresía"}
+                <span className="tz-stat-value tz-green">{formatDate(saldoTaxi.membresia_vencimiento)}</span>
+              </div>
+            )}
+            {isCliente && session && saldoTaxi && !membresiaTaxiVigente && Number(saldoTaxi.creditos_disponibles) > 0 && (
+              <div className="tz-header-saldo tz-stat-chip">
+                <span className="tz-stat-label">
+                  <CreditCard size={13} /> Créditos
                 </span>
+                <span className="tz-stat-value tz-cyan">{saldoTaxi.creditos_disponibles}</span>
               </div>
             )}
           </div>
