@@ -181,6 +181,7 @@ export default function Styles() {
          El centro usa un flex-grow mayor para quedarse con más
          espacio (no necesita ser exactamente 1/3). */
       .tz-header-row {
+        position: relative;
         width: 100%;
         max-width: 100%;
         margin: 0 auto;
@@ -2737,17 +2738,21 @@ export default function Styles() {
          ya usa el conductor en Taxi-PE para este mismo par (Créditos/
          Vigencia), solo que acá se muestra UNO SOLO (el que corresponda
          según lo que el cliente tiene) en vez de los dos juntos, y más
-         chico que el tamaño de base. Vive como segundo renglón de la
-         columna derecha del header — tz-header-side-right ya es
-         flex-direction:column + align-items:flex-end, así que con
-         sumarlo ahí alcanza para que quede pegado al lateral derecho.
-         margin-top lo baja a la altura de "Compra Ya" del centro (el
-         logo es más alto que el botón Salir, así que sin este empuje
-         quedaba más arriba de esa línea). min-width evita que se vea
-         como una migaja al lado del botón Login. */
+         chico que el tamaño de base.
+         position:absolute (contra tz-header-row, ver position:relative
+         ahí) A PROPÓSITO: si viviera en el flujo normal de
+         tz-header-side-right (junto al botón Salir), ese botón dejaría
+         de ser el único hijo de esa columna y perdería el centrado
+         vertical que tenía antes de que existiera este badge — sacarlo
+         del flujo deja al botón Salir intacto en su posición de
+         siempre, y este badge fijo a la altura de "Compra Ya" (top/right
+         medidos en vivo con getBoundingClientRect, no una estimación a
+         ojo). */
       .tz-header-saldo {
+        position: absolute;
+        top: 94px;
+        right: 0;
         min-width: 80px;
-        margin-top: 38px;
         padding: 6px 7px;
         gap: 2px;
       }
