@@ -13,6 +13,14 @@
 //     historial de fiados/ventas en clientes_fiado se preserva vía
 //     ON DELETE SET NULL). Ver 20260922130000_mirror_cuenta_eliminar.sql
 //     en taxi-pe-app.
+//   - `taxi.saldo_pasajero`: cambiaron los créditos o el vencimiento de
+//     membresía de ese pasajero (Recarga Rápida del repartidor) ->
+//     copiar el valor a clientes_fiado.creditos_disponibles/
+//     .membresia_vencimiento (migración 0071). El frontend de
+//     CatalogPage.jsx escucha el UPDATE de esta fila por Realtime NATIVO
+//     de este proyecto — recién con esta copia local puede enterarse al
+//     instante, ya que Caja no puede suscribirse por Realtime a la base
+//     de Taxi-PE. Ver 20260924100000_saldo_pasajero_realtime.sql.
 //
 // Deploy: supabase functions deploy webhook-taxi-mirror-cuenta --no-verify-jwt --project-ref xaerfywydzwifohjsvwa
 
@@ -22,6 +30,32 @@ import { jsonResponse, verifyWebhook, type WebhookEnvelope } from "../_shared/we
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET_TAXI_TO_CAJA")!;
+
+async function manejarSaldo(env: WebhookEnvelope): Promise<Response> {
+  const data = env.data as Record<string, unknown>;
+  const telefono = String(data?.telefono || "").trim();
+  if (!telefono) return jsonResponse(400, { error: "payload inválido" });
+
+  const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+
+  const { data: actualizado, error: updErr } = await admin
+    .from("clientes_fiado")
+    .update({
+      creditos_disponibles: Number(data?.creditos_disponibles) || 0,
+      membresia_vencimiento: (data?.membresia_vencimiento as string | null) ?? null,
+    })
+    .eq("whatsapp", telefono)
+    .select("id");
+
+  if (updErr) {
+    console.error("[webhook-taxi-mirror-cuenta] error actualizando saldo:", updErr);
+    return jsonResponse(500, { error: "no se pudo actualizar el saldo" });
+  }
+
+  // Sin fila con ese whatsapp: el pasajero nunca tuvo cuenta en Caja —
+  // no es un error, no hay dónde guardar el saldo todavía.
+  return jsonResponse(200, { status: "ok", accion: actualizado?.length ? "actualizado" : "sin_match" });
+}
 
 async function manejarEliminado(env: WebhookEnvelope): Promise<Response> {
   const telefono = String((env.data as Record<string, unknown>)?.telefono || "").trim();
@@ -66,6 +100,9 @@ Deno.serve(async (req) => {
 
   if (env.event_type === "taxi.mirror_pasajero_eliminado") {
     return await manejarEliminado(env);
+  }
+  if (env.event_type === "taxi.saldo_pasajero") {
+    return await manejarSaldo(env);
   }
   if (env.event_type !== "taxi.mirror_pasajero") {
     return jsonResponse(400, { error: `event_type inesperado: ${env.event_type}` });

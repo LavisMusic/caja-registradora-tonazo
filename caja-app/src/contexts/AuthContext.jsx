@@ -46,6 +46,12 @@ export function AuthProvider({ children }) {
   // (no alcanza con tener cuenta — ver migración 0068). Solo tiene
   // sentido consultarlo para un rol 'cliente'.
   const [tieneFiado, setTieneFiado] = useState(false);
+  // Saldo de Taxi-PE (unificación pasajero/cliente) — copia local en
+  // clientes_fiado que Taxi-PE mantiene al día por webhook cada vez que
+  // cambia (migración 0071/saldo_pasajero_realtime en taxi-pe-app). Se
+  // lee de la MISMA fila/canal que tieneFiado, así no hace falta una
+  // consulta ni una suscripción aparte.
+  const [saldoTaxi, setSaldoTaxi] = useState(null);
   const [cuentaEliminada, setCuentaEliminada] = useState(false);
 
   // Único punto de entrada para "esta cuenta ya no existe" — lo usan
@@ -142,21 +148,29 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!session?.user?.id || profile?.role !== "cliente") {
       setTieneFiado(false);
+      setSaldoTaxi(null);
       return undefined;
     }
     let active = true;
     supabase
       .from("clientes_fiado")
-      .select("fiado_habilitado")
+      .select("fiado_habilitado, creditos_disponibles, membresia_vencimiento")
       .eq("auth_user_id", session.user.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (active) setTieneFiado(data?.fiado_habilitado === true);
+        if (!active) return;
+        setTieneFiado(data?.fiado_habilitado === true);
+        setSaldoTaxi(
+          data ? { creditos_disponibles: data.creditos_disponibles, membresia_vencimiento: data.membresia_vencimiento } : null
+        );
       });
 
     // Realtime: el admin puede asignar Fiados (AsignarFiadoModal) MIENTRAS
     // este mismo cliente sigue con la tienda abierta — sin esto, recién
-    // se enteraba recargando la página.
+    // se enteraba recargando la página. Mismo canal para el saldo de
+    // Taxi-PE (creditos_disponibles/membresia_vencimiento): Taxi-PE
+    // actualiza ESTA MISMA fila por webhook apenas cambia algo, así que
+    // no hace falta un segundo canal.
     const channel = supabase
       .channel(`tiene-fiado-${session.user.id}`)
       .on(
@@ -164,6 +178,10 @@ export function AuthProvider({ children }) {
         { event: "UPDATE", schema: "public", table: "clientes_fiado", filter: `auth_user_id=eq.${session.user.id}` },
         (payload) => {
           setTieneFiado(payload.new?.fiado_habilitado === true);
+          setSaldoTaxi({
+            creditos_disponibles: payload.new?.creditos_disponibles,
+            membresia_vencimiento: payload.new?.membresia_vencimiento,
+          });
         }
       )
       .subscribe();
@@ -218,6 +236,7 @@ export function AuthProvider({ children }) {
     isCliente: profile?.role === "cliente",
     isCajero: profile?.role === "cajero",
     tieneFiado,
+    saldoTaxi,
     signOut,
   };
 

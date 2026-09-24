@@ -82,7 +82,7 @@ function formatDescuentoBadge(product) {
 // de venta. Los productos se ven, no se seleccionan: sin onClick, sin
 // checkbox, sin selector de cantidad (ver .tz-card-readonly abajo).
 export default function CatalogPage() {
-  const { session, loading: authLoading, signOut, isCliente, tieneFiado, nombre } = useAuth();
+  const { session, loading: authLoading, signOut, isCliente, tieneFiado, nombre, saldoTaxi } = useAuth();
   const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
     session?.user?.id,
     isCliente
@@ -107,27 +107,10 @@ export default function CatalogPage() {
     return () => clearTimeout(t);
   }, [fiadosAnim]);
 
-  // Saldo de Taxi-PE (unificación pasajero/cliente) — consulta en vivo,
-  // nada se guarda acá: el crédito/membresía real vive en la base de
-  // Taxi-PE, esto solo pinta el mini-badge del header. Best-effort: si
-  // la Edge Function falla o Taxi-PE no responde, el badge no se
-  // muestra en vez de romper la carga de la tienda.
-  const [saldoTaxi, setSaldoTaxi] = useState(null);
-  useEffect(() => {
-    if (!isCliente || !session?.user?.id) {
-      setSaldoTaxi(null);
-      return undefined;
-    }
-    let active = true;
-    supabase.functions.invoke("saldo-taxi-pe", { body: {} }).then(({ data, error }) => {
-      if (!active) return;
-      if (!error && data) setSaldoTaxi(data);
-    });
-    return () => {
-      active = false;
-    };
-  }, [isCliente, session?.user?.id]);
-
+  // Saldo de Taxi-PE (unificación pasajero/cliente) — ya viene de
+  // useAuth() (copia local en clientes_fiado, mantenida al día por
+  // Realtime nativo de este proyecto — ver AuthContext.jsx). Acá solo
+  // se deriva si la membresía sigue vigente.
   const membresiaTaxiVigente =
     !!saldoTaxi?.membresia_vencimiento && new Date(saldoTaxi.membresia_vencimiento) > new Date();
 
