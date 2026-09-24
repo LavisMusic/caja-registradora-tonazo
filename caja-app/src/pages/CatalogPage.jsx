@@ -23,8 +23,7 @@ import logoTaxiPe from "../assets/logo-taxipe.png";
 
 // URL pública de Taxi-PE — botón del filtro abre en pestaña nueva, no
 // toca la sesión de Caja para nada (login ya unificado del otro lado).
-// TODO: reemplazar por la URL real de producción (VITE_TAXI_PE_URL).
-const TAXI_PE_URL = import.meta.env.VITE_TAXI_PE_URL || "";
+const TAXI_PE_URL = import.meta.env.VITE_TAXI_PE_URL || "https://taxi-pe-app.vercel.app";
 
 // Copiado tal cual de App.jsx: mismo cálculo, mismo criterio de
 // "disponible" — el catálogo público necesita saber si algo está
