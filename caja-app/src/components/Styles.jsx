@@ -2750,7 +2750,14 @@ export default function Styles() {
          ojo). */
       .tz-header-saldo {
         position: absolute;
-        top: 94px;
+        /* 167px = borde inferior de .tz-subtitle medido en vivo contra
+           tz-header-row (getBoundingClientRect) — translateY(-50%)
+           centra el badge sobre ESA línea sin importar si mide 2 líneas
+           de alto (créditos) o el texto de vencimiento es más largo
+           (membresía), a diferencia de un top fijo calculado a mano
+           restando la mitad del alto. */
+        top: 167px;
+        transform: translateY(-50%);
         right: 0;
         min-width: 80px;
         padding: 6px 7px;
