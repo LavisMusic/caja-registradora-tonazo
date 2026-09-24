@@ -2736,15 +2736,27 @@ export default function Styles() {
       /* Badge de membresía/créditos (cliente) — mismo tz-stat-chip que
          ya usa el conductor en Taxi-PE para este mismo par (Créditos/
          Vigencia), solo que acá se muestra UNO SOLO (el que corresponda
-         según lo que el cliente tiene) en vez de los dos juntos. Vive
-         como segundo renglón de la columna derecha del header, a la
-         altura de "Compra Ya" del centro — tz-header-side-right ya es
+         según lo que el cliente tiene) en vez de los dos juntos, y más
+         chico que el tamaño de base. Vive como segundo renglón de la
+         columna derecha del header — tz-header-side-right ya es
          flex-direction:column + align-items:flex-end, así que con
          sumarlo ahí alcanza para que quede pegado al lateral derecho.
-         min-width fija el tamaño para que no se vea como una migaja al
-         lado del botón Login. */
+         margin-top lo baja a la altura de "Compra Ya" del centro (el
+         logo es más alto que el botón Salir, así que sin este empuje
+         quedaba más arriba de esa línea). min-width evita que se vea
+         como una migaja al lado del botón Login. */
       .tz-header-saldo {
-        min-width: 96px;
+        min-width: 80px;
+        margin-top: 38px;
+        padding: 6px 7px;
+        gap: 2px;
+      }
+      .tz-header-saldo .tz-stat-label {
+        font-size: 8px;
+        gap: 3px;
+      }
+      .tz-header-saldo .tz-stat-value {
+        font-size: 12px;
       }
 
       /* Efecto de serpentinas (Confetti.jsx) — piezas con
