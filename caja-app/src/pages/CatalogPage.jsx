@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList } from "lucide-react";
+import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CreditCard, CalendarClock } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCatalog } from "../hooks/useCatalog";
 import { usePedidosBadge } from "../hooks/usePedidosBadge";
@@ -16,9 +16,15 @@ import LogoEasterEgg from "../components/LogoEasterEgg";
 import ScrollSpySidebar from "../components/ScrollSpySidebar";
 import PedidoCheckoutModal from "../components/PedidoCheckoutModal";
 import MisPedidosModal from "../components/MisPedidosModal";
-import { formatSoles } from "../utils/format";
+import { formatSoles, formatDate } from "../utils/format";
 import { safeGetItem, safeSetItem } from "../utils/safeStorage";
 import logo from "../assets/logo.png";
+import logoTaxiPe from "../assets/logo-taxipe.png";
+
+// URL pública de Taxi-PE — botón del filtro abre en pestaña nueva, no
+// toca la sesión de Caja para nada (login ya unificado del otro lado).
+// TODO: reemplazar por la URL real de producción (VITE_TAXI_PE_URL).
+const TAXI_PE_URL = import.meta.env.VITE_TAXI_PE_URL || "";
 
 // Copiado tal cual de App.jsx: mismo cálculo, mismo criterio de
 // "disponible" — el catálogo público necesita saber si algo está
@@ -101,6 +107,30 @@ export default function CatalogPage() {
     const t = setTimeout(() => setFiadosAnim("hidden"), 600);
     return () => clearTimeout(t);
   }, [fiadosAnim]);
+
+  // Saldo de Taxi-PE (unificación pasajero/cliente) — consulta en vivo,
+  // nada se guarda acá: el crédito/membresía real vive en la base de
+  // Taxi-PE, esto solo pinta el mini-badge del header. Best-effort: si
+  // la Edge Function falla o Taxi-PE no responde, el badge no se
+  // muestra en vez de romper la carga de la tienda.
+  const [saldoTaxi, setSaldoTaxi] = useState(null);
+  useEffect(() => {
+    if (!isCliente || !session?.user?.id) {
+      setSaldoTaxi(null);
+      return undefined;
+    }
+    let active = true;
+    supabase.functions.invoke("saldo-taxi-pe", { body: {} }).then(({ data, error }) => {
+      if (!active) return;
+      if (!error && data) setSaldoTaxi(data);
+    });
+    return () => {
+      active = false;
+    };
+  }, [isCliente, session?.user?.id]);
+
+  const membresiaTaxiVigente =
+    !!saldoTaxi?.membresia_vencimiento && new Date(saldoTaxi.membresia_vencimiento) > new Date();
 
   /* ---- Fase 1 "Pedidos Delivery": carrito del cliente logueado.
      Mismo shape que 'selection' en App.jsx ({ productId: qty }) — un
@@ -359,6 +389,19 @@ export default function CatalogPage() {
                 <span className="tz-header-btn-label">Login</span>
               </button>
             )}
+            {isCliente && session && saldoTaxi && (
+              <div className="tz-header-saldo">
+                <span className="tz-header-saldo-chip">
+                  <CreditCard size={11} /> {saldoTaxi.creditos_disponibles ?? 0}
+                </span>
+                <span
+                  className={`tz-header-saldo-chip ${membresiaTaxiVigente ? "tz-header-saldo-chip-membresia-activa" : ""}`}
+                >
+                  <CalendarClock size={11} />
+                  {membresiaTaxiVigente ? formatDate(saldoTaxi.membresia_vencimiento) : "Sin membresía"}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -407,6 +450,18 @@ export default function CatalogPage() {
               ))}
             </select>
           </div>
+          {TAXI_PE_URL && (
+            <a
+              href={TAXI_PE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tz-admin-filter-taxipe-btn"
+              aria-label="Ir a Taxi-PE"
+              title="Ir a Taxi-PE"
+            >
+              <img src={logoTaxiPe} alt="Taxi-PE" />
+            </a>
+          )}
         </div>
       )}
 

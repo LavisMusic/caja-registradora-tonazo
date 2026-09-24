@@ -2703,6 +2703,66 @@ export default function Styles() {
         color: #05030c;
       }
 
+      /* Botón "ir a Taxi-PE" dentro de la barra Localidad/Sucursal —
+         mismo círculo que .tz-admin-filter-add-btn, pero con el logo
+         de la otra app adentro en vez de un ícono, sin texto (pedido
+         explícito). Abre en pestaña nueva, no toca la sesión de Caja. */
+      .tz-admin-filter-taxipe-btn {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        background: rgba(43,232,255,0.1);
+        border: 1px solid rgba(43,232,255,0.4);
+        cursor: pointer;
+        transition: background 0.15s ease, box-shadow 0.15s ease;
+        padding: 0;
+        overflow: hidden;
+      }
+      .tz-admin-filter-taxipe-btn:hover {
+        background: rgba(43,232,255,0.22);
+        box-shadow: 0 0 14px rgba(43,232,255,0.4);
+      }
+      .tz-admin-filter-taxipe-btn img {
+        width: 26px;
+        height: 26px;
+        object-fit: contain;
+        border-radius: 50%;
+      }
+
+      /* Mini-badge de membresía+créditos (cliente) — versión chica del
+         tz-stat-chip que ya usa el conductor en Taxi-PE, pensada para
+         vivir debajo del botón Login en la esquina superior derecha del
+         header, sin competir en tamaño con nada del layout existente. */
+      .tz-header-saldo {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 4px;
+      }
+      .tz-header-saldo-chip {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        background: rgba(43,232,255,0.08);
+        border: 1px solid rgba(43,232,255,0.3);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 11px;
+        color: var(--cyan);
+        white-space: nowrap;
+      }
+      .tz-header-saldo-chip-membresia-activa {
+        background: rgba(70,230,150,0.1);
+        border-color: rgba(70,230,150,0.4);
+        color: var(--green);
+      }
+
       /* Efecto de serpentinas (Confetti.jsx) — piezas con
          'var(--tz-confetti-rotate)'/'var(--tz-confetti-drift)' puestos
          inline por pieza — 'forwards' la deja invisible al terminar sin
