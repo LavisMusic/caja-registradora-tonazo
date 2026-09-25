@@ -568,6 +568,16 @@ export default function Styles() {
         border-bottom: 1px solid rgba(43,232,255,0.22);
         box-shadow: 0 4px 24px rgba(43,232,255,0.08) inset;
       }
+      /* Localidad + Sucursal + botón Taxi-PE, agrupados juntos — así
+         tz-admin-filterbar (arriba) solo tiene que centrar ESTE bloque
+         como un todo, en vez de repartir 3 hijos sueltos. */
+      .tz-admin-filter-pareja {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        width: 100%;
+      }
       .tz-admin-filter-group {
         display: flex;
         flex-direction: column;
@@ -576,28 +586,28 @@ export default function Styles() {
         max-width: 360px;
       }
       @media (min-width: 768px) {
-        .tz-admin-filterbar {
+        .tz-admin-filter-pareja {
           position: relative;
           flex-direction: row;
-          flex-wrap: wrap;
           align-items: flex-end;
+          width: auto;
         }
         .tz-admin-filter-group {
           width: auto;
           max-width: none;
           min-width: 170px;
         }
-        /* Localidad/Sucursal centrados de VERDAD (sin el botón Taxi-PE
-           corriendo el centro del grupo hacia la izquierda): el botón
-           sale del flujo y se clava contra el borde derecho de la
-           barra, así justify-content:center de arriba solo tiene que
-           centrar los dos <select>. En mobile (columna) sigue en el
-           flujo normal, apilado como uno más — ahí no hay "derecha" que
-           valga. */
+        /* El botón sale del flujo y se clava pegado al lateral derecho
+           de LA PAREJA (no de toda la barra) — así queda cerca de los
+           filtros con una separación fija (margin-left), en vez de
+           pegado al borde de la pantalla en monitores anchos. En
+           mobile (columna) sigue en el flujo normal, apilado como uno
+           más — ahí no hay "derecha" que valga. */
         .tz-admin-filter-taxipe-btn {
           position: absolute;
           top: 50%;
-          right: 16px;
+          left: 100%;
+          margin-left: 14px;
           transform: translateY(-50%);
         }
       }
@@ -2751,8 +2761,8 @@ export default function Styles() {
         box-shadow: 0 0 14px rgba(43,232,255,0.4);
       }
       .tz-admin-filter-taxipe-btn img {
-        width: 34px;
-        height: 34px;
+        width: 70px;
+        height: 70px;
         object-fit: contain;
         border-radius: 50%;
       }
@@ -2781,7 +2791,7 @@ export default function Styles() {
            restando la mitad del alto. */
         top: 221px;
         transform: translateY(-50%);
-        right: 0;
+        right: 40px;
         min-width: 80px;
         padding: 6px 7px;
         gap: 2px;

@@ -478,68 +478,78 @@ export default function CatalogPage() {
       {/* ---------------- Filtro Público de Sucursales ---------------- */}
       {!publicLocalesLoading && publicLocalidades.length > 0 && (
         <div className="tz-admin-filterbar">
-          <div className="tz-admin-filter-group">
-            <label className="tz-admin-filter-label">Localidad</label>
-            <select
-              className="tz-admin-filter-select"
-              value={publicLocalidadId}
-              onChange={(e) => {
-                const locId = e.target.value;
-                setPublicLocalidadId(locId);
-                // La sucursal elegida puede no pertenecer a la nueva
-                // localidad — se limpia para forzar a elegir una de
-                // verdad, en vez de dejar el catálogo mostrando el
-                // stock de una sucursal que ya no coincide con lo
-                // elegido arriba.
-                const sigueValiendo = publicSucursales.some(
-                  (s) => s.id === publicSucursalId && s.localidad_id === locId
-                );
-                if (!sigueValiendo) setPublicSucursalId("");
-              }}
-            >
-              {publicLocalidades.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="tz-admin-filter-group">
-            <label className="tz-admin-filter-label">Sucursal</label>
-            <select
-              className="tz-admin-filter-select"
-              value={publicSucursalId}
-              onChange={(e) => setPublicSucursalId(e.target.value)}
-            >
-              <option value="">Elige una sucursal…</option>
-              {publicSucursalesDeLocalidad.map((suc) => (
-                <option key={suc.id} value={suc.id}>
-                  {suc.nombre}
-                </option>
-              ))}
-            </select>
-            {publicSucursalId && sucursalEnLinea !== null && (
-              <span
-                className={`tz-admin-filter-tag ${sucursalEnLinea ? "is-abierta" : "is-cerrada"}`}
-                style={{ marginTop: 6, alignSelf: "flex-start" }}
+          {/* Localidad + Sucursal viven juntos en tz-admin-filter-pareja
+             (centrado real, sin el botón Taxi-PE de al lado corriendo
+             el centro) — ver comentario largo en Styles.jsx. */}
+          <div className="tz-admin-filter-pareja">
+            <div className="tz-admin-filter-group">
+              <label className="tz-admin-filter-label">Localidad</label>
+              <select
+                className="tz-admin-filter-select"
+                value={publicLocalidadId}
+                onChange={(e) => {
+                  const locId = e.target.value;
+                  setPublicLocalidadId(locId);
+                  // La sucursal elegida puede no pertenecer a la nueva
+                  // localidad — se limpia para forzar a elegir una de
+                  // verdad, en vez de dejar el catálogo mostrando el
+                  // stock de una sucursal que ya no coincide con lo
+                  // elegido arriba.
+                  const sigueValiendo = publicSucursales.some(
+                    (s) => s.id === publicSucursalId && s.localidad_id === locId
+                  );
+                  if (!sigueValiendo) setPublicSucursalId("");
+                }}
               >
-                <span className="tz-admin-filter-tag-dot" />
-                {sucursalEnLinea ? "En línea" : "Cerrado"}
-              </span>
+                {publicLocalidades.map((loc) => (
+                  <option key={loc.id} value={loc.id}>
+                    {loc.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="tz-admin-filter-group">
+              <label className="tz-admin-filter-label">Sucursal</label>
+              {/* tz-admin-filter-row: select + etiqueta EN LA MISMA
+                 LÍNEA (a la derecha del select) — antes la etiqueta
+                 quedaba apilada debajo, lo que hacía a este grupo más
+                 alto que el de Localidad y, con align-items:flex-end en
+                 la pareja, los dos labels terminaban a alturas
+                 distintas. */}
+              <div className="tz-admin-filter-row">
+                <select
+                  className="tz-admin-filter-select"
+                  value={publicSucursalId}
+                  onChange={(e) => setPublicSucursalId(e.target.value)}
+                >
+                  <option value="">Elige una sucursal…</option>
+                  {publicSucursalesDeLocalidad.map((suc) => (
+                    <option key={suc.id} value={suc.id}>
+                      {suc.nombre}
+                    </option>
+                  ))}
+                </select>
+                {publicSucursalId && sucursalEnLinea !== null && (
+                  <span className={`tz-admin-filter-tag ${sucursalEnLinea ? "is-abierta" : "is-cerrada"}`}>
+                    <span className="tz-admin-filter-tag-dot" />
+                    {sucursalEnLinea ? "En línea" : "Cerrado"}
+                  </span>
+                )}
+              </div>
+            </div>
+            {TAXI_PE_URL && (
+              <a
+                href={TAXI_PE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="tz-admin-filter-taxipe-btn"
+                aria-label="Ir a Taxi-PE"
+                title="Ir a Taxi-PE"
+              >
+                <img src={logoTaxiPe} alt="Taxi-PE" />
+              </a>
             )}
           </div>
-          {TAXI_PE_URL && (
-            <a
-              href={TAXI_PE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="tz-admin-filter-taxipe-btn"
-              aria-label="Ir a Taxi-PE"
-              title="Ir a Taxi-PE"
-            >
-              <img src={logoTaxiPe} alt="Taxi-PE" />
-            </a>
-          )}
         </div>
       )}
 
