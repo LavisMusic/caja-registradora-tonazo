@@ -80,7 +80,7 @@ import ImageManager from "./components/ImageManager";
 import PesoModal from "./components/PesoModal";
 import Combobox from "./components/Combobox";
 
-import logo from "./assets/logo.png";
+import logo from "./assets/logo.webp";
 
 /* ------------------------------------------------------------------ */
 /* CATALOGO DINAMICO: la carga (categorias/productos/stock desde       */
@@ -7298,6 +7298,14 @@ export default function App() {
          segundo dropdown solo aparece con una localidad elegida. */}
       {isAdmin && (
         <div className="tz-admin-filterbar">
+          {/* tz-admin-filter-pareja: mismo contenedor que ya usa
+             CatalogPage.jsx (tienda pública) para que Localidad y
+             Sucursal/Caja se centren como un solo bloque en vez de
+             quedar cada uno centrado por separado — sin esto, con
+             align-items:flex-end en la fila, un grupo más alto que el
+             otro (ej. cuando aparece la etiqueta de abierta/cerrada)
+             los desalinea. */}
+          <div className="tz-admin-filter-pareja">
           <div className="tz-admin-filter-group">
             <label className="tz-admin-filter-label">Localidad</label>
             <div className="tz-admin-filter-row">
@@ -7383,6 +7391,7 @@ export default function App() {
                 </span>
               );
             })()}
+          </div>
         </div>
       )}
 
@@ -11806,43 +11815,45 @@ export default function App() {
               </h2>
 
               <div className="tz-admin-filterbar" style={{ padding: 0, background: "none", border: "none" }}>
-                <div className="tz-admin-filter-group">
-                  <label className="tz-admin-filter-label">Localidad</label>
-                  <select
-                    className="tz-admin-filter-select"
-                    value={historialCierresLocalidadId}
-                    onChange={(e) => {
-                      setHistorialCierresLocalidadId(e.target.value);
-                      setHistorialCierresCajaId("");
-                    }}
-                  >
-                    <option value="">Todas</option>
-                    {localidades.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {historialCierresLocalidadId && (
+                <div className="tz-admin-filter-pareja">
                   <div className="tz-admin-filter-group">
-                    <label className="tz-admin-filter-label">Sucursal / Caja</label>
+                    <label className="tz-admin-filter-label">Localidad</label>
                     <select
                       className="tz-admin-filter-select"
-                      value={historialCierresCajaId}
-                      onChange={(e) => setHistorialCierresCajaId(e.target.value)}
+                      value={historialCierresLocalidadId}
+                      onChange={(e) => {
+                        setHistorialCierresLocalidadId(e.target.value);
+                        setHistorialCierresCajaId("");
+                      }}
                     >
                       <option value="">Todas</option>
-                      {sucursalesPorLocalidad(historialCierresLocalidadId).flatMap((suc) =>
-                        cajasPorSucursal(suc.id).map((caja) => (
-                          <option key={caja.id} value={caja.id}>
-                            {suc.nombre} - {caja.nombre}
-                          </option>
-                        ))
-                      )}
+                      {localidades.map((loc) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.nombre}
+                        </option>
+                      ))}
                     </select>
                   </div>
-                )}
+                  {historialCierresLocalidadId && (
+                    <div className="tz-admin-filter-group">
+                      <label className="tz-admin-filter-label">Sucursal / Caja</label>
+                      <select
+                        className="tz-admin-filter-select"
+                        value={historialCierresCajaId}
+                        onChange={(e) => setHistorialCierresCajaId(e.target.value)}
+                      >
+                        <option value="">Todas</option>
+                        {sucursalesPorLocalidad(historialCierresLocalidadId).flatMap((suc) =>
+                          cajasPorSucursal(suc.id).map((caja) => (
+                            <option key={caja.id} value={caja.id}>
+                              {suc.nombre} - {caja.nombre}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {cierresFiltradosHistorial.length === 0 ? (

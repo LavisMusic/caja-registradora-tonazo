@@ -19,8 +19,8 @@ import MisPedidosModal from "../components/MisPedidosModal";
 import { formatSoles, formatDate } from "../utils/format";
 import { safeGetItem, safeSetItem } from "../utils/safeStorage";
 import { distanciaMetros } from "../lib/haversine";
-import logo from "../assets/logo.png";
-import logoTaxiPe from "../assets/logo-taxipe.png";
+import logo from "../assets/logo.webp";
+import logoTaxiPe from "../assets/logo-taxipe.webp";
 
 // URL pública de Taxi-PE — botón del filtro abre en pestaña nueva, no
 // toca la sesión de Caja para nada (login ya unificado del otro lado).
