@@ -577,6 +577,7 @@ export default function Styles() {
       }
       @media (min-width: 768px) {
         .tz-admin-filterbar {
+          position: relative;
           flex-direction: row;
           flex-wrap: wrap;
           align-items: flex-end;
@@ -585,6 +586,19 @@ export default function Styles() {
           width: auto;
           max-width: none;
           min-width: 170px;
+        }
+        /* Localidad/Sucursal centrados de VERDAD (sin el botón Taxi-PE
+           corriendo el centro del grupo hacia la izquierda): el botón
+           sale del flujo y se clava contra el borde derecho de la
+           barra, así justify-content:center de arriba solo tiene que
+           centrar los dos <select>. En mobile (columna) sigue en el
+           flujo normal, apilado como uno más — ahí no hay "derecha" que
+           valga. */
+        .tz-admin-filter-taxipe-btn {
+          position: absolute;
+          top: 50%;
+          right: 16px;
+          transform: translateY(-50%);
         }
       }
       .tz-admin-filter-label {
@@ -2712,9 +2726,11 @@ export default function Styles() {
          recuadro de créditos/membresía del header) — antes era un
          círculo de 40x40; ahora un rectángulo del mismo ancho/alto/
          radio de borde que ese badge, para que se vean "del mismo
-         juego" aunque uno tenga texto y el otro solo el logo.
-         margin-left lo separa del grupo Sucursal de al lado (antes
-         quedaban pegados, sin aire entre los dos). */
+         juego" aunque uno tenga texto y el otro solo el logo. En
+         mobile (columna) la separación del resto sale sola del gap de
+         tz-admin-filterbar. En desktop (ver media query 768px más
+         abajo) pasa a position:absolute pegado al borde derecho, para
+         no correr el centro de Localidad/Sucursal hacia la izquierda. */
       .tz-admin-filter-taxipe-btn {
         flex: 0 0 auto;
         display: flex;
@@ -2722,7 +2738,6 @@ export default function Styles() {
         justify-content: center;
         width: 87px;
         height: 62px;
-        margin-left: 14px;
         border-radius: 12px;
         background: rgba(43,232,255,0.1);
         border: 1px solid rgba(43,232,255,0.4);
