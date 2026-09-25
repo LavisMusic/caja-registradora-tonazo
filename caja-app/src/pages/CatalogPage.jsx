@@ -18,6 +18,7 @@ import PedidoCheckoutModal from "../components/PedidoCheckoutModal";
 import MisPedidosModal from "../components/MisPedidosModal";
 import { formatSoles, formatDate } from "../utils/format";
 import { safeGetItem, safeSetItem } from "../utils/safeStorage";
+import { distanciaMetros } from "../lib/haversine";
 import logo from "../assets/logo.png";
 import logoTaxiPe from "../assets/logo-taxipe.png";
 
@@ -156,7 +157,7 @@ export default function CatalogPage() {
         supabase.from("localidades").select("id, nombre").eq("activo", true).order("nombre"),
         supabase
           .from("sucursales")
-          .select("id, nombre, localidad_id")
+          .select("id, nombre, localidad_id, lat, lng")
           .eq("activo", true)
           .order("nombre"),
       ]);
@@ -185,6 +186,41 @@ export default function CatalogPage() {
     setPublicSucursalId(preferida.id);
     setPublicLocalidadId(preferida.localidad_id);
   }, [publicLocalesLoading, publicSucursales, publicSucursalId]);
+
+  // Sucursal automática por geolocalización — se recalcula CADA VEZ que
+  // se abre la tienda (nunca se guarda "la última detectada": si el
+  // cliente viaja, tiene que reflejar dónde está ahora). Mismo patrón
+  // getCurrentPosition que ya usa RadarGlobal.jsx en Taxi-PE —
+  // denegado/sin soporte no toca nada, se queda con lo que ya haya
+  // (localStorage restaurado, o el default "Santa Rosa 6.50" del efecto
+  // de arriba). Corre DESPUÉS de ese efecto a propósito: el default es
+  // un placeholder seguro mientras se resuelve el GPS, y si el GPS
+  // contesta, lo pisa con la sucursal real más cercana.
+  const geolocalizacionIntentada = useRef(false);
+  useEffect(() => {
+    if (geolocalizacionIntentada.current) return;
+    if (publicLocalesLoading) return;
+    const conCoordenadas = publicSucursales.filter((s) => s.lat != null && s.lng != null);
+    if (conCoordenadas.length === 0) return;
+    if (!navigator.geolocation) return;
+    geolocalizacionIntentada.current = true;
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const masCercana = conCoordenadas.reduce((mejor, s) => {
+          const d = distanciaMetros(latitude, longitude, s.lat, s.lng);
+          return d < mejor.distancia ? { fila: s, distancia: d } : mejor;
+        }, { fila: conCoordenadas[0], distancia: distanciaMetros(latitude, longitude, conCoordenadas[0].lat, conCoordenadas[0].lng) }).fila;
+        setPublicSucursalId(masCercana.id);
+        setPublicLocalidadId(masCercana.localidad_id);
+      },
+      () => {
+        // Denegado o falló — se queda con el default/lo restaurado de localStorage.
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  }, [publicLocalesLoading, publicSucursales]);
 
   useEffect(() => {
     safeSetItem("tz_public_localidad_id", publicLocalidadId || "");
