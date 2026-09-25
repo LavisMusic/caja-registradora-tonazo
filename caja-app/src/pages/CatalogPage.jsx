@@ -231,6 +231,48 @@ export default function CatalogPage() {
     (s) => s.localidad_id === publicLocalidadId
   );
 
+  // Etiqueta "En línea" — si hay AL MENOS una caja abierta ahora mismo
+  // en la sucursal elegida (mismo criterio "estado === 'abierta'" que
+  // ya usa App.jsx para el panel del cajero). null mientras carga, para
+  // no mostrar "Cerrado" un instante antes de saber la respuesta real.
+  const [sucursalEnLinea, setSucursalEnLinea] = useState(null);
+  useEffect(() => {
+    if (!publicSucursalId) {
+      setSucursalEnLinea(null);
+      return undefined;
+    }
+    let active = true;
+    setSucursalEnLinea(null);
+
+    const cargarEstado = () =>
+      supabase
+        .from("cajas")
+        .select("estado")
+        .eq("sucursal_id", publicSucursalId)
+        .then(({ data, error }) => {
+          if (!active || error) return;
+          setSucursalEnLinea((data || []).some((c) => c.estado === "abierta"));
+        });
+
+    cargarEstado();
+
+    // Realtime: un cajero puede abrir/cerrar su caja MIENTRAS el
+    // cliente ya tiene la tienda abierta mirando esta misma sucursal.
+    const channel = supabase
+      .channel(`cajas-en-linea-${publicSucursalId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "cajas", filter: `sucursal_id=eq.${publicSucursalId}` },
+        cargarEstado
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [publicSucursalId]);
+
   const {
     sections,
     productsById,
@@ -476,6 +518,15 @@ export default function CatalogPage() {
                 </option>
               ))}
             </select>
+            {publicSucursalId && sucursalEnLinea !== null && (
+              <span
+                className={`tz-admin-filter-tag ${sucursalEnLinea ? "is-abierta" : "is-cerrada"}`}
+                style={{ marginTop: 6, alignSelf: "flex-start" }}
+              >
+                <span className="tz-admin-filter-tag-dot" />
+                {sucursalEnLinea ? "En línea" : "Cerrado"}
+              </span>
+            )}
           </div>
           {TAXI_PE_URL && (
             <a
