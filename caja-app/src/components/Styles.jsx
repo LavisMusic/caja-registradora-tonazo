@@ -6102,6 +6102,7 @@ export default function Styles() {
       }
       .tz-sa-negocio-delete-btn:hover { background: rgba(255,80,80,0.1); border-color: rgba(255,80,80,0.3); }
       .tz-sa-negocio-confirm { width: 100%; }
+      .tz-sa-rubro-confirm { margin-bottom: 2px; }
 
       .tz-sa-negocio-card-new {
         align-items: stretch;

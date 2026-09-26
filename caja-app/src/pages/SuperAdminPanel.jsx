@@ -51,12 +51,15 @@ function useDragItem(id) {
   };
 }
 
-function RubroRow({ rubro, selected, onSelect, onRename, onToggleActivo }) {
+function RubroRow({ rubro, selected, onSelect, onRename, onToggleActivo, onDelete }) {
   const drag = useDragItem(`rubro:${rubro.id}`);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(rubro.nombre);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [fkConflict, setFkConflict] = useState(false);
 
   const save = async () => {
     const nombre = value.trim();
@@ -71,6 +74,60 @@ function RubroRow({ rubro, selected, onSelect, onRename, onToggleActivo }) {
     }
     setEditing(false);
   };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError("");
+    setFkConflict(false);
+    const { error: err, fkConflict: isFk } = await onDelete(rubro);
+    setDeleting(false);
+    if (err) {
+      if (isFk) setFkConflict(true);
+      else setError(err.message ? `No se pudo eliminar: ${err.message}` : "No se pudo eliminar.");
+      return;
+    }
+    // Si funcionó, el padre ya sacó esta fila de la lista.
+  };
+
+  if (confirming) {
+    return (
+      <div className="tz-vis-confirm-delete tz-sa-rubro-confirm">
+        <p>¿Eliminar <strong>{rubro.nombre}</strong> definitivamente?</p>
+        {fkConflict && (
+          <p className="tz-error">
+            No se puede eliminar: todavía tiene negocios asignados. Movelos a otro rubro o
+            desactivalos primero.
+          </p>
+        )}
+        {error && <p className="tz-error">{error}</p>}
+        <div className="tz-vis-confirm-actions">
+          {!fkConflict && (
+            <button
+              type="button"
+              className="tz-cliente-action-btn tz-cliente-action-deuda"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? <Loader2 size={13} className="tz-spin" /> : <Trash2 size={13} />}
+              Sí, eliminar
+            </button>
+          )}
+          <button
+            type="button"
+            className="tz-cliente-action-btn"
+            onClick={() => {
+              setConfirming(false);
+              setFkConflict(false);
+              setError("");
+            }}
+            disabled={deleting}
+          >
+            <X size={13} /> Cancelar
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div ref={drag.setNodeRef} style={drag.style} className={`tz-sa-rubro-row ${selected ? "tz-sa-rubro-row-active" : ""}`}>
@@ -114,6 +171,15 @@ function RubroRow({ rubro, selected, onSelect, onRename, onToggleActivo }) {
             aria-label={`Editar ${rubro.nombre}`}
           >
             <Pencil size={13} />
+          </button>
+          <button
+            type="button"
+            className="tz-vis-delete-btn"
+            onClick={() => setConfirming(true)}
+            aria-label={`Eliminar ${rubro.nombre}`}
+            title="Eliminar rubro"
+          >
+            <Trash2 size={13} />
           </button>
           <label className="tz-toggle tz-sa-rubro-toggle" title={rubro.activo ? "Activo" : "Oculto"}>
             <input
@@ -386,6 +452,20 @@ export default function SuperAdminPanel() {
     if (error) setRubros((prev) => prev.map((r) => (r.id === rubro.id ? { ...r, activo: !activo } : r)));
   };
 
+  // 23503 = foreign_key_violation — mismo criterio que handleDeleteNegocio
+  // más abajo: un rubro con negocios asignados (negocios.rubro_id, sin
+  // ON DELETE CASCADE a propósito) no se borra solo, hay que
+  // reasignarlos o desactivarlos primero.
+  const handleDeleteRubro = async (rubro) => {
+    const { error } = await supabase.from("rubros").delete().eq("id", rubro.id);
+    if (error) {
+      return { error, fkConflict: error.code === "23503" };
+    }
+    setRubros((prev) => prev.filter((r) => r.id !== rubro.id));
+    setSelectedRubroId((prev) => (prev === rubro.id ? "todos" : prev));
+    return { error: null };
+  };
+
   const handleRubroDragEnd = async (event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -533,6 +613,7 @@ export default function SuperAdminPanel() {
                     onSelect={setSelectedRubroId}
                     onRename={handleRenameRubro}
                     onToggleActivo={handleToggleRubroActivo}
+                    onDelete={handleDeleteRubro}
                   />
                 ))}
               </SortableContext>
