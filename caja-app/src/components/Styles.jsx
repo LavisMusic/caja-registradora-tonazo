@@ -2820,7 +2820,7 @@ export default function Styles() {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 20px;
+        gap: 30px;
       }
       @media (min-width: 768px) {
         .tz-filtro-linea3-mobile { display: contents; }
@@ -2839,6 +2839,39 @@ export default function Styles() {
       }
       @media (min-width: 768px) {
         .tz-filtro-saldo-mobile { display: none; }
+      }
+
+      /* Franja angosta (768-1023px, navegador acoplado a un costado):
+         fila unica con el boton Taxi-PE en el extremo IZQUIERDO, los
+         filtros agrupados al medio y el badge de creditos en el
+         extremo DERECHO. tz-filtro-linea3-mobile ya se disuelve
+         (display:contents) desde los 768px, asi que el boton y el
+         badge ya son hijos directos de tz-admin-filter-pareja acá —
+         por eso 'order' + margin-left:auto se aplican a ESE nivel
+         (pareja pasa a width:100% para que el espacio se reparta en
+         toda la barra, no solo en su ancho ajustado). No se disuelve
+         tz-admin-filter-pareja en si (probado: anidar dos
+         display:contents seguidos rompe el 'order' en este motor).
+         Este bloque NO toca min-width:1024px (ese layout ya esta
+         aprobado a mano y usa su propio mecanismo, ver mas abajo). */
+      @media (min-width: 768px) and (max-width: 1023px) {
+        /* :has() para NO afectar tz-admin-filter-pareja del panel
+           admin (App.jsx) — esa clase se comparte entre las dos
+           pantallas, pero solo la tienda pública tiene adentro un
+           tz-filtro-localidad-group. */
+        .tz-admin-filter-pareja:has(.tz-filtro-localidad-group) { width: 100%; }
+        .tz-admin-filter-taxipe-btn {
+          /* Pisa la regla vieja de la línea ~606 (position:absolute,
+             pensada para "pegado a la derecha de la pareja") — acá
+             queremos que vuelva al flujo normal para que 'order' lo
+             pueda ubicar como primer item de la fila. */
+          position: static;
+          order: -1;
+        }
+        .tz-filtro-localidad-group { order: 0; margin-left: auto; }
+        .tz-filtro-sucursal-group { order: 1; }
+        .tz-header-saldo { display: none; }
+        .tz-filtro-saldo-mobile { display: block; order: 2; margin-left: auto; }
       }
 
       /* Ajustes finos manuales de posición (Localidad/Sucursal/etiqueta/
