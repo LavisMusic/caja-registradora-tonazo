@@ -7074,28 +7074,32 @@ export default function App() {
   // mostrarle "Caja Cerrada, esperando apertura" (nunca podría abrir
   // nada sin una fila de 'cajas' que le pertenezca): se le avisa
   // explícitamente en vez de dejarlo atascado sin explicación.
-  // Bienvenida neon de admin/cajero — toma prioridad sobre CUALQUIER
-  // otra pantalla (incluida "Sin Caja Asignada"/"Caja Cerrada" de más
-  // abajo): recién entrado, antes de cualquier otro aviso operativo.
-  if (mostrarBienvenidaStaff) {
-    return (
-      <AnimacionNeonBienvenida
-        eyebrow="✦ Bienvenido a Tonazo ✦"
-        titulo={currentUserLabel}
-        descripcion={
-          isAdmin
-            ? "Otro día para hacer crecer el negocio — ¡vamos con todo! 💪"
-            : "Que tengas un excelente turno — ¡vamos con todo! 💪"
-        }
-        onTerminar={marcarBienvenidaStaffVista}
-      />
-    );
-  }
+  // Bienvenida neon de admin/cajero — se renderiza SUPERPUESTA sobre el
+  // resto de la pantalla (ver el final de este return), no en lugar de
+  // ella: antes esto era un "return" temprano que reemplazaba TODO —
+  // la interfaz de atrás recién empezaba a cargar/montarse DESPUÉS de
+  // cerrar la bienvenida, lo que se sentía como una pantalla negra de
+  // más antes de ver el POS de verdad. 'position:fixed' + z-index
+  // altísimo (ver AnimacionNeonBienvenida.jsx) ya la hacen flotar por
+  // encima de cualquier otra cosa sin importar dónde vive en el JSX.
+  const bienvenidaStaffOverlay = mostrarBienvenidaStaff ? (
+    <AnimacionNeonBienvenida
+      eyebrow="✦ Bienvenido a Tonazo ✦"
+      titulo={currentUserLabel}
+      descripcion={
+        isAdmin
+          ? "Otro día para hacer crecer el negocio — ¡vamos con todo! 💪"
+          : "Que tengas un excelente turno — ¡vamos con todo! 💪"
+      }
+      onTerminar={marcarBienvenidaStaffVista}
+    />
+  ) : null;
 
   if (isCajero && !authCajaId) {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        {bienvenidaStaffOverlay}
         <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
         <Lock size={44} />
         <h1>Sin Caja Asignada</h1>
@@ -7119,6 +7123,7 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        {bienvenidaStaffOverlay}
         <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
         <Lock size={44} />
         <h1>{turnoFinalizado ? "Turno Finalizado" : "Caja Cerrada"}</h1>
@@ -7143,6 +7148,7 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        {bienvenidaStaffOverlay}
         <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
         <DollarSign size={44} />
         <h1>Confirmar Turno</h1>
@@ -7167,6 +7173,7 @@ export default function App() {
   return (
     <div className="tz-root">
       <Styles />
+      {bienvenidaStaffOverlay}
 
       {/* El viejo modal obligatorio de "Apertura de Caja" para admin
          (bloqueaba TODO detrás de un backdrop) fue retirado: el admin
