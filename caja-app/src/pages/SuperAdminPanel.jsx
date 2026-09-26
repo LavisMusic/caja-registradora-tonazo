@@ -25,14 +25,27 @@ import Styles from "../components/Styles";
 import logo from "../assets/logo.webp";
 
 /* Fase 1 del super-admin: gestor de rubros (columna izquierda, estilo
-   directorio) + gestor de negocios (grilla de 3 columnas estilo Friv),
-   ver acuerdo con el usuario en la conversación. Todavía NO incluye:
-   alta del primer admin de un negocio, ni el logo propagado a las
-   boletas — eso queda para el resto de la Fase 1.
+   directorio) + gestor de negocios (grilla de 3 columnas estilo Friv) +
+   alta del primer admin de cada negocio, ver acuerdo con el usuario en
+   la conversación. Todavía falta: el logo propagado a las boletas.
 
    Pantalla COMPLETAMENTE aparte de App.jsx (no comparte su lógica de
-   POS) — montada directo desde StaffPanel en main.jsx cuando
-   profile.role === 'super_admin'. */
+   POS) — montada directo desde SuperAdminAccessPage.jsx (ruta
+   /superadmin) cuando profile.role === 'super_admin'. */
+
+// slug de la URL de login del negocio (/:slug, ver NegocioAccessPage) —
+// minúsculas, sin tildes/ñ, solo [a-z0-9-]. Se usa tanto para
+// sugerir un slug a partir del nombre como para normalizar lo que el
+// super-admin haya escrito a mano antes de guardarlo.
+function slugify(text) {
+  return String(text || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 function useDragItem(id) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } =
@@ -200,6 +213,7 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete
   const drag = useDragItem(`negocio:${negocio.id}`);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(negocio.nombre);
+  const [slugValue, setSlugValue] = useState(negocio.slug || "");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
@@ -253,13 +267,14 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete
 
   const save = async () => {
     const nombre = value.trim();
-    if (!nombre) return;
+    const slug = slugify(slugValue);
+    if (!nombre || !slug) return;
     setSaving(true);
     setError("");
-    const { error: err } = await onRename(negocio, nombre);
+    const { error: err } = await onRename(negocio, { nombre, slug });
     setSaving(false);
     if (err) {
-      setError("No se pudo guardar.");
+      setError(err.message || "No se pudo guardar.");
       return;
     }
     setEditing(false);
@@ -303,20 +318,30 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete
       </label>
 
       {editing ? (
-        <div className="tz-sa-negocio-edit-row">
+        <div className="tz-sa-negocio-edit-col">
           <input
             className="tz-text-input tz-sa-inline-input"
             value={value}
             onChange={(e) => setValue(e.target.value)}
+            placeholder="Nombre"
             autoFocus
             onKeyDown={(e) => e.key === "Enter" && save()}
           />
-          <button type="button" className="tz-vis-edit-btn" onClick={save} disabled={saving}>
-            {saving ? <Loader2 size={13} className="tz-spin" /> : <Check size={13} />}
-          </button>
-          <button type="button" className="tz-vis-edit-btn" onClick={() => setEditing(false)} disabled={saving}>
-            <X size={13} />
-          </button>
+          <input
+            className="tz-text-input tz-sa-inline-input"
+            value={slugValue}
+            onChange={(e) => setSlugValue(e.target.value)}
+            placeholder="slug (para /slug)"
+            onKeyDown={(e) => e.key === "Enter" && save()}
+          />
+          <div className="tz-sa-negocio-edit-row">
+            <button type="button" className="tz-vis-edit-btn" onClick={save} disabled={saving}>
+              {saving ? <Loader2 size={13} className="tz-spin" /> : <Check size={13} />}
+            </button>
+            <button type="button" className="tz-vis-edit-btn" onClick={() => setEditing(false)} disabled={saving}>
+              <X size={13} />
+            </button>
+          </div>
         </div>
       ) : (
         <div className="tz-sa-negocio-name-row">
@@ -326,6 +351,7 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete
             className="tz-vis-edit-btn"
             onClick={() => {
               setValue(negocio.nombre);
+              setSlugValue(negocio.slug || "");
               setEditing(true);
             }}
             aria-label={`Editar ${negocio.nombre}`}
@@ -333,6 +359,11 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete
             <Pencil size={13} />
           </button>
         </div>
+      )}
+      {!editing && (
+        <p className="tz-sa-negocio-slug">
+          {negocio.slug ? `/${negocio.slug}` : "Sin slug — no tiene URL de login todavía"}
+        </p>
       )}
 
       {!confirming && (
@@ -474,6 +505,7 @@ export default function SuperAdminPanel() {
 
   const [creatingNegocio, setCreatingNegocio] = useState(false);
   const [nuevoNegocioNombre, setNuevoNegocioNombre] = useState("");
+  const [nuevoNegocioSlug, setNuevoNegocioSlug] = useState("");
   const [nuevoNegocioRubroId, setNuevoNegocioRubroId] = useState("");
   const [negocioSaving, setNegocioSaving] = useState(false);
   const [negocioError, setNegocioError] = useState("");
@@ -573,9 +605,14 @@ export default function SuperAdminPanel() {
   /* ---- Negocios ---- */
   const handleCreateNegocio = async () => {
     const nombre = nuevoNegocioNombre.trim();
+    const slug = slugify(nuevoNegocioSlug || nombre);
     const rubroId = nuevoNegocioRubroId || rubros[0]?.id;
     if (!nombre) {
       setNegocioError("Escribe un nombre.");
+      return;
+    }
+    if (!slug) {
+      setNegocioError("Escribe un slug (para la URL de login, ej. tonazo).");
       return;
     }
     if (!rubroId) {
@@ -587,23 +624,34 @@ export default function SuperAdminPanel() {
     const orden = negocios.length ? Math.max(...negocios.map((n) => n.orden ?? 0)) + 1 : 0;
     const { data, error } = await supabase
       .from("negocios")
-      .insert({ nombre, rubro_id: rubroId, orden })
+      .insert({ nombre, slug, rubro_id: rubroId, orden })
       .select()
       .single();
     setNegocioSaving(false);
     if (error) {
-      setNegocioError(error.message ? `No se pudo crear: ${error.message}` : "No se pudo crear el negocio.");
+      setNegocioError(
+        error.code === "23505"
+          ? `Ya existe un negocio con el slug "${slug}" — probá con otro.`
+          : error.message
+            ? `No se pudo crear: ${error.message}`
+            : "No se pudo crear el negocio."
+      );
       return;
     }
     setNegocios((prev) => [...prev, data]);
     setNuevoNegocioNombre("");
+    setNuevoNegocioSlug("");
     setCreatingNegocio(false);
   };
 
-  const handleRenameNegocio = async (negocio, nombre) => {
-    const { error } = await supabase.from("negocios").update({ nombre }).eq("id", negocio.id);
-    if (!error) setNegocios((prev) => prev.map((n) => (n.id === negocio.id ? { ...n, nombre } : n)));
-    return { error };
+  const handleRenameNegocio = async (negocio, { nombre, slug }) => {
+    const { error } = await supabase.from("negocios").update({ nombre, slug }).eq("id", negocio.id);
+    if (!error) setNegocios((prev) => prev.map((n) => (n.id === negocio.id ? { ...n, nombre, slug } : n)));
+    return {
+      error: error
+        ? { message: error.code === "23505" ? `Ya existe un negocio con el slug "${slug}".` : error.message }
+        : null,
+    };
   };
 
   const handleToggleNegocioActivo = async (negocio, activo) => {
@@ -785,6 +833,12 @@ export default function SuperAdminPanel() {
                           value={nuevoNegocioNombre}
                           onChange={(e) => setNuevoNegocioNombre(e.target.value)}
                           autoFocus
+                        />
+                        <input
+                          className="tz-text-input"
+                          placeholder={`Slug (ej. ${slugify(nuevoNegocioNombre) || "mi-negocio"}) — URL de login`}
+                          value={nuevoNegocioSlug}
+                          onChange={(e) => setNuevoNegocioSlug(e.target.value)}
                         />
                         <select
                           className="tz-text-input"

@@ -1,24 +1,12 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
-import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { AuthProvider } from './contexts/AuthContext'
 import CatalogPage from './pages/CatalogPage'
-import RequireAdmin from './components/RequireAdmin'
 import ErrorBoundary from './components/ErrorBoundary'
-import App from './App.jsx'
-import SuperAdminPanel from './pages/SuperAdminPanel.jsx'
-
-// /admin es UNA sola ruta para las 4 sesiones de personal (RequireAdmin
-// ya filtró "hay sesión válida de admin/cajero/super_admin"), pero
-// super_admin monta una pantalla COMPLETAMENTE distinta (SuperAdminPanel)
-// en vez de App.jsx — no comparte nada de la lógica de POS, así que
-// separarla acá (antes de que monten los hooks de App.jsx) es más
-// simple que meter un guard adentro de un componente de 10000+ líneas.
-function StaffPanel() {
-  const { isSuperAdmin } = useAuth();
-  return isSuperAdmin ? <SuperAdminPanel /> : <App />;
-}
+import SuperAdminAccessPage from './pages/SuperAdminAccessPage.jsx'
+import NegocioAccessPage from './pages/NegocioAccessPage.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
@@ -27,14 +15,13 @@ createRoot(document.getElementById('root')).render(
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<CatalogPage />} />
-            <Route
-              path="/admin"
-              element={
-                <RequireAdmin>
-                  <StaffPanel />
-                </RequireAdmin>
-              }
-            />
+            <Route path="/superadmin" element={<SuperAdminAccessPage />} />
+            {/* /admin: alias del negocio Tonazo (mismo slug) — evita
+                romper accesos directos ya guardados desde antes de la
+                Fase 1 del super-admin, cuando /admin era la única
+                puerta de entrada del personal. */}
+            <Route path="/admin" element={<Navigate to="/tonazo" replace />} />
+            <Route path="/:slug" element={<NegocioAccessPage />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

@@ -3044,8 +3044,8 @@ export default function App() {
     return amountOk && !!scanDetected.photoUrl;
   })();
 
-  /* ---- edición de stock: ya no pide contraseña propia, /admin (vía
-     RequireAdmin) exige sesión de admin real para llegar hasta acá ---- */
+  /* ---- edición de stock: ya no pide contraseña propia, /:slug (vía
+     NegocioAccessPage) exige sesión de admin real para llegar hasta acá ---- */
   const resetNewProductoForm = () => {
     setNewProductoOpen(false);
     setNewProductoCodigo("");

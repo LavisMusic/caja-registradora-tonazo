@@ -6078,6 +6078,18 @@ export default function Styles() {
         gap: 6px;
         width: 100%;
       }
+      .tz-sa-negocio-edit-col {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        width: 100%;
+      }
+      .tz-sa-negocio-slug {
+        margin: -4px 0 0;
+        font-size: 11px;
+        color: var(--text-dim);
+        font-family: 'Rajdhani', sans-serif;
+      }
       .tz-sa-negocio-toggle {
         display: flex;
         align-items: center;
