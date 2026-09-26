@@ -3,7 +3,9 @@
 // Invocada desde el admin (App.jsx) con:
 //   supabase.functions.invoke('create-cliente', { body: { tipo: 'cliente', nombre, celular, pin } })
 //   supabase.functions.invoke('create-cliente', { body: { tipo: 'cajero', nombre, usuario, pin } })
-// El SDK adjunta automáticamente el JWT del admin en el header Authorization.
+// y desde el super-admin (SuperAdminPanel.jsx, Fase 1) con:
+//   supabase.functions.invoke('create-cliente', { body: { tipo: 'admin', nombre, usuario, pin, negocioId } })
+// El SDK adjunta automáticamente el JWT de quien llama en el header Authorization.
 //
 // Usa la service_role key (variable de entorno inyectada por Supabase,
 // nunca presente en el bundle del navegador) para:
@@ -58,7 +60,7 @@ Deno.serve(async (req) => {
     .single();
 
   const callerRole = callerProfileErr ? null : callerProfile?.role;
-  if (callerRole !== "admin" && callerRole !== "cajero") {
+  if (callerRole !== "admin" && callerRole !== "cajero" && callerRole !== "super_admin") {
     return json(403, { error: "No autorizado." });
   }
 
@@ -71,6 +73,7 @@ Deno.serve(async (req) => {
     pin?: string;
     sucursalId?: string;
     cajaId?: string;
+    negocioId?: string;
   };
   try {
     body = await req.json();
@@ -78,12 +81,18 @@ Deno.serve(async (req) => {
     return json(400, { error: "Cuerpo de la petición inválido." });
   }
 
-  const tipo = body.tipo === "cajero" ? "cajero" : "cliente";
+  const tipo = body.tipo === "admin" ? "admin" : body.tipo === "cajero" ? "cajero" : "cliente";
 
   // Un cajero puede dar de alta clientes (fiados nuevos), pero NO otros
   // cajeros/personal — eso sigue siendo exclusivo del admin.
   if (tipo === "cajero" && callerRole !== "admin") {
     return json(403, { error: "Solo el admin puede crear cuentas de cajero." });
+  }
+  // El primer admin de un negocio nuevo lo da de alta el super-admin
+  // desde su panel (Fase 1) — un admin/cajero normal no puede crear
+  // otro admin (evita que un negocio se autoasigne acceso a otro).
+  if (tipo === "admin" && callerRole !== "super_admin") {
+    return json(403, { error: "Solo el super-admin puede crear cuentas de admin." });
   }
 
   const nombre = (body.nombre || "").trim();
@@ -109,8 +118,12 @@ Deno.serve(async (req) => {
   // (createUser lo rechaza con "Password should be at least 6
   // characters" por debajo de eso) — validar acá el mismo mínimo evita
   // el 500 genérico y confuso que salía antes con un PIN de 4-5 dígitos.
-  if (tipo === "cajero" && !/^\d{6,10}$/.test(pinProvided)) {
+  if ((tipo === "cajero" || tipo === "admin") && !/^\d{6,10}$/.test(pinProvided)) {
     return json(400, { error: "El PIN/clave debe tener entre 6 y 10 dígitos." });
+  }
+  const negocioId = (body.negocioId || "").trim();
+  if (tipo === "admin" && !negocioId) {
+    return json(400, { error: "Falta el negocio." });
   }
   // Bug: este bloque validaba nombre/usuario/pin pero nunca la
   // sucursal/caja — un cajero se creaba SIEMPRE con sucursal_id/caja_id
@@ -166,7 +179,7 @@ Deno.serve(async (req) => {
     const msg = /already been registered|already registered/i.test(createErr.message || "")
       ? tipo === "cliente"
         ? "Ya existe un cliente registrado con ese celular."
-        : "Ya existe un cajero con ese usuario."
+        : "Ya existe una cuenta con ese usuario."
       : createErr.message;
     return json(409, { error: msg });
   }
@@ -186,14 +199,19 @@ Deno.serve(async (req) => {
     pin_configurado: pinConfigurado,
     sucursal_id: tipo === "cajero" ? sucursalId : null,
     caja_id: tipo === "cajero" ? cajaId : null,
+    negocio_id: tipo === "admin" ? negocioId : null,
   });
 
   if (profInsertErr) {
     await admin.auth.admin.deleteUser(newUserId);
-    return json(500, { error: "No se pudo crear el perfil." });
+    // Conflicto de FK típico acá: negocioId no existe (borrado entre que
+    // se abrió el formulario y se envió).
+    return json(500, {
+      error: profInsertErr.code === "23503" ? "Ese negocio ya no existe." : "No se pudo crear el perfil.",
+    });
   }
 
-  if (tipo === "cajero") {
+  if (tipo === "cajero" || tipo === "admin") {
     return json(200, { id: newUserId, nombre, usuario });
   }
 

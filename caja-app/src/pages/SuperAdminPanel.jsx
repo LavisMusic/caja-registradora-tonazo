@@ -196,7 +196,7 @@ function RubroRow({ rubro, selected, onSelect, onRename, onToggleActivo, onDelet
   );
 }
 
-function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete }) {
+function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete, onCreateAdmin }) {
   const drag = useDragItem(`negocio:${negocio.id}`);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(negocio.nombre);
@@ -206,6 +206,36 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [fkConflict, setFkConflict] = useState(false);
+
+  const [creatingAdmin, setCreatingAdmin] = useState(false);
+  const [adminNombre, setAdminNombre] = useState("");
+  const [adminUsuario, setAdminUsuario] = useState("");
+  const [adminClave, setAdminClave] = useState("");
+  const [adminSaving, setAdminSaving] = useState(false);
+  const [adminError, setAdminError] = useState("");
+  const [adminOk, setAdminOk] = useState("");
+
+  const handleCreateAdmin = async () => {
+    const nombre = adminNombre.trim();
+    const usuario = adminUsuario.trim();
+    if (!nombre || !usuario || !adminClave) {
+      setAdminError("Completá nombre, usuario y clave.");
+      return;
+    }
+    setAdminSaving(true);
+    setAdminError("");
+    const { error: err } = await onCreateAdmin(negocio, { nombre, usuario, pin: adminClave });
+    setAdminSaving(false);
+    if (err) {
+      setAdminError(err);
+      return;
+    }
+    setAdminOk(`Admin "${usuario}" creado.`);
+    setAdminNombre("");
+    setAdminUsuario("");
+    setAdminClave("");
+    setCreatingAdmin(false);
+  };
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -316,6 +346,67 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete
           <span className="tz-sa-negocio-toggle-label">{negocio.activo ? "Activo" : "Oculto"}</span>
         </label>
       )}
+
+      {!confirming && (
+        creatingAdmin ? (
+          <div className="tz-sa-new-row tz-sa-negocio-admin-form">
+            <input
+              className="tz-text-input"
+              placeholder="Nombre del admin"
+              value={adminNombre}
+              onChange={(e) => setAdminNombre(e.target.value)}
+              autoFocus
+            />
+            <input
+              className="tz-text-input"
+              placeholder="Usuario (para el login)"
+              value={adminUsuario}
+              onChange={(e) => setAdminUsuario(e.target.value)}
+              autoCapitalize="off"
+              autoCorrect="off"
+            />
+            <input
+              type="password"
+              className="tz-text-input"
+              placeholder="Clave (6 a 10 dígitos)"
+              value={adminClave}
+              onChange={(e) => setAdminClave(e.target.value)}
+            />
+            {adminError && <p className="tz-error">{adminError}</p>}
+            <div className="tz-vis-confirm-actions">
+              <button
+                type="button"
+                className="tz-cliente-action-btn tz-cliente-action-pago"
+                onClick={handleCreateAdmin}
+                disabled={adminSaving}
+              >
+                {adminSaving ? <Loader2 size={13} className="tz-spin" /> : <Check size={13} />} Crear acceso
+              </button>
+              <button
+                type="button"
+                className="tz-cliente-action-btn"
+                onClick={() => setCreatingAdmin(false)}
+                disabled={adminSaving}
+              >
+                <X size={13} /> Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="tz-sa-add-btn tz-sa-negocio-admin-btn"
+            onClick={() => {
+              setAdminError("");
+              setAdminOk("");
+              setCreatingAdmin(true);
+            }}
+          >
+            <Plus size={14} /> Dar acceso a un admin
+          </button>
+        )
+      )}
+      {adminOk && !creatingAdmin && <p className="tz-sa-negocio-admin-ok">{adminOk}</p>}
 
       {confirming ? (
         <div className="tz-vis-confirm-delete tz-sa-negocio-confirm">
@@ -555,6 +646,23 @@ export default function SuperAdminPanel() {
     return { error: null };
   };
 
+  // Alta del primer admin de un negocio (Fase 1, parte 5) — vía Edge
+  // Function (create-cliente, tipo:'admin'): crea la cuenta de Auth +
+  // su fila en 'profiles' con role='admin' y negocio_id = este negocio.
+  // No hay tope de "un solo admin por negocio" acá: el super-admin
+  // puede repetir esto tantas veces como quiera si un negocio necesita
+  // más de un usuario con acceso admin.
+  const handleCreateAdminForNegocio = async (negocio, { nombre, usuario, pin }) => {
+    const { error } = await supabase.functions.invoke("create-cliente", {
+      body: { tipo: "admin", nombre, usuario, pin, negocioId: negocio.id },
+    });
+    if (error) {
+      const body = await error.context?.json?.().catch(() => null);
+      return { error: body?.error || "No se pudo crear el acceso." };
+    }
+    return { error: null };
+  };
+
   const handleNegocioDragEnd = async (event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -664,6 +772,7 @@ export default function SuperAdminPanel() {
                       onToggleActivo={handleToggleNegocioActivo}
                       onLogoChange={handleNegocioLogoChange}
                       onDelete={handleDeleteNegocio}
+                      onCreateAdmin={handleCreateAdminForNegocio}
                     />
                   ))}
 

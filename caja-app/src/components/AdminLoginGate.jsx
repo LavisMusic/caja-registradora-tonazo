@@ -5,17 +5,22 @@ import { ADMIN_DUMMY_EMAIL, SUPER_ADMIN_DUMMY_EMAIL, usuarioToDummyEmail } from 
 import Styles from "./Styles";
 import logo from "../assets/logo.webp";
 
-// Puerta de entrada del personal (/admin): dos modos sobre la MISMA
+// Puerta de entrada del personal (/admin): tres modos sobre la MISMA
 // pantalla, sin exponer nunca un campo de correo.
-//   - Admin: un solo campo "Clave secreta" (cuenta única, email fijo
-//     ADMIN_DUMMY_EMAIL) — tal como se pidió desde el inicio.
-//   - Cajero: "Usuario" + "Clave" (puede haber varios cajeros, cada uno
-//     con su propia cuenta creada por el admin desde el panel; email
-//     dummy = usuario@tonazo.staff).
-// Ambos casos crean una sesión real de Supabase Auth vía
-// signInWithPassword para que RLS reconozca auth.uid() (is_admin() /
-// is_cajero() en la base de datos). App.jsx decide qué mostrar según
-// el rol una vez adentro — esta pantalla no sabe ni le importa cuál es.
+//   - Admin: un solo campo "Clave secreta" (cuenta única de Tonazo,
+//     email fijo ADMIN_DUMMY_EMAIL) — tal como se pidió desde el
+//     inicio, sin tocar. Queda como el acceso legado de ESTE negocio.
+//   - Personal: "Usuario" + "Clave" — cubre tanto cajeros como el
+//     admin de un negocio NUEVO (Fase 1 del super-admin): cada cuenta
+//     tiene su propio usuario, email dummy = usuario@tonazo.staff. El
+//     rol real (admin/cajero) queda guardado en profiles.role, esta
+//     pantalla no necesita saber cuál es de antemano.
+//   - Super Admin: un solo campo "Clave secreta" (cuenta única, email
+//     fijo SUPER_ADMIN_DUMMY_EMAIL).
+// Los tres casos crean una sesión real de Supabase Auth vía
+// signInWithPassword para que RLS reconozca auth.uid(). App.jsx (o
+// SuperAdminPanel) deciden qué mostrar según el rol una vez adentro —
+// esta pantalla no sabe ni le importa cuál es.
 export default function AdminLoginGate() {
   const [modo, setModo] = useState("admin"); // 'admin' | 'cajero' | 'super_admin'
   const [claveSecreta, setClaveSecreta] = useState("");
@@ -81,7 +86,7 @@ export default function AdminLoginGate() {
             ? "Panel de Administración"
             : modo === "super_admin"
               ? "Panel Super Admin"
-              : "Acceso Cajero"}
+              : "Acceso Personal"}
         </p>
 
         <div className="tz-gasto-tipo-buttons" style={{ marginBottom: 16 }}>
@@ -103,7 +108,7 @@ export default function AdminLoginGate() {
               setError("");
             }}
           >
-            Cajero
+            Personal
           </button>
           <button
             type="button"

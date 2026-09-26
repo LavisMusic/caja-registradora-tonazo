@@ -6103,6 +6103,14 @@ export default function Styles() {
       .tz-sa-negocio-delete-btn:hover { background: rgba(255,80,80,0.1); border-color: rgba(255,80,80,0.3); }
       .tz-sa-negocio-confirm { width: 100%; }
       .tz-sa-rubro-confirm { margin-bottom: 2px; }
+      .tz-sa-negocio-admin-form { width: 100%; }
+      .tz-sa-negocio-admin-btn { width: 100%; font-size: 12px; padding: 8px; }
+      .tz-sa-negocio-admin-ok {
+        margin: 0;
+        font-size: 11.5px;
+        color: var(--yellow);
+        text-align: center;
+      }
 
       .tz-sa-negocio-card-new {
         align-items: stretch;
