@@ -5811,10 +5811,14 @@ export default function App() {
       const clienteIds = (data || []).filter((r) => r.role === "cliente").map((r) => r.id);
       let fiadoPorUserId = {};
       if (clienteIds.length > 0) {
-        const { data: fiadoRows, error: fiadoErr } = await supabase
-          .from("clientes_fiado")
-          .select("auth_user_id, fiado_habilitado")
-          .in("auth_user_id", clienteIds);
+        // negocio_id: un cliente puede tener una fila de clientes_fiado
+        // POR CADA negocio donde compró — sin este filtro, el estado
+        // "Fiado habilitado" que se muestra acá podía venir de OTRO
+        // negocio (el cliente en sí SÍ es compartido a propósito, pero
+        // su estado/saldo de fiado no).
+        let fiadoQuery = supabase.from("clientes_fiado").select("auth_user_id, fiado_habilitado").in("auth_user_id", clienteIds);
+        if (negocioId) fiadoQuery = fiadoQuery.eq("negocio_id", negocioId);
+        const { data: fiadoRows, error: fiadoErr } = await fiadoQuery;
         if (fiadoErr) {
           console.error("Error cargando fiado_habilitado de usuarios:", fiadoErr);
         } else {
