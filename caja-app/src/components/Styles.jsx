@@ -2729,18 +2729,16 @@ export default function Styles() {
       }
 
       /* Botón "ir a Taxi-PE" dentro de la barra Localidad/Sucursal —
-         mismo círculo que .tz-admin-filter-add-btn, pero con el logo
-         de la otra app adentro en vez de un ícono, sin texto (pedido
-         explícito). Abre en pestaña nueva, no toca la sesión de Caja. */
-      /* Mismas proporciones que .tz-header-saldo/.tz-stat-chip (el
-         recuadro de créditos/membresía del header) — antes era un
-         círculo de 40x40; ahora un rectángulo del mismo ancho/alto/
-         radio de borde que ese badge, para que se vean "del mismo
-         juego" aunque uno tenga texto y el otro solo el logo. En
-         mobile (columna) la separación del resto sale sola del gap de
-         tz-admin-filterbar. En desktop (ver media query 768px más
-         abajo) pasa a position:absolute pegado al borde derecho, para
-         no correr el centro de Localidad/Sucursal hacia la izquierda. */
+         SIN recuadro (pedido explícito): solo el logo, que hace zoom
+         in al pasar el cursor y vuelve solo al sacarlo (transition en
+         la imagen, no un :hover con estado propio). Abre en pestaña
+         nueva, no toca la sesión de Caja. El contenedor sigue teniendo
+         un ancho/alto (sin fondo/borde visibles) para reservar espacio
+         de layout y una zona de clic razonable. En mobile (columna) la
+         separación del resto sale sola del gap de tz-admin-filterbar.
+         En desktop (ver media query 768px más abajo) pasa a
+         position:absolute pegado al borde derecho, para no correr el
+         centro de Localidad/Sucursal hacia la izquierda. */
       .tz-admin-filter-taxipe-btn {
         flex: 0 0 auto;
         display: flex;
@@ -2748,23 +2746,17 @@ export default function Styles() {
         justify-content: center;
         width: 87px;
         height: 62px;
-        border-radius: 12px;
-        background: rgba(43,232,255,0.1);
-        border: 1px solid rgba(43,232,255,0.4);
         cursor: pointer;
-        transition: background 0.15s ease, box-shadow 0.15s ease;
         padding: 0;
-        overflow: hidden;
-      }
-      .tz-admin-filter-taxipe-btn:hover {
-        background: rgba(43,232,255,0.22);
-        box-shadow: 0 0 14px rgba(43,232,255,0.4);
       }
       .tz-admin-filter-taxipe-btn img {
         width: 70px;
         height: 70px;
         object-fit: contain;
-        border-radius: 50%;
+        transition: transform 0.2s ease;
+      }
+      .tz-admin-filter-taxipe-btn:hover img {
+        transform: scale(1.15);
       }
 
       /* Badge de membresía/créditos (cliente) — mismo tz-stat-chip que
