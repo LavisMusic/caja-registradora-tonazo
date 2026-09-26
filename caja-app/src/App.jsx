@@ -551,6 +551,7 @@ export default function App() {
     nombre: cajeroNombre,
     sucursalId: authSucursalId,
     cajaId: authCajaId,
+    negocioId,
   } = useAuth();
   // Nombre a mostrar para "quién está operando" (p.ej. Cierre de Caja):
   // el nombre real del perfil autenticado si existe, y solo si no hay
@@ -636,7 +637,7 @@ export default function App() {
     setProductVisibility,
     reorderCategorias,
     refetch: refetchCatalog,
-  } = useCatalog(sucursalOperativaId);
+  } = useCatalog(sucursalOperativaId, negocioId);
   const [restLoading, setRestLoading] = useState(true);
   const loading = catalogLoading || restLoading;
   const loadError = catalogError;
@@ -998,22 +999,42 @@ export default function App() {
   const [jerarquiaError, setJerarquiaError] = useState("");
 
   const refetchJerarquia = useCallback(async () => {
-    const [
-      { data: localidadesRows, error: localidadesErr },
-      { data: sucursalesRows, error: sucursalesErr },
-      { data: cajasRows, error: cajasErr },
-    ] = await Promise.all([
-      supabase.from("localidades").select("*").eq("activo", true).order("nombre"),
-      supabase.from("sucursales").select("*").eq("activo", true).order("nombre"),
-      supabase.from("cajas").select("*").order("nombre"),
-    ]);
+    // negocio_id vive solo en 'localidades' (cabeza de la jerarquía,
+    // ver migración 0073) — sucursales/cajas no lo tienen directo, así
+    // que se filtran en cascada por los ids de localidades/sucursales
+    // YA acotados a este negocio. Sin esto, el admin de un negocio
+    // nuevo veía TODAS las localidades/sucursales/cajas de Tonazo.
+    let localidadesQuery = supabase.from("localidades").select("*").eq("activo", true).order("nombre");
+    if (negocioId) localidadesQuery = localidadesQuery.eq("negocio_id", negocioId);
+    const { data: localidadesRows, error: localidadesErr } = await localidadesQuery;
 
-    if (localidadesErr || sucursalesErr || cajasErr) {
-      console.error("Error cargando la jerarquía multi-sucursal:", {
-        localidadesErr,
-        sucursalesErr,
-        cajasErr,
-      });
+    if (localidadesErr) {
+      console.error("Error cargando la jerarquía multi-sucursal:", { localidadesErr });
+      setJerarquiaError("No se pudo cargar localidades/sucursales/cajas.");
+      return;
+    }
+
+    const localidadIds = (localidadesRows || []).map((r) => r.id);
+
+    let sucursalesQuery = supabase.from("sucursales").select("*").eq("activo", true).order("nombre");
+    if (negocioId) sucursalesQuery = sucursalesQuery.in("localidad_id", localidadIds);
+    const { data: sucursalesRows, error: sucursalesErr } = await sucursalesQuery;
+
+    if (sucursalesErr) {
+      console.error("Error cargando la jerarquía multi-sucursal:", { sucursalesErr });
+      setJerarquiaError("No se pudo cargar localidades/sucursales/cajas.");
+      return;
+    }
+
+    let cajasQuery = supabase.from("cajas").select("*").order("nombre");
+    if (negocioId) {
+      const sucursalIds = (sucursalesRows || []).map((r) => r.id);
+      cajasQuery = cajasQuery.in("sucursal_id", sucursalIds.length ? sucursalIds : ["00000000-0000-0000-0000-000000000000"]);
+    }
+    const { data: cajasRows, error: cajasErr } = await cajasQuery;
+
+    if (cajasErr) {
+      console.error("Error cargando la jerarquía multi-sucursal:", { cajasErr });
       setJerarquiaError("No se pudo cargar localidades/sucursales/cajas.");
       return;
     }
@@ -1043,7 +1064,7 @@ export default function App() {
       }))
     );
     setJerarquiaError("");
-  }, []);
+  }, [negocioId]);
 
   // Antes solo el admin cargaba la jerarquía (la usaba para los
   // formularios de Cajeros). Ahora el CAJERO también la necesita: su
@@ -2010,10 +2031,15 @@ export default function App() {
 
       // Se piden los items de cada gasto en la misma consulta (embedding
       // de Supabase vía la FK gasto_items.gasto_id -> gastos.id).
-      const { data: gastoRows, error: gastoLoadError } = await supabase
+      // negocio_id (Fase 1 del super-admin): 'gastos' no tenía ningún
+      // scoping antes (ver migración 0073) — sin este filtro, un admin
+      // de un negocio nuevo vería los gastos operativos de Tonazo.
+      let gastoQuery = supabase
         .from("gastos")
         .select("*, gasto_items(*)")
         .order("fecha", { ascending: false });
+      if (negocioId) gastoQuery = gastoQuery.eq("negocio_id", negocioId);
+      const { data: gastoRows, error: gastoLoadError } = await gastoQuery;
 
       if (gastoLoadError) {
         console.error("Error cargando gastos desde Supabase:", gastoLoadError);
@@ -3241,6 +3267,7 @@ export default function App() {
         costoTotalInicial: costoTotalNum,
         ventaPorPeso: newProductoVentaPorPeso,
         sucursalId: sucursalOperativaId,
+        negocioId,
       });
 
       const nombreCreado = composeProductoNombre({
@@ -3509,26 +3536,33 @@ export default function App() {
         .from("categorias")
         .select("activo, orden")
         .eq("nombre", categoriaActual)
+        .eq("negocio_id", negocioId)
         .maybeSingle();
       if (lookupError) return { error: lookupError };
 
       // Paso 1: crear el padre nuevo (mismo activo/orden que el viejo,
       // para que no "salte" de posición en las pestañas del catálogo
-      // por el simple hecho de haberse renombrado).
+      // por el simple hecho de haberse renombrado). negocio_id: sin
+      // esto el nuevo padre no aparecería en el catálogo de ESTE
+      // negocio (useCatalog ya filtra categorias por negocio_id).
       const { error: insertError } = await supabase.from("categorias").insert([
         {
           nombre: nombreNuevo,
           activo: catViejaRow?.activo ?? true,
           orden: catViejaRow?.orden ?? Date.now(),
+          negocio_id: negocioId,
         },
       ]);
       if (insertError) return { error: insertError };
 
-      // Paso 2: migrar los productos hijos al nombre nuevo.
+      // Paso 2: migrar los productos hijos al nombre nuevo — acotado a
+      // ESTE negocio, para no arrastrar (o pisar) productos de otro
+      // negocio que coincida en el nombre de categoría.
       const { error: updateError } = await supabase
         .from("productos")
         .update({ categoria: nombreNuevo })
-        .eq("categoria", categoriaActual);
+        .eq("categoria", categoriaActual)
+        .eq("negocio_id", negocioId);
       if (updateError) {
         // Deshace el paso 1 — no dejar un padre nuevo sin productos
         // por una migración que no se completó.
@@ -3817,7 +3851,7 @@ export default function App() {
     try {
       const { error } = await supabase
         .from("categorias")
-        .insert([{ nombre, activo: true, orden: safeOrdenValue() }]);
+        .insert([{ nombre, activo: true, orden: safeOrdenValue(), negocio_id: negocioId }]);
       if (error) return { error };
       await refetchCatalog();
       return { error: null };
@@ -3855,6 +3889,7 @@ export default function App() {
         subgrupo: subgrupoRaw,
         stockExistente: stock,
         sucursalId: sucursalOperativaId,
+        negocioId,
       });
       await refetchCatalog();
       return { error: null };
@@ -3979,7 +4014,7 @@ export default function App() {
         qty: Number(it.qty),
         consumes: productsById[it.productId]?.consumes || [],
       }));
-      await crearCombo({ nombre, categoria, subgrupo: comboSubgrupo, precio, items });
+      await crearCombo({ nombre, categoria, subgrupo: comboSubgrupo, precio, items, negocioId });
       await refetchCatalog();
       setComboModalOpen(false);
       resetComboForm();
@@ -5296,6 +5331,7 @@ export default function App() {
             monto_digital: montoDigital,
             total,
             fecha: timestamp,
+            negocio_id: negocioId,
           },
         ])
         .select();
@@ -6879,7 +6915,12 @@ export default function App() {
     });
 
     return stats;
-  }, [salesVisibles]);
+    // 'productsById' faltaba acá: sin esto, este memo no se recalculaba
+    // al cambiar el catálogo (ej. al filtrarlo por negocio, Fase 1),
+    // dejando 'stats' con ids de una versión VIEJA de productsById —
+    // bestSellerId podía terminar apuntando a un producto que ya no
+    // existe en el productsById ACTUAL, reventando el .name de abajo.
+  }, [salesVisibles, productsById]);
 
   const bestSellerId = useMemo(() => {
     let best = null;
@@ -7452,9 +7493,9 @@ export default function App() {
                 <Star size={13} /> Producto Estrella
               </span>
               <span className="tz-stat-value tz-star-text">
-                {bestSellerId ? productsById[bestSellerId].name : "Aún sin ventas"}
+                {bestSellerId && productsById[bestSellerId] ? productsById[bestSellerId].name : "Aún sin ventas"}
               </span>
-              {bestSellerId && (
+              {bestSellerId && productStats[bestSellerId] && (
                 <span className="tz-stat-sub">
                   {productStats[bestSellerId].unitsSold} unidades vendidas
                 </span>

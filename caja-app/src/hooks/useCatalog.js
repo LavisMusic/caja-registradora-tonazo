@@ -169,7 +169,17 @@ function buildProductsById(sections) {
 // Sin 'sucursalId' (el admin todavía no eligió una arriba), el catálogo
 // se arma igual (categorías/productos/precios) pero el stock queda
 // vacío a propósito — mejor "todo en 0" que mezclar sucursales.
-export function useCatalog(sucursalId) {
+//
+// 'negocioId' (Fase 1 del super-admin, opcional): filtra categorias/
+// productos/stock a los de ESE negocio — sin esto, un admin de un
+// negocio nuevo veía el catálogo COMPLETO de Tonazo (categorias/
+// productos son globales desde antes de la Fase 0), cientos de filas
+// sin ninguna relación con su negocio, con el consiguiente costo de
+// procesarlas todas para nada (confirmado en vivo: 250+ warnings de
+// "sin fila en inventario_sucursales" + la pantalla tildándose). Sin
+// 'negocioId' (CatalogPage.jsx, que todavía es de un solo negocio) se
+// mantiene el comportamiento global de siempre.
+export function useCatalog(sucursalId, negocioId) {
   const [sections, setSections] = useState([]);
   const [productsById, setProductsById] = useState({});
   const [stock, setStock] = useState({});
@@ -185,21 +195,25 @@ export function useCatalog(sucursalId) {
   // necesita refrescar sections/productsById/stock sin recargar la
   // página.
   const load = useCallback(async () => {
-    const { data: categoriaRows, error: categoriaError } = await supabase
+    let categoriaQuery = supabase
       .from("categorias")
       .select("*")
       .eq("activo", true)
       .order("orden", { ascending: true });
+    if (negocioId) categoriaQuery = categoriaQuery.eq("negocio_id", negocioId);
+    const { data: categoriaRows, error: categoriaError } = await categoriaQuery;
 
     if (categoriaError) {
       console.error("Error cargando categorias desde Supabase:", categoriaError);
     }
 
-    const { data: productoRows, error: productoError } = await supabase
+    let productoQuery = supabase
       .from("productos")
       .select("*")
       .eq("activo", true)
       .order("orden", { ascending: true });
+    if (negocioId) productoQuery = productoQuery.eq("negocio_id", negocioId);
+    const { data: productoRows, error: productoError } = await productoQuery;
 
     if (productoError) {
       console.error("Error cargando productos desde Supabase:", productoError);
@@ -216,10 +230,10 @@ export function useCatalog(sucursalId) {
 
     // 'stock' (global) ya solo aporta la 'etiqueta' (nombre humano de
     // cada clave) — no varía por sucursal, así que se sigue leyendo
-    // entera, sin filtro.
-    const { data: stockRows, error: stockError } = await supabase
-      .from("stock")
-      .select("nombre, cantidad, etiqueta");
+    // entera, sin filtro de sucursal (solo de negocio, si aplica).
+    let stockQuery = supabase.from("stock").select("nombre, cantidad, etiqueta");
+    if (negocioId) stockQuery = stockQuery.eq("negocio_id", negocioId);
+    const { data: stockRows, error: stockError } = await stockQuery;
 
     if (stockError) {
       console.error("Error cargando stock desde Supabase:", stockError);
@@ -302,7 +316,7 @@ export function useCatalog(sucursalId) {
     setStockCostos(loadedStockCostos);
     setStockUltimoCosto(loadedStockUltimoCosto);
     setLoading(false);
-  }, [sucursalId]);
+  }, [sucursalId, negocioId]);
 
   useEffect(() => {
     load();
