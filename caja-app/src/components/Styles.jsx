@@ -2750,8 +2750,8 @@ export default function Styles() {
         padding: 0;
       }
       .tz-admin-filter-taxipe-btn img {
-        width: 70px;
-        height: 70px;
+        width: 100px;
+        height: 100px;
         object-fit: contain;
         transition: transform 0.2s ease;
       }
@@ -2775,25 +2775,44 @@ export default function Styles() {
          ojo). */
       .tz-header-saldo {
         position: absolute;
-        /* 167px = borde inferior de .tz-subtitle medido en vivo contra
-           tz-header-row (getBoundingClientRect) — translateY(-50%)
-           centra el badge sobre ESA línea sin importar si mide 2 líneas
-           de alto (créditos) o el texto de vencimiento es más largo
-           (membresía), a diferencia de un top fijo calculado a mano
-           restando la mitad del alto. */
-        top: 221px;
+        /* Valor base (mobile/tablet, <1024px): medido en vivo contra
+           tz-header-row a ese ancho de logo (130px). El ajuste fino a
+           236px/190px (ventana ancha, aprobado a mano) vive en el
+           @media min-width:1024px de más abajo, junto a los otros
+           ajustes de Localidad/Sucursal/etiqueta/botón. */
+        top: 167px;
         transform: translateY(-50%);
-        right: 40px;
+        right: 24px;
         min-width: 80px;
         padding: 6px 7px;
         gap: 2px;
       }
       .tz-header-saldo .tz-stat-label {
-        font-size: 8px;
+        font-size: 10px;
         gap: 3px;
       }
       .tz-header-saldo .tz-stat-value {
-        font-size: 12px;
+        font-size: 20px;
+      }
+
+      /* Ajustes finos manuales de posición (Localidad/Sucursal/etiqueta/
+         botón Taxi-PE en la tienda pública, y su badge de saldo) —
+         probados y aprobados a ventana ancha. Puestos acá adentro de
+         min-width:1024px (mismo breakpoint "desktop" que ya usa el
+         resto del sitio, ver más abajo) para que SOLO se apliquen ahí:
+         en mobile y en ventanas angostas (navegador acoplado a un
+         costado de la pantalla) estos números de píxeles fijos no
+         tendrían sentido — ahí se cae solo al layout de flexbox de
+         siempre (ya probado en 375px/768px/1920px), que se adapta a
+         cualquier ancho sin necesitar ningún valor a mano. */
+      @media (min-width: 1024px) {
+        .tz-filtro-localidad-group { position: relative; top: -10px; left: 90px; }
+        .tz-filtro-localidad-label { position: relative; top: 0px; left: 4px; }
+        .tz-filtro-sucursal-group { position: relative; top: -5px; left: 100px; }
+        .tz-filtro-sucursal-label { position: relative; top: 5px; left: -45px; }
+        .tz-filtro-estado-tag { position: relative; top: 0px; left: 18px; }
+        .tz-filtro-taxipe-btn-pos { position: relative; top: 20px; left: -613px; }
+        .tz-header-saldo { top: 236px; right: 190px; }
       }
 
       /* Efecto de serpentinas (Confetti.jsx) — piezas con

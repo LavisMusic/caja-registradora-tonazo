@@ -482,8 +482,8 @@ export default function CatalogPage() {
              (centrado real, sin el botón Taxi-PE de al lado corriendo
              el centro) — ver comentario largo en Styles.jsx. */}
           <div className="tz-admin-filter-pareja">
-            <div className="tz-admin-filter-group">
-              <label className="tz-admin-filter-label">Localidad</label>
+            <div className="tz-admin-filter-group tz-filtro-localidad-group">
+              <label className="tz-admin-filter-label tz-filtro-localidad-label">Localidad</label>
               <select
                 className="tz-admin-filter-select"
                 value={publicLocalidadId}
@@ -508,8 +508,8 @@ export default function CatalogPage() {
                 ))}
               </select>
             </div>
-            <div className="tz-admin-filter-group">
-              <label className="tz-admin-filter-label">Sucursal</label>
+            <div className="tz-admin-filter-group tz-filtro-sucursal-group">
+              <label className="tz-admin-filter-label tz-filtro-sucursal-label">Sucursal</label>
               {/* tz-admin-filter-row: select + etiqueta EN LA MISMA
                  LÍNEA (a la derecha del select) — antes la etiqueta
                  quedaba apilada debajo, lo que hacía a este grupo más
@@ -530,7 +530,7 @@ export default function CatalogPage() {
                   ))}
                 </select>
                 {publicSucursalId && sucursalEnLinea !== null && (
-                  <span className={`tz-admin-filter-tag ${sucursalEnLinea ? "is-abierta" : "is-cerrada"}`}>
+                  <span className={`tz-admin-filter-tag tz-filtro-estado-tag ${sucursalEnLinea ? "is-abierta" : "is-cerrada"}`}>
                     <span className="tz-admin-filter-tag-dot" />
                     {sucursalEnLinea ? "En línea" : "Cerrado"}
                   </span>
@@ -542,7 +542,7 @@ export default function CatalogPage() {
                 href={TAXI_PE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="tz-admin-filter-taxipe-btn"
+                className="tz-admin-filter-taxipe-btn tz-filtro-taxipe-btn-pos"
                 aria-label="Ir a Taxi-PE"
                 title="Ir a Taxi-PE"
               >
