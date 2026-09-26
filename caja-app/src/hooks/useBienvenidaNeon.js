@@ -38,6 +38,13 @@ export function useBienvenidaNeon(storageKey, disponible) {
 
   const marcarVista = useCallback(() => {
     if (!storageKey) return;
+    // 'setYaVista' es lo que de verdad apaga 'mostrar' EN ESTA sesión —
+    // guardar solo en localStorage (sin esto) dejaba la animación
+    // pegada para siempre hasta recargar la página: el flag quedaba
+    // bien guardado, pero nada volvía a leerlo hasta el próximo mount
+    // de este hook (bug encontrado en vivo con una cuenta nueva —
+    // "solo pasa la primera vez, se arregla recargando").
+    setYaVista(true);
     try {
       window.localStorage.setItem(PREFIJO + storageKey, "1");
     } catch {
