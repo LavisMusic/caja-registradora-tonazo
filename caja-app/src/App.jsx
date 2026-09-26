@@ -7306,8 +7306,8 @@ export default function App() {
              otro (ej. cuando aparece la etiqueta de abierta/cerrada)
              los desalinea. */}
           <div className="tz-admin-filter-pareja">
-          <div className="tz-admin-filter-group tz-filtro-localidad-group">
-            <label className="tz-admin-filter-label tz-filtro-localidad-label">Localidad</label>
+          <div className="tz-admin-filter-group tz-admin-filtro-localidad-group">
+            <label className="tz-admin-filter-label tz-admin-filtro-localidad-label">Localidad</label>
             <div className="tz-admin-filter-row">
               <select
                 className="tz-admin-filter-select"
@@ -7341,8 +7341,8 @@ export default function App() {
           </div>
 
           {localidadFiltroId && (
-            <div className="tz-admin-filter-group tz-filtro-sucursal-group">
-              <label className="tz-admin-filter-label tz-filtro-sucursal-label">Sucursal / Caja</label>
+            <div className="tz-admin-filter-group tz-admin-filtro-sucursal-group">
+              <label className="tz-admin-filter-label tz-admin-filtro-sucursal-label">Sucursal / Caja</label>
               <div className="tz-admin-filter-row">
                 <select
                   className="tz-admin-filter-select"
@@ -7381,7 +7381,7 @@ export default function App() {
               if (!cajaSel || !sucSel) return null;
               return (
                 <span
-                  className={`tz-admin-filter-tag tz-filtro-estado-tag ${
+                  className={`tz-admin-filter-tag tz-admin-filtro-estado-tag ${
                     cajaSel.estado === "abierta" ? "is-abierta" : "is-cerrada"
                   }`}
                 >

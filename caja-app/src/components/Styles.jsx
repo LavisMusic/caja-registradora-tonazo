@@ -2813,6 +2813,16 @@ export default function Styles() {
         .tz-filtro-estado-tag { position: relative; top: 0px; left: 18px; }
         .tz-filtro-taxipe-btn-pos { position: relative; top: 20px; left: -613px; }
         .tz-header-saldo { top: 236px; right: 190px; }
+
+        /* Mismo ajuste fino pero PARA EL PANEL ADMIN — clases propias
+           (no las de arriba) para que mover esto no mueva también la
+           tienda pública ya aprobada. Arrancan en los mismos valores
+           que compartían antes de separarlas; ajustar libremente. */
+        .tz-admin-filtro-localidad-group { position: relative; top: -10px; left: 90px; }
+        .tz-admin-filtro-localidad-label { position: relative; top: 0px; left: 4px; }
+        .tz-admin-filtro-sucursal-group { position: relative; top: -5px; left: 100px; }
+        .tz-admin-filtro-sucursal-label { position: relative; top: 5px; left: -45px; }
+        .tz-admin-filtro-estado-tag { position: relative; top: 0px; left: 18px; }
       }
 
       /* Efecto de serpentinas (Confetti.jsx) — piezas con
