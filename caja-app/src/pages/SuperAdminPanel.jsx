@@ -17,6 +17,7 @@ import {
   GripVertical,
   Store,
   ImagePlus,
+  Trash2,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
@@ -129,13 +130,30 @@ function RubroRow({ rubro, selected, onSelect, onRename, onToggleActivo }) {
   );
 }
 
-function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange }) {
+function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete }) {
   const drag = useDragItem(`negocio:${negocio.id}`);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(negocio.nombre);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [fkConflict, setFkConflict] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError("");
+    setFkConflict(false);
+    const { error: err, fkConflict: isFk } = await onDelete(negocio);
+    setDeleting(false);
+    if (err) {
+      if (isFk) setFkConflict(true);
+      else setError(err.message ? `No se pudo eliminar: ${err.message}` : "No se pudo eliminar.");
+      return;
+    }
+    // Si funcionó, el padre ya sacó esta tarjeta de la lista.
+  };
 
   const save = async () => {
     const nombre = value.trim();
@@ -221,15 +239,63 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange }) {
         </div>
       )}
 
-      <label className="tz-toggle tz-sa-negocio-toggle" title={negocio.activo ? "Activo" : "Oculto"}>
-        <input
-          type="checkbox"
-          checked={negocio.activo}
-          onChange={(e) => onToggleActivo(negocio, e.target.checked)}
-        />
-        <span className="tz-toggle-slider" />
-        <span className="tz-sa-negocio-toggle-label">{negocio.activo ? "Activo" : "Oculto"}</span>
-      </label>
+      {!confirming && (
+        <label className="tz-toggle tz-sa-negocio-toggle" title={negocio.activo ? "Activo" : "Oculto"}>
+          <input
+            type="checkbox"
+            checked={negocio.activo}
+            onChange={(e) => onToggleActivo(negocio, e.target.checked)}
+          />
+          <span className="tz-toggle-slider" />
+          <span className="tz-sa-negocio-toggle-label">{negocio.activo ? "Activo" : "Oculto"}</span>
+        </label>
+      )}
+
+      {confirming ? (
+        <div className="tz-vis-confirm-delete tz-sa-negocio-confirm">
+          <p>¿Eliminar <strong>{negocio.nombre}</strong> definitivamente?</p>
+          {fkConflict && (
+            <p className="tz-error">
+              No se puede eliminar: todavía tiene datos asociados (localidades, productos, ventas...).
+              Desactivalo en su lugar con el interruptor de arriba.
+            </p>
+          )}
+          <div className="tz-vis-confirm-actions">
+            {!fkConflict && (
+              <button
+                type="button"
+                className="tz-cliente-action-btn tz-cliente-action-deuda"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? <Loader2 size={13} className="tz-spin" /> : <Trash2 size={13} />}
+                Sí, eliminar
+              </button>
+            )}
+            <button
+              type="button"
+              className="tz-cliente-action-btn"
+              onClick={() => {
+                setConfirming(false);
+                setFkConflict(false);
+              }}
+              disabled={deleting}
+            >
+              <X size={13} /> Cancelar
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="tz-sa-negocio-delete-btn"
+          onClick={() => setConfirming(true)}
+          aria-label={`Eliminar ${negocio.nombre}`}
+          title="Eliminar negocio"
+        >
+          <Trash2 size={13} /> Eliminar
+        </button>
+      )}
 
       {error && <p className="tz-error tz-sa-inline-error">{error}</p>}
     </div>
@@ -394,6 +460,21 @@ export default function SuperAdminPanel() {
     return { error: null };
   };
 
+  // 23503 = foreign_key_violation (Postgres) — el negocio ya tiene
+  // localidades/productos/etc. apuntándole (negocio_id, ver migración
+  // 0073). No hay ON DELETE CASCADE a propósito: perder ese rastro por
+  // error sería mucho peor que solo bloquear el borrado y ofrecer
+  // desactivar en su lugar (mismo criterio que ya usa el borrado de
+  // categoría/producto en el catálogo).
+  const handleDeleteNegocio = async (negocio) => {
+    const { error } = await supabase.from("negocios").delete().eq("id", negocio.id);
+    if (error) {
+      return { error, fkConflict: error.code === "23503" };
+    }
+    setNegocios((prev) => prev.filter((n) => n.id !== negocio.id));
+    return { error: null };
+  };
+
   const handleNegocioDragEnd = async (event) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -501,6 +582,7 @@ export default function SuperAdminPanel() {
                       onRename={handleRenameNegocio}
                       onToggleActivo={handleToggleNegocioActivo}
                       onLogoChange={handleNegocioLogoChange}
+                      onDelete={handleDeleteNegocio}
                     />
                   ))}
 

@@ -6084,6 +6084,24 @@ export default function Styles() {
         gap: 8px;
       }
       .tz-sa-negocio-toggle-label { font-size: 11px; color: var(--text-dim); }
+      .tz-sa-negocio-delete-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        width: 100%;
+        padding: 6px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        background: none;
+        color: #ff6b6b;
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .tz-sa-negocio-delete-btn:hover { background: rgba(255,80,80,0.1); border-color: rgba(255,80,80,0.3); }
+      .tz-sa-negocio-confirm { width: 100%; }
 
       .tz-sa-negocio-card-new {
         align-items: stretch;
