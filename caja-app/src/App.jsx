@@ -5786,20 +5786,43 @@ export default function App() {
     setCajerosLoading(true);
 
     const cargarUsuarios = async () => {
-      // Cajeros SÍ son propios de este negocio (negocio_id, Fase 1) —
-      // clientes NO (identidad compartida entre negocios a propósito,
-      // ver decisión con el usuario) — por eso el filtro es un OR, no
-      // un simple .eq: un cliente entra sin importar su negocio_id
-      // (null), un cajero solo si es de ESTE negocio. Sin esto, el
-      // panel de Usuarios mostraba los cajeros de TODOS los negocios
-      // mezclados (confirmado en vivo).
-      let usuariosQuery = supabase
+      // Decisión con el usuario: el LOGIN de un cliente sigue siendo
+      // compartido entre negocios (misma cuenta, no hace falta
+      // registrarse de nuevo en cada uno), pero el panel de Usuarios de
+      // CADA negocio solo debe LISTAR a los clientes que de verdad
+      // compraron/tienen fiado ACÁ — no a todos los clientes de la
+      // plataforma. La fuente de verdad de "le pertenece a este
+      // negocio" es clientes_fiado.negocio_id, así que se arranca por
+      // ahí (además ya hace falta para el estado de Fiado habilitado).
+      let fiadoQuery = supabase.from("clientes_fiado").select("auth_user_id, fiado_habilitado");
+      if (negocioId) fiadoQuery = fiadoQuery.eq("negocio_id", negocioId);
+      const { data: fiadoRows, error: fiadoErr } = await fiadoQuery;
+
+      if (!active) return;
+      if (fiadoErr) {
+        console.error("Error cargando clientes_fiado de este negocio:", fiadoErr);
+        setCajerosLoading(false);
+        return;
+      }
+
+      const fiadoPorUserId = Object.fromEntries(
+        (fiadoRows || []).filter((r) => r.auth_user_id).map((r) => [r.auth_user_id, r.fiado_habilitado === true])
+      );
+      const clienteIdsDeEsteNegocio = Object.keys(fiadoPorUserId);
+
+      // Cajeros: solo los de ESTE negocio. Clientes: solo los que
+      // aparecieron arriba (tienen una fila de clientes_fiado acá).
+      const filtrosOr = [
+        negocioId ? `and(role.eq.cajero,negocio_id.eq.${negocioId})` : "role.eq.cajero",
+      ];
+      if (clienteIdsDeEsteNegocio.length > 0) {
+        filtrosOr.push(`and(role.eq.cliente,id.in.(${clienteIdsDeEsteNegocio.join(",")}))`);
+      }
+      const { data, error } = await supabase
         .from("profiles")
         .select("id, nombre, role, sucursal_id, caja_id")
-        .in("role", ["cajero", "cliente"])
+        .or(filtrosOr.join(","))
         .order("role", { ascending: true });
-      if (negocioId) usuariosQuery = usuariosQuery.or(`role.eq.cliente,negocio_id.eq.${negocioId}`);
-      const { data, error } = await usuariosQuery;
 
       if (!active) return;
       if (error) {
@@ -5808,27 +5831,6 @@ export default function App() {
         return;
       }
 
-      const clienteIds = (data || []).filter((r) => r.role === "cliente").map((r) => r.id);
-      let fiadoPorUserId = {};
-      if (clienteIds.length > 0) {
-        // negocio_id: un cliente puede tener una fila de clientes_fiado
-        // POR CADA negocio donde compró — sin este filtro, el estado
-        // "Fiado habilitado" que se muestra acá podía venir de OTRO
-        // negocio (el cliente en sí SÍ es compartido a propósito, pero
-        // su estado/saldo de fiado no).
-        let fiadoQuery = supabase.from("clientes_fiado").select("auth_user_id, fiado_habilitado").in("auth_user_id", clienteIds);
-        if (negocioId) fiadoQuery = fiadoQuery.eq("negocio_id", negocioId);
-        const { data: fiadoRows, error: fiadoErr } = await fiadoQuery;
-        if (fiadoErr) {
-          console.error("Error cargando fiado_habilitado de usuarios:", fiadoErr);
-        } else {
-          fiadoPorUserId = Object.fromEntries(
-            (fiadoRows || []).map((r) => [r.auth_user_id, r.fiado_habilitado === true])
-          );
-        }
-      }
-
-      if (!active) return;
       setCajeros(
         (data || []).map((row) => ({
           id: row.id,
