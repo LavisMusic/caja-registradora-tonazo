@@ -5786,11 +5786,20 @@ export default function App() {
     setCajerosLoading(true);
 
     const cargarUsuarios = async () => {
-      const { data, error } = await supabase
+      // Cajeros SÍ son propios de este negocio (negocio_id, Fase 1) —
+      // clientes NO (identidad compartida entre negocios a propósito,
+      // ver decisión con el usuario) — por eso el filtro es un OR, no
+      // un simple .eq: un cliente entra sin importar su negocio_id
+      // (null), un cajero solo si es de ESTE negocio. Sin esto, el
+      // panel de Usuarios mostraba los cajeros de TODOS los negocios
+      // mezclados (confirmado en vivo).
+      let usuariosQuery = supabase
         .from("profiles")
         .select("id, nombre, role, sucursal_id, caja_id")
         .in("role", ["cajero", "cliente"])
         .order("role", { ascending: true });
+      if (negocioId) usuariosQuery = usuariosQuery.or(`role.eq.cliente,negocio_id.eq.${negocioId}`);
+      const { data, error } = await usuariosQuery;
 
       if (!active) return;
       if (error) {
