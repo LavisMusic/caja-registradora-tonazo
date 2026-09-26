@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Lock } from "lucide-react";
 import { supabase, setAuthPersistence } from "../supabaseClient";
-import { ADMIN_DUMMY_EMAIL, usuarioToDummyEmail } from "../lib/auth";
+import { ADMIN_DUMMY_EMAIL, SUPER_ADMIN_DUMMY_EMAIL, usuarioToDummyEmail } from "../lib/auth";
 import Styles from "./Styles";
 import logo from "../assets/logo.webp";
 
@@ -17,10 +17,11 @@ import logo from "../assets/logo.webp";
 // is_cajero() en la base de datos). App.jsx decide qué mostrar según
 // el rol una vez adentro — esta pantalla no sabe ni le importa cuál es.
 export default function AdminLoginGate() {
-  const [modo, setModo] = useState("admin"); // 'admin' | 'cajero'
+  const [modo, setModo] = useState("admin"); // 'admin' | 'cajero' | 'super_admin'
   const [claveSecreta, setClaveSecreta] = useState("");
   const [usuario, setUsuario] = useState("");
   const [claveCajero, setClaveCajero] = useState("");
+  const [claveSuperAdmin, setClaveSuperAdmin] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -38,6 +39,13 @@ export default function AdminLoginGate() {
       }
       email = ADMIN_DUMMY_EMAIL;
       password = claveSecreta;
+    } else if (modo === "super_admin") {
+      if (!claveSuperAdmin) {
+        setError("Ingresa la clave secreta.");
+        return;
+      }
+      email = SUPER_ADMIN_DUMMY_EMAIL;
+      password = claveSuperAdmin;
     } else {
       if (!usuario.trim() || !claveCajero) {
         setError("Ingresa tu usuario y clave.");
@@ -53,7 +61,7 @@ export default function AdminLoginGate() {
     setSubmitting(false);
 
     if (signInError) {
-      setError(modo === "admin" ? "Clave incorrecta. Intenta de nuevo." : "Usuario o clave incorrectos.");
+      setError(modo === "cajero" ? "Usuario o clave incorrectos." : "Clave incorrecta. Intenta de nuevo.");
       return;
     }
     // AuthContext recoge la sesión vía onAuthStateChange; RequireAdmin
@@ -69,7 +77,11 @@ export default function AdminLoginGate() {
       <div className="tz-modal" style={{ position: "static" }}>
         <img src={logo} alt="TONAZO" className="tz-modal-logo" />
         <p className="tz-brand-sub">
-          {modo === "admin" ? "Panel de Administración" : "Acceso Cajero"}
+          {modo === "admin"
+            ? "Panel de Administración"
+            : modo === "super_admin"
+              ? "Panel Super Admin"
+              : "Acceso Cajero"}
         </p>
 
         <div className="tz-gasto-tipo-buttons" style={{ marginBottom: 16 }}>
@@ -93,6 +105,16 @@ export default function AdminLoginGate() {
           >
             Cajero
           </button>
+          <button
+            type="button"
+            className={`tz-gasto-tipo-btn ${modo === "super_admin" ? "tz-gasto-tipo-active" : ""}`}
+            onClick={() => {
+              setModo("super_admin");
+              setError("");
+            }}
+          >
+            Super Admin
+          </button>
         </div>
 
         <form onSubmit={handleSubmit}>
@@ -108,6 +130,21 @@ export default function AdminLoginGate() {
                 className="tz-text-input"
                 value={claveSecreta}
                 onChange={(e) => setClaveSecreta(e.target.value)}
+                placeholder="••••••••"
+              />
+            </div>
+          ) : modo === "super_admin" ? (
+            <div className="tz-login-field">
+              <label className="tz-field-label" htmlFor="super-admin-clave">
+                Clave secreta
+              </label>
+              <input
+                id="super-admin-clave"
+                type="password"
+                autoFocus
+                className="tz-text-input"
+                value={claveSuperAdmin}
+                onChange={(e) => setClaveSuperAdmin(e.target.value)}
                 placeholder="••••••••"
               />
             </div>

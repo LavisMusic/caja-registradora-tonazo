@@ -5859,6 +5859,254 @@ export default function Styles() {
         justify-content: center; border-radius: 12px; border: 1px solid rgba(255,47,158,0.45);
         background: rgba(255,47,158,0.14); color: #ff2f9e; cursor: pointer; }
       .tz-dlv-send:disabled { opacity: 0.4; cursor: default; }
+
+      /* ==================== SUPER ADMIN (Fase 1) ====================
+         Pantalla aparte de todo el POS: header simple + columna de
+         rubros (izquierda, oscura) + grilla de negocios de 3 columnas
+         estilo Friv (derecha). Reusa .tz-toggle/.tz-vis-edit-btn/
+         .tz-text-input/.tz-cliente-action-btn ya definidos arriba, no
+         duplica esos estilos base. */
+      .tz-sa-header {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-soft);
+        background: rgba(10, 7, 22, 0.85);
+      }
+      .tz-sa-header-logo { height: 44px; width: auto; }
+      .tz-sa-header-title { flex: 1 1 auto; min-width: 0; }
+      .tz-sa-header-title h1 {
+        margin: 0;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 16px;
+        letter-spacing: 0.08em;
+      }
+      .tz-sa-header-title p {
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: var(--text-dim);
+      }
+
+      .tz-sa-body {
+        display: flex;
+        align-items: flex-start;
+        gap: 20px;
+        padding: 20px;
+      }
+      @media (max-width: 767px) {
+        .tz-sa-body { flex-direction: column; }
+      }
+
+      .tz-sa-col-title {
+        margin: 0 0 10px;
+        font-family: 'Orbitron', sans-serif;
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--cyan);
+      }
+
+      .tz-sa-rubros-col {
+        flex: 0 0 260px;
+        width: 260px;
+        box-sizing: border-box;
+        background: var(--panel-solid);
+        border: 1px solid var(--border-soft);
+        border-radius: 16px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        position: sticky;
+        top: 20px;
+      }
+      @media (max-width: 767px) {
+        .tz-sa-rubros-col { width: 100%; flex: 1 1 auto; position: static; }
+      }
+
+      .tz-sa-rubro-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid transparent;
+      }
+      .tz-sa-rubro-row-active {
+        border-color: rgba(43,232,255,0.4);
+        background: rgba(43,232,255,0.08);
+      }
+      .tz-sa-rubro-todos {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        color: var(--text);
+        cursor: pointer;
+        text-align: left;
+      }
+      .tz-sa-rubro-label {
+        flex: 1 1 auto;
+        min-width: 0;
+        text-align: left;
+        background: none;
+        border: none;
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 4px 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .tz-sa-rubro-toggle { flex: 0 0 auto; }
+      .tz-sa-drag-handle {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        color: var(--text-dim);
+        cursor: grab;
+        touch-action: none;
+      }
+      .tz-sa-drag-handle:active { cursor: grabbing; }
+      .tz-sa-inline-input { flex: 1 1 auto; min-width: 0; }
+      .tz-sa-inline-error { margin-top: 4px; font-size: 12px; }
+      .tz-sa-new-row {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 6px;
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px dashed rgba(255,255,255,0.15);
+      }
+      .tz-sa-add-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        margin-top: 6px;
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px dashed rgba(43,232,255,0.35);
+        background: transparent;
+        color: var(--cyan);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .tz-sa-add-btn:hover { background: rgba(43,232,255,0.08); }
+
+      .tz-sa-negocios-col { flex: 1 1 auto; min-width: 0; }
+      .tz-sa-negocios-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+      @media (max-width: 1023px) {
+        .tz-sa-negocios-grid { grid-template-columns: repeat(2, 1fr); }
+      }
+      @media (max-width: 559px) {
+        .tz-sa-negocios-grid { grid-template-columns: 1fr; }
+      }
+
+      .tz-sa-negocio-card {
+        position: relative;
+        background: var(--panel-solid);
+        border: 1px solid var(--border-soft);
+        border-radius: 16px;
+        padding: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+      .tz-sa-negocio-drag {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+      }
+      .tz-sa-negocio-logo-wrap {
+        position: relative;
+        width: 96px;
+        height: 96px;
+        border-radius: 14px;
+        overflow: hidden;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid var(--border-soft);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .tz-sa-negocio-logo { width: 100%; height: 100%; object-fit: contain; }
+      .tz-sa-negocio-logo-placeholder { color: var(--text-dim); }
+      .tz-sa-negocio-logo-overlay {
+        position: absolute;
+        bottom: 4px;
+        right: 4px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: rgba(0,0,0,0.6);
+        color: var(--cyan);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tz-sa-negocio-name-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        justify-content: center;
+      }
+      .tz-sa-negocio-name {
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 14.5px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 160px;
+      }
+      .tz-sa-negocio-edit-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+      }
+      .tz-sa-negocio-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tz-sa-negocio-toggle-label { font-size: 11px; color: var(--text-dim); }
+
+      .tz-sa-negocio-card-new {
+        align-items: stretch;
+        justify-content: center;
+        border-style: dashed;
+        border-color: rgba(43,232,255,0.3);
+        min-height: 180px;
+        gap: 10px;
+      }
+      .tz-sa-add-negocio-btn {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        background: none;
+        border: none;
+        color: var(--cyan);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        cursor: pointer;
+      }
     `}</style>
   );
 }

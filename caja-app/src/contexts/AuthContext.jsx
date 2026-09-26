@@ -102,7 +102,7 @@ export function AuthProvider({ children }) {
     const cargarProfile = () =>
       supabase
         .from("profiles")
-        .select("role, nombre, sucursal_id, caja_id")
+        .select("role, nombre, sucursal_id, caja_id, negocio_id")
         .eq("id", session.user.id)
         // maybeSingle (no single): 0 filas es un resultado VÁLIDO acá —
         // significa que esta cuenta ya fue eliminada por el admin, no un
@@ -231,10 +231,14 @@ export function AuthProvider({ children }) {
     // en vez de depender de la vieja fila global 'estado_caja'.
     sucursalId: profile?.sucursal_id ?? null,
     cajaId: profile?.caja_id ?? null,
+    // negocio al que pertenece este usuario (Fase 0/1 multi-negocio) —
+    // null para 'super_admin', que no pertenece a ninguno en particular.
+    negocioId: profile?.negocio_id ?? null,
     loading,
     isAdmin: profile?.role === "admin",
     isCliente: profile?.role === "cliente",
     isCajero: profile?.role === "cajero",
+    isSuperAdmin: profile?.role === "super_admin",
     tieneFiado,
     saldoTaxi,
     signOut,
