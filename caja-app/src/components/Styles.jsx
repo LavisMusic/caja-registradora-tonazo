@@ -2783,12 +2783,14 @@ export default function Styles() {
       .tz-header-saldo {
         display: none;
         position: absolute;
-        /* Valor base (tablet, 768-1023px): medido en vivo contra
-           tz-header-row a ese ancho de logo (130-170px). El ajuste fino
-           a 236px/190px (ventana ancha, aprobado a mano) vive en el
-           @media min-width:1024px de más abajo, junto a los otros
-           ajustes de Localidad/Sucursal/etiqueta/botón. */
-        top: 167px;
+        /* Valor base (tablet, 768-1023px): medido EN VIVO a 960px de
+           ancho (antes decía 167px, calculado a mano — quedaba 60px+
+           más abajo del borde real de tz-header-row, metiéndose encima
+           de la barra de filtros). El ajuste fino a 236px/190px
+           (ventana ancha, aprobado a mano) vive en el @media
+           min-width:1024px de más abajo, junto a los otros ajustes de
+           Localidad/Sucursal/etiqueta/botón. */
+        top: 129px;
         transform: translateY(-50%);
         right: 24px;
       }
@@ -2818,7 +2820,7 @@ export default function Styles() {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 14px;
+        gap: 20px;
       }
       @media (min-width: 768px) {
         .tz-filtro-linea3-mobile { display: contents; }
