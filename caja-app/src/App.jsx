@@ -1874,11 +1874,26 @@ export default function App() {
      directo en la DB y no tocan este estado. ---- */
   const recargarDatos = useCallback(async () => {
     async function load() {
+      // negocio_id (Fase 1 del super-admin): historial/comprobantes/
+      // fiado_items/movimientos_fiado no tienen negocio_id propio (solo
+      // sucursal_id/caja_id, ver migración 0073) — se acotan filtrando
+      // por las sucursales YA acotadas a este negocio (refetchJerarquia,
+      // estado 'sucursales'). Sin esto, cualquier negocio nuevo veía el
+      // historial de ventas/fiados de Tonazo mezclado con el suyo
+      // (confirmado en vivo). Con negocioId pero sucursales todavía
+      // vacío (primer render, antes de que refetchJerarquia resuelva),
+      // el filtro resulta en 0 filas — se corrige solo apenas
+      // 'sucursales' llega (ver dependencia del useCallback, abajo).
+      const sucursalIdsDelNegocio = negocioId ? sucursales.map((s) => s.id) : null;
+      const scopeSucursal = (query) =>
+        sucursalIdsDelNegocio
+          ? query.in("sucursal_id", sucursalIdsDelNegocio.length ? sucursalIdsDelNegocio : ["00000000-0000-0000-0000-000000000000"])
+          : query;
+
       // 3) HISTORIAL
-      const { data: historialRows, error: historialError } = await supabase
-        .from("historial")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const { data: historialRows, error: historialError } = await scopeSucursal(
+        supabase.from("historial").select("*").order("fecha", { ascending: false })
+      );
 
       if (historialError) {
         console.error("Error cargando historial desde Supabase:", historialError);
@@ -1915,10 +1930,9 @@ export default function App() {
       }));
 
       // 3) COMPROBANTES (ingresos manuales / detectados por OCR)
-      const { data: comprobRows, error: comprobError } = await supabase
-        .from("comprobantes")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const { data: comprobRows, error: comprobError } = await scopeSucursal(
+        supabase.from("comprobantes").select("*").order("fecha", { ascending: false })
+      );
 
       if (comprobError) {
         console.error("Error cargando comprobantes desde Supabase:", comprobError);
@@ -1939,10 +1953,12 @@ export default function App() {
       }));
 
       // 4) LIBRETA: clientes fiado + fiado_items (deuda por producto) + movimientos (cobros)
-      const { data: clienteRows, error: clienteLoadError } = await supabase
-        .from("clientes_fiado")
-        .select("*")
-        .order("fecha", { ascending: false });
+      // clientes_fiado SÍ tiene negocio_id propio (decidido con el
+      // usuario: identidad de login compartida, pero el fiado se lleva
+      // por separado en cada negocio).
+      let clienteQuery = supabase.from("clientes_fiado").select("*").order("fecha", { ascending: false });
+      if (negocioId) clienteQuery = clienteQuery.eq("negocio_id", negocioId);
+      const { data: clienteRows, error: clienteLoadError } = await clienteQuery;
 
       if (clienteLoadError) {
         console.error("Error cargando clientes_fiado desde Supabase:", clienteLoadError);
@@ -1968,10 +1984,9 @@ export default function App() {
         timestamp: Number(row.fecha),
       }));
 
-      const { data: fiadoItemRows, error: fiadoItemLoadError } = await supabase
-        .from("fiado_items")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const { data: fiadoItemRows, error: fiadoItemLoadError } = await scopeSucursal(
+        supabase.from("fiado_items").select("*").order("fecha", { ascending: false })
+      );
 
       if (fiadoItemLoadError) {
         console.error("Error cargando fiado_items desde Supabase:", fiadoItemLoadError);
@@ -1992,10 +2007,9 @@ export default function App() {
         timestamp: Number(row.fecha),
       }));
 
-      const { data: movRows, error: movLoadError } = await supabase
-        .from("movimientos_fiado")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const { data: movRows, error: movLoadError } = await scopeSucursal(
+        supabase.from("movimientos_fiado").select("*").order("fecha", { ascending: false })
+      );
 
       if (movLoadError) {
         console.error("Error cargando movimientos_fiado desde Supabase:", movLoadError);
@@ -2066,10 +2080,9 @@ export default function App() {
       }));
 
       // 6) CIERRES DE CAJA (snapshots de cada corte de turno)
-      const { data: cierreRows, error: cierreLoadError } = await supabase
-        .from("cierres_caja")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const { data: cierreRows, error: cierreLoadError } = await scopeSucursal(
+        supabase.from("cierres_caja").select("*").order("fecha", { ascending: false })
+      );
 
       if (cierreLoadError) {
         console.error("Error cargando cierres_caja desde Supabase:", cierreLoadError);
@@ -2117,7 +2130,13 @@ export default function App() {
     }
 
     await load();
-  }, []);
+    // negocioId/sucursales: sin estas dependencias, esta función quedaba
+    // "congelada" con los valores de la primerísima vez que se creó (el
+    // mismo tipo de bug ya encontrado en productStats) — nunca se
+    // volvía a ejecutar cuando 'sucursales' pasaba de [] a su valor
+    // real, dejando el filtro de historial/libreta corriendo para
+    // siempre contra una lista vacía.
+  }, [negocioId, sucursales]);
 
   useEffect(() => {
     recargarDatos();
