@@ -2773,16 +2773,29 @@ export default function Styles() {
          siempre, y este badge fijo a la altura de "Compra Ya" (top/right
          medidos en vivo con getBoundingClientRect, no una estimación a
          ojo). */
+      /* Wrapper posicionado — el chip visual (tz-stat-chip) vive ADENTRO
+         (saldoChipContenido en CatalogPage.jsx), así que el tamaño se
+         define contra ese hijo, no contra este div. display:none por
+         defecto (mobile): a ese ancho el badge se muestra en la 3ra
+         línea del filtro (junto al botón Taxi-PE, ver
+         tz-filtro-saldo-mobile) en vez de acá — mostrar los dos a la
+         vez duplicaría el dato en pantalla. */
       .tz-header-saldo {
+        display: none;
         position: absolute;
-        /* Valor base (mobile/tablet, <1024px): medido en vivo contra
-           tz-header-row a ese ancho de logo (130px). El ajuste fino a
-           236px/190px (ventana ancha, aprobado a mano) vive en el
+        /* Valor base (tablet, 768-1023px): medido en vivo contra
+           tz-header-row a ese ancho de logo (130-170px). El ajuste fino
+           a 236px/190px (ventana ancha, aprobado a mano) vive en el
            @media min-width:1024px de más abajo, junto a los otros
            ajustes de Localidad/Sucursal/etiqueta/botón. */
         top: 167px;
         transform: translateY(-50%);
         right: 24px;
+      }
+      @media (min-width: 768px) {
+        .tz-header-saldo { display: block; }
+      }
+      .tz-header-saldo .tz-stat-chip {
         min-width: 80px;
         padding: 6px 7px;
         gap: 2px;
@@ -2793,6 +2806,37 @@ export default function Styles() {
       }
       .tz-header-saldo .tz-stat-value {
         font-size: 20px;
+      }
+
+      /* 3ra línea del filtro público en mobile (<768px): botón Taxi-PE
+         + badge de saldo, centrados juntos — la copia del badge que
+         SÍ se ve acá (tz-header-saldo se oculta a este ancho). En
+         768px+ el wrapper se "disuelve" (display:contents) para no
+         interferir con el layout/posicionamiento normal de esos
+         elementos en la pareja. */
+      .tz-filtro-linea3-mobile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+      }
+      @media (min-width: 768px) {
+        .tz-filtro-linea3-mobile { display: contents; }
+      }
+      .tz-filtro-saldo-mobile .tz-stat-chip {
+        min-width: 80px;
+        padding: 6px 7px;
+        gap: 2px;
+      }
+      .tz-filtro-saldo-mobile .tz-stat-label {
+        font-size: 10px;
+        gap: 3px;
+      }
+      .tz-filtro-saldo-mobile .tz-stat-value {
+        font-size: 20px;
+      }
+      @media (min-width: 768px) {
+        .tz-filtro-saldo-mobile { display: none; }
       }
 
       /* Ajustes finos manuales de posición (Localidad/Sucursal/etiqueta/
@@ -2810,7 +2854,7 @@ export default function Styles() {
         .tz-filtro-localidad-label { position: relative; top: 0px; left: 4px; }
         .tz-filtro-sucursal-group { position: relative; top: -5px; left: 100px; }
         .tz-filtro-sucursal-label { position: relative; top: 5px; left: -45px; }
-        .tz-filtro-estado-tag { position: relative; top: 0px; left: 18px; }
+        .tz-filtro-estado-tag { position: relative; top: -5px; left: 18px; }
         .tz-filtro-taxipe-btn-pos { position: relative; top: 20px; left: -613px; }
         .tz-header-saldo { top: 236px; right: 190px; }
 
@@ -2818,11 +2862,11 @@ export default function Styles() {
            (no las de arriba) para que mover esto no mueva también la
            tienda pública ya aprobada. Arrancan en los mismos valores
            que compartían antes de separarlas; ajustar libremente. */
-        .tz-admin-filtro-localidad-group { position: relative; top: -10px; left: 90px; }
+        .tz-admin-filtro-localidad-group { position: relative; top: -5px; left: 90px; }
         .tz-admin-filtro-localidad-label { position: relative; top: 0px; left: 4px; }
         .tz-admin-filtro-sucursal-group { position: relative; top: -5px; left: 100px; }
-        .tz-admin-filtro-sucursal-label { position: relative; top: 5px; left: -45px; }
-        .tz-admin-filtro-estado-tag { position: relative; top: 0px; left: 18px; }
+        .tz-admin-filtro-sucursal-label { position: relative; top: 0px; left: -45px; }
+        .tz-admin-filtro-estado-tag { position: relative; top:-5px; left: 100px; }
       }
 
       /* Efecto de serpentinas (Confetti.jsx) — piezas con

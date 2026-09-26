@@ -115,6 +115,30 @@ export default function CatalogPage() {
   const membresiaTaxiVigente =
     !!saldoTaxi?.membresia_vencimiento && new Date(saldoTaxi.membresia_vencimiento) > new Date();
 
+  // Contenido del badge de saldo, calculado UNA vez y renderizado en
+  // DOS lugares del DOM (header en desktop/tablet, junto al botón
+  // Taxi-PE en mobile) — mismo tz-stat-chip que usa el conductor en
+  // Taxi-PE, se muestra UNO SOLO (membresía si está vigente, si no
+  // créditos si tiene, si no nada). Cuál copia se ve la decide el CSS
+  // (display:none por breakpoint), no JS — así nunca se desincroniza
+  // una de la otra.
+  const saldoChipContenido =
+    isCliente && session && saldoTaxi && membresiaTaxiVigente ? (
+      <div className="tz-stat-chip tz-stat-chip-green">
+        <span className="tz-stat-label">
+          <CalendarClock size={13} /> Vigencia
+        </span>
+        <span className="tz-stat-value tz-green">{formatDate(saldoTaxi.membresia_vencimiento)}</span>
+      </div>
+    ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente && Number(saldoTaxi.creditos_disponibles) > 0 ? (
+      <div className="tz-stat-chip">
+        <span className="tz-stat-label">
+          <CreditCard size={13} /> Créditos
+        </span>
+        <span className="tz-stat-value tz-cyan">{saldoTaxi.creditos_disponibles}</span>
+      </div>
+    ) : null;
+
   /* ---- Fase 1 "Pedidos Delivery": carrito del cliente logueado.
      Mismo shape que 'selection' en App.jsx ({ productId: qty }) — un
      cliente sin sesión (o logueado pero no como 'cliente', ej. un
@@ -449,28 +473,11 @@ export default function CatalogPage() {
                 <span className="tz-header-btn-label">Login</span>
               </button>
             )}
-            {/* Mismo tz-stat-chip que usa el conductor en Taxi-PE para
-               este par (Créditos/Vigencia) — acá se muestra UNO SOLO,
-               el que corresponda a lo que el cliente tiene: si tiene
-               membresía vigente, esa; si no, sus créditos (si tiene
-               algo); si no tiene ninguno de los dos, no se muestra
-               nada. */}
-            {isCliente && session && saldoTaxi && membresiaTaxiVigente && (
-              <div className="tz-header-saldo tz-stat-chip tz-stat-chip-green">
-                <span className="tz-stat-label">
-                  <CalendarClock size={13} /> Vigencia
-                </span>
-                <span className="tz-stat-value tz-green">{formatDate(saldoTaxi.membresia_vencimiento)}</span>
-              </div>
-            )}
-            {isCliente && session && saldoTaxi && !membresiaTaxiVigente && Number(saldoTaxi.creditos_disponibles) > 0 && (
-              <div className="tz-header-saldo tz-stat-chip">
-                <span className="tz-stat-label">
-                  <CreditCard size={13} /> Créditos
-                </span>
-                <span className="tz-stat-value tz-cyan">{saldoTaxi.creditos_disponibles}</span>
-              </div>
-            )}
+            {/* Copia de escritorio/tablet — oculta en mobile por CSS
+               (tz-header-saldo tiene display:none bajo 768px). La
+               copia de mobile vive más abajo, junto al botón Taxi-PE
+               en la 3ra línea del filtro. */}
+            {saldoChipContenido && <div className="tz-header-saldo">{saldoChipContenido}</div>}
           </div>
         </div>
       </header>
@@ -537,18 +544,24 @@ export default function CatalogPage() {
                 )}
               </div>
             </div>
-            {TAXI_PE_URL && (
-              <a
-                href={TAXI_PE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="tz-admin-filter-taxipe-btn tz-filtro-taxipe-btn-pos"
-                aria-label="Ir a Taxi-PE"
-                title="Ir a Taxi-PE"
-              >
-                <img src={logoTaxiPe} alt="Taxi-PE" />
-              </a>
-            )}
+            <div className="tz-filtro-linea3-mobile">
+              {TAXI_PE_URL && (
+                <a
+                  href={TAXI_PE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="tz-admin-filter-taxipe-btn tz-filtro-taxipe-btn-pos"
+                  aria-label="Ir a Taxi-PE"
+                  title="Ir a Taxi-PE"
+                >
+                  <img src={logoTaxiPe} alt="Taxi-PE" />
+                </a>
+              )}
+              {/* Copia de mobile del badge de saldo — la de desktop/
+                 tablet (tz-header-saldo, en el header) se oculta por
+                 CSS bajo 768px. */}
+              {saldoChipContenido && <div className="tz-filtro-saldo-mobile">{saldoChipContenido}</div>}
+            </div>
           </div>
         </div>
       )}
