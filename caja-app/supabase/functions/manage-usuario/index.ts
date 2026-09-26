@@ -56,11 +56,12 @@ Deno.serve(async (req) => {
 
   const { data: callerProfile, error: callerProfileErr } = await admin
     .from("profiles")
-    .select("role")
+    .select("role, negocio_id")
     .eq("id", userData.user.id)
     .single();
 
   const callerRole = callerProfileErr ? null : callerProfile?.role;
+  const callerNegocioId = callerProfileErr ? null : callerProfile?.negocio_id ?? null;
   if (callerRole !== "admin") {
     return json(403, { error: "Solo el admin puede gestionar usuarios." });
   }
@@ -187,10 +188,13 @@ Deno.serve(async (req) => {
     if (targetProfile?.role !== "cliente") {
       return json(400, { error: "Ese usuario no es un cliente." });
     }
-    const { error } = await admin
-      .from("clientes_fiado")
-      .update({ fiado_habilitado: habilitado })
-      .eq("auth_user_id", userId);
+    // negocio_id (Fase 1 del super-admin): un cliente puede tener una
+    // fila de clientes_fiado POR CADA negocio donde compró — filtrar
+    // solo por auth_user_id habilitaría Fiados en TODOS esos negocios
+    // de una sola vez, no solo en el del admin que lo está asignando.
+    let fiadoUpdateQuery = admin.from("clientes_fiado").update({ fiado_habilitado: habilitado }).eq("auth_user_id", userId);
+    if (callerNegocioId) fiadoUpdateQuery = fiadoUpdateQuery.eq("negocio_id", callerNegocioId);
+    const { error } = await fiadoUpdateQuery;
     if (error) return json(500, { error: error.message || "No se pudo asignar Fiados." });
     return json(200, { ok: true });
   }

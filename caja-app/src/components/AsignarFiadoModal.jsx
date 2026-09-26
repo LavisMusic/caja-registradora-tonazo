@@ -9,7 +9,7 @@ import { supabase } from "../supabaseClient";
 // admin — vía manage-usuario (mismo bridge service_role que
 // reset-pin/set-sucursal, 'clientes_fiado' no tiene RLS de UPDATE
 // abierta para el admin tocar la fila de otro usuario).
-export default function AsignarFiadoModal({ onClose, onAsignado }) {
+export default function AsignarFiadoModal({ onClose, onAsignado, negocioId }) {
   const [query, setQuery] = useState("");
   const [resultados, setResultados] = useState([]);
   const [buscando, setBuscando] = useState(false);
@@ -26,13 +26,19 @@ export default function AsignarFiadoModal({ onClose, onAsignado }) {
     }
     debounceRef.current = setTimeout(async () => {
       setBuscando(true);
-      const { data, error: err } = await supabase
+      // negocio_id (Fase 1 del super-admin): una misma persona puede
+      // tener una fila de clientes_fiado por cada negocio donde
+      // compró — sin este filtro, el buscador ofrecía asignar Fiados a
+      // clientes que en realidad pertenecen a OTRO negocio.
+      let searchQuery = supabase
         .from("clientes_fiado")
         .select("id, nombre, whatsapp, dni, auth_user_id")
         .not("auth_user_id", "is", null)
         .eq("fiado_habilitado", false)
         .or(`nombre.ilike.%${q}%,whatsapp.ilike.%${q}%,dni.ilike.%${q}%`)
         .limit(15);
+      if (negocioId) searchQuery = searchQuery.eq("negocio_id", negocioId);
+      const { data, error: err } = await searchQuery;
       setBuscando(false);
       if (err) {
         console.error("[AsignarFiadoModal] error buscando:", err);

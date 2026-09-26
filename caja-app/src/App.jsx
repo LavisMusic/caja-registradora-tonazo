@@ -8721,6 +8721,7 @@ export default function App() {
 
       {asignarFiadoOpen && (
         <AsignarFiadoModal
+          negocioId={negocioId}
           onClose={() => setAsignarFiadoOpen(false)}
           onAsignado={(cliente) => {
             setClientes((prev) =>
