@@ -168,7 +168,12 @@ export default function Styles() {
         width: 100%;
         box-sizing: border-box;
         overflow: visible;
-        padding: 20px 14px 22px;
+        /* padding-top generoso (era 20px): el glow del logo (drop-shadow
+           de hasta 34px de blur) no tiene nada arriba del header contra
+           qué expandirse — con solo 20px quedaba clavado contra el
+           borde superior de la pantalla en mobile, cortado en vez de
+           desvanecerse. */
+        padding: 40px 14px 22px;
         background: rgba(10, 7, 22, 0.85);
         border-bottom: 1px solid rgba(43,232,255,0.15);
       }
