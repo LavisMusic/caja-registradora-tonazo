@@ -6117,6 +6117,7 @@ export default function Styles() {
       .tz-sa-rubro-confirm { margin-bottom: 2px; }
       .tz-sa-negocio-admin-form { width: 100%; }
       .tz-sa-negocio-admin-btn { width: 100%; font-size: 12px; padding: 8px; }
+      .tz-sa-negocio-clientes-btn { width: 100%; font-size: 12px; padding: 8px; border-color: rgba(215,255,59,0.35); color: var(--yellow); }
       .tz-sa-negocio-admin-ok {
         margin: 0;
         font-size: 11.5px;

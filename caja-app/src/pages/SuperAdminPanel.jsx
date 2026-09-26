@@ -18,10 +18,12 @@ import {
   Store,
   ImagePlus,
   Trash2,
+  Users,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import Styles from "../components/Styles";
+import NegocioClientesModal from "./NegocioClientesModal.jsx";
 import logo from "../assets/logo.webp";
 
 /* Fase 1 del super-admin: gestor de rubros (columna izquierda, estilo
@@ -209,7 +211,7 @@ function RubroRow({ rubro, selected, onSelect, onRename, onToggleActivo, onDelet
   );
 }
 
-function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete, onCreateAdmin }) {
+function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete, onCreateAdmin, onVerClientes }) {
   const drag = useDragItem(`negocio:${negocio.id}`);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(negocio.nombre);
@@ -439,6 +441,16 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete
       )}
       {adminOk && !creatingAdmin && <p className="tz-sa-negocio-admin-ok">{adminOk}</p>}
 
+      {!confirming && !creatingAdmin && (
+        <button
+          type="button"
+          className="tz-sa-add-btn tz-sa-negocio-clientes-btn"
+          onClick={() => onVerClientes(negocio)}
+        >
+          <Users size={14} /> Ver clientes
+        </button>
+      )}
+
       {confirming ? (
         <div className="tz-vis-confirm-delete tz-sa-negocio-confirm">
           <p>¿Eliminar <strong>{negocio.nombre}</strong> definitivamente?</p>
@@ -497,6 +509,7 @@ export default function SuperAdminPanel() {
   const [selectedRubroId, setSelectedRubroId] = useState("todos");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [verClientesNegocio, setVerClientesNegocio] = useState(null);
 
   const [creatingRubro, setCreatingRubro] = useState(false);
   const [nuevoRubro, setNuevoRubro] = useState("");
@@ -821,6 +834,7 @@ export default function SuperAdminPanel() {
                       onLogoChange={handleNegocioLogoChange}
                       onDelete={handleDeleteNegocio}
                       onCreateAdmin={handleCreateAdminForNegocio}
+                      onVerClientes={setVerClientesNegocio}
                     />
                   ))}
 
@@ -880,6 +894,10 @@ export default function SuperAdminPanel() {
             </DndContext>
           </section>
         </div>
+      )}
+
+      {verClientesNegocio && (
+        <NegocioClientesModal negocio={verClientesNegocio} onClose={() => setVerClientesNegocio(null)} />
       )}
     </div>
   );
