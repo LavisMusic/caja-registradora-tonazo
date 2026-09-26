@@ -192,6 +192,32 @@ export function AuthProvider({ children }) {
     };
   }, [session?.user?.id, profile?.role]);
 
+  // Logo del negocio de esta sesión (admin/cajero) — para las boletas
+  // (TicketBoleta.jsx) y cualquier otro lugar que necesite el logo
+  // REAL del negocio en vez del logo estático de Tonazo. 'negocios'
+  // tiene lectura pública para filas activas (migración 0075), así que
+  // este fetch no depende de ningún permiso especial del rol actual.
+  const [negocioLogoUrl, setNegocioLogoUrl] = useState(null);
+  useEffect(() => {
+    const negocioId = profile?.negocio_id;
+    if (!negocioId) {
+      setNegocioLogoUrl(null);
+      return undefined;
+    }
+    let active = true;
+    supabase
+      .from("negocios")
+      .select("logo_url")
+      .eq("id", negocioId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setNegocioLogoUrl(data?.logo_url || null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [profile?.negocio_id]);
+
   // Cuenta eliminada por el Admin (manage-usuario action:'delete')
   // MIENTRAS esta sesión sigue abierta en este dispositivo —
   // profiles.id cascadea al borrar auth.users, así que basta con
@@ -234,6 +260,7 @@ export function AuthProvider({ children }) {
     // negocio al que pertenece este usuario (Fase 0/1 multi-negocio) —
     // null para 'super_admin', que no pertenece a ninguno en particular.
     negocioId: profile?.negocio_id ?? null,
+    negocioLogoUrl,
     loading,
     isAdmin: profile?.role === "admin",
     isCliente: profile?.role === "cliente",

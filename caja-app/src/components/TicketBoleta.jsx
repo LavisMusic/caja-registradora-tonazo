@@ -1,4 +1,5 @@
 import { formatSoles } from "../utils/format";
+import { useAuth } from "../contexts/AuthContext";
 import logo from "../assets/logo.webp";
 
 /* Plantilla visual de boleta/ticket para enviar por WhatsApp. Su único
@@ -50,6 +51,13 @@ const rowStyle = {
 const EMISOR_RUC = "";
 
 export default function TicketBoleta({ orden, cliente, productos, totales, sede, entrega }) {
+  // Logo REAL del negocio (Fase 1 del super-admin) — cae al logo
+  // estático de Tonazo si el negocio todavía no subió el suyo, o si
+  // quien genera la boleta no tiene negocio asociado (ej. todavía no
+  // existe el directorio público multi-negocio de la Fase 2).
+  const { negocioLogoUrl } = useAuth();
+  const logoAMostrar = negocioLogoUrl || logo;
+
   const nombreCliente = cliente?.nombre?.trim() ? cliente.nombre.trim() : "Público General";
   const rucCliente = cliente?.ruc?.trim() || "";
   const items = Array.isArray(productos) ? productos : [];
@@ -70,7 +78,7 @@ export default function TicketBoleta({ orden, cliente, productos, totales, sede,
     >
       {/* ---- Encabezado: mismo logo que el header principal ---- */}
       <div style={{ textAlign: "center" }}>
-        <img src={logo} alt="TONAZO!" style={{ width: 110, height: "auto", margin: "0 auto" }} />
+        <img src={logoAMostrar} alt="Logo del negocio" style={{ width: 110, height: "auto", margin: "0 auto" }} />
         <p style={{ margin: "6px 0 0", fontSize: 11, color: COLORS.dim, letterSpacing: 0.4 }}>
           Caja Registradora
         </p>
