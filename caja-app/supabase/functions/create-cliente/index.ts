@@ -55,11 +55,18 @@ Deno.serve(async (req) => {
 
   const { data: callerProfile, error: callerProfileErr } = await admin
     .from("profiles")
-    .select("role")
+    .select("role, negocio_id")
     .eq("id", userData.user.id)
     .single();
 
   const callerRole = callerProfileErr ? null : callerProfile?.role;
+  // negocio_id de un cajero/cliente nuevo: SIEMPRE el del admin/cajero
+  // que lo está creando (nunca del body — un cliente/cajero pertenece
+  // al negocio de quien lo dio de alta, no a lo que el navegador diga).
+  // Un admin nuevo es la única excepción real: lo crea el super-admin,
+  // que no pertenece a ningún negocio en particular, así que ahí sí
+  // hace falta indicarlo explícito (ver 'negocioId' de body, abajo).
+  const callerNegocioId = callerProfileErr ? null : callerProfile?.negocio_id ?? null;
   if (callerRole !== "admin" && callerRole !== "cajero" && callerRole !== "super_admin") {
     return json(403, { error: "No autorizado." });
   }
@@ -199,7 +206,7 @@ Deno.serve(async (req) => {
     pin_configurado: pinConfigurado,
     sucursal_id: tipo === "cajero" ? sucursalId : null,
     caja_id: tipo === "cajero" ? cajaId : null,
-    negocio_id: tipo === "admin" ? negocioId : null,
+    negocio_id: tipo === "admin" ? negocioId : tipo === "cajero" ? callerNegocioId : null,
   });
 
   if (profInsertErr) {
@@ -230,6 +237,11 @@ Deno.serve(async (req) => {
       fecha: Date.now(),
       auth_user_id: newUserId,
       fiado_habilitado: false,
+      // negocio_id (Fase 1 del super-admin): clientes_fiado.negocio_id
+      // es NOT NULL desde la migración 0073 — sin esto, este insert
+      // fallaba siempre con un 500 apenas se probó desde un negocio
+      // que no fuera Tonazo (confirmado en vivo).
+      negocio_id: callerNegocioId,
     })
     .select()
     .single();

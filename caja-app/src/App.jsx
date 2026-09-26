@@ -3006,6 +3006,7 @@ export default function App() {
       celular,
       sucursalId: sucursalOperativaId,
       cajaId: cajaOperativaId,
+      negocioId,
     };
     console.log("create-cliente (checkout FIADO) → payload enviado:", payload);
     const { data, error } = await supabase.functions.invoke("create-cliente", {
@@ -4589,6 +4590,7 @@ export default function App() {
       celular,
       sucursalId: sucursalOperativaId,
       cajaId: cajaOperativaId,
+      negocioId,
     };
     console.log("create-cliente (Libreta) → payload enviado:", payload);
     const { data, error } = await supabase.functions.invoke("create-cliente", {
