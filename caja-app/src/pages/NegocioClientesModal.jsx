@@ -152,9 +152,12 @@ export default function NegocioClientesModal({ negocio, onClose }) {
                   >
                     <span className="tz-history-row-method tz-cliente-nombre">
                       {c.nombre}
-                      {!c.fiado_habilitado && (
-                        <span className="tz-tag" style={{ marginLeft: 6 }}>
-                          Sin fiado
+                      {/* Misma etiqueta que ya usa el panel de Usuarios
+                         del admin (App.jsx) — .tz-metodo-tag-fiado,
+                         solo cuando el fiado está habilitado. */}
+                      {c.fiado_habilitado && (
+                        <span className="tz-metodo-tag tz-metodo-tag-fiado" style={{ marginLeft: 6 }}>
+                          Fiado
                         </span>
                       )}
                     </span>
