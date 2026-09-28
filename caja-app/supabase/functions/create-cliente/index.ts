@@ -295,6 +295,19 @@ Deno.serve(async (req) => {
       // fallaba siempre con un 500 apenas se probó desde un negocio
       // que no fuera Tonazo (confirmado en vivo).
       negocio_id: callerNegocioId,
+      // Bug: sucursalId/cajaId SIEMPRE viajaban en el body (tanto desde
+      // saveCliente como saveCheckoutFiadoCliente en App.jsx, ambos con
+      // comentarios que ya decían "un cliente de fiado siempre nace
+      // perteneciendo a una sucursal") pero nunca se guardaban acá —
+      // clientes_fiado.sucursal_id quedaba SIEMPRE null. Eso rompía en
+      // silencio el selector de "elegir cliente existente" en el
+      // checkout de Fiado (clientesVisibles exige sucursal_id ===
+      // sucursal activa) y, más grave, la propia RLS de un cajero
+      // (is_staff() and sucursal_id = mi_sucursal_id()) — un cajero
+      // jamás podía ver ni escribir el fiado de un cliente que él mismo
+      // acababa de crear.
+      sucursal_id: sucursalId || null,
+      caja_id: cajaId || null,
     })
     .select()
     .single();

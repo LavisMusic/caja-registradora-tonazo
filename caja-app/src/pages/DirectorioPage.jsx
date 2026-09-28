@@ -14,7 +14,12 @@ import logo from "../assets/logo.webp";
    cuadro FIJO a la izquierda con Rubros, y el resto de la pantalla es
    pura vidriera de negocios en vez de productos. Sin theming/
    personalización todavía (decidido con el usuario: eso queda para el
-   final, cuando se retome). */
+   final, cuando se retome).
+
+   Ruta: /directorio (grilla) -> /directorio/:slug (tienda de ese
+   negocio, ver CatalogPage.jsx) — pedido explícito del usuario para
+   que el link quede "/directorio/tonazo" en vez de algo suelto en la
+   raíz del dominio. */
 export default function DirectorioPage() {
   const [rubros, setRubros] = useState([]);
   const [negocios, setNegocios] = useState([]);
@@ -109,7 +114,7 @@ export default function DirectorioPage() {
           ) : (
             <div className="tz-dir-grid">
               {negociosFiltrados.map((n) => (
-                <Link key={n.id} to={`/${n.slug}/tienda`} className="tz-dir-card">
+                <Link key={n.id} to={`/directorio/${n.slug}`} className="tz-dir-card">
                   {n.logo_url ? (
                     <img src={n.logo_url} alt={n.nombre} className="tz-dir-card-logo" />
                   ) : (

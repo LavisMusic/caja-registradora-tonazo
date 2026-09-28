@@ -87,7 +87,7 @@ export default function CatalogPage() {
   const { session, loading: authLoading, signOut, isCliente, tieneFiado, nombre, saldoTaxi } = useAuth();
 
   /* ---- Fase 2: esta misma pantalla ahora sirve la tienda de
-     CUALQUIER negocio, resuelto por slug (/:slug/tienda, ver
+     CUALQUIER negocio, resuelto por slug (/directorio/:slug, ver
      main.jsx) — antes era Tonazo hardcodeado. Se resuelve UNA vez al
      entrar; todo lo que sigue (localidades, sucursales, useCatalog)
      queda scopeado por negocio.id apenas está disponible. Un slug que
@@ -451,7 +451,7 @@ export default function CatalogPage() {
         <Styles />
         <Store size={34} />
         <p>{negocioError || "No encontramos esta tienda."}</p>
-        <Link to="/" className="tz-header-btn">
+        <Link to="/directorio" className="tz-header-btn">
           Ir al directorio
         </Link>
       </div>

@@ -15,17 +15,21 @@ createRoot(document.getElementById('root')).render(
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            {/* Fase 2: "/" ya no es la tienda de Tonazo — es el
-                directorio público de todos los negocios (grilla estilo
-                Friv). La tienda de cada uno vive en /:slug/tienda. */}
-            <Route path="/" element={<DirectorioPage />} />
+            {/* Fase 2: "/" ya no es la tienda de Tonazo — el directorio
+                público de todos los negocios (grilla estilo Friv) vive
+                en /directorio, y la tienda de cada uno en
+                /directorio/:slug (pedido explícito: que el link quede
+                "/directorio/tonazo"). "/" redirige para no dejar la
+                raíz del dominio en un 404. */}
+            <Route path="/" element={<Navigate to="/directorio" replace />} />
+            <Route path="/directorio" element={<DirectorioPage />} />
+            <Route path="/directorio/:slug" element={<CatalogPage />} />
             <Route path="/superadmin" element={<SuperAdminAccessPage />} />
             {/* /admin: alias del negocio Tonazo (mismo slug) — evita
                 romper accesos directos ya guardados desde antes de la
                 Fase 1 del super-admin, cuando /admin era la única
                 puerta de entrada del personal. */}
             <Route path="/admin" element={<Navigate to="/tonazo" replace />} />
-            <Route path="/:slug/tienda" element={<CatalogPage />} />
             <Route path="/:slug" element={<NegocioAccessPage />} />
           </Routes>
         </BrowserRouter>

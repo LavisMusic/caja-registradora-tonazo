@@ -4758,6 +4758,34 @@ export default function Styles() {
          de '.tz-checkout-crm', así que hereda acá el mismo flex-basis
          que antes tenía '.tz-checkout-input'. */
       .tz-checkout-crm .tz-global-search-wrap { flex: 1 1 140px; }
+      .tz-checkout-cuenta-row { width: 100%; display: flex; flex-direction: column; gap: 4px; }
+      .tz-checkout-cuenta-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        width: 100%;
+        padding: 9px 12px;
+        border-radius: 10px;
+        border: 1px dashed rgba(43,232,255,0.4);
+        background: transparent;
+        color: var(--cyan);
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+      .tz-checkout-cuenta-btn:hover { background: rgba(43,232,255,0.08); }
+      .tz-checkout-cuenta-btn:disabled { opacity: 0.6; cursor: default; }
+      .tz-checkout-cuenta-ok {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+        font-size: 12px;
+        color: var(--green, #39ffb0);
+      }
       .tz-whatsapp-send-btn {
         display: flex;
         align-items: center;
@@ -4775,6 +4803,28 @@ export default function Styles() {
       }
       .tz-whatsapp-send-btn:hover { background: rgba(37,211,102,0.22); }
       .tz-whatsapp-send-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+      /* "Imprimir Boleta": mismo molde que el resto de la barra, pero en
+         cyan — no es una acción de WhatsApp. */
+      .tz-print-boleta-btn {
+        background: rgba(43,232,255,0.14);
+        border-color: rgba(43,232,255,0.5);
+        color: var(--cyan);
+      }
+      .tz-print-boleta-btn:hover { background: rgba(43,232,255,0.22); }
+      /* La boleta oculta (fuera de pantalla, para html2canvas) se vuelve
+         la ÚNICA cosa visible al imprimir — @media print gana por
+         especificidad de medio, no hace falta tocar el estilo inline
+         que la mantiene offscreen en pantalla. */
+      @media print {
+        body * { visibility: hidden; }
+        .tz-print-boleta-area, .tz-print-boleta-area * { visibility: visible; }
+        .tz-print-boleta-area {
+          position: fixed !important;
+          left: 0 !important;
+          top: 0 !important;
+          width: 100%;
+        }
+      }
       /* Variante sólida: la boleta-imagen es la acción principal (vs. el
          resumen de texto, que queda como link secundario en outline) —
          más peso visual, mismo verde de marca de WhatsApp. */

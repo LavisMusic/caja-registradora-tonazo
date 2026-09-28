@@ -38,6 +38,7 @@ import {
   WifiOff,
   MapPin,
   Landmark,
+  Printer,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
@@ -1597,6 +1598,15 @@ export default function App() {
   const [checkoutRuc, setCheckoutRuc] = useState("");
   const [lastSale, setLastSale] = useState(null); // resumen de la última venta enviada
 
+  // "Crear cuenta" opcional para el WhatsApp general del checkout (no
+  // FIADO): el nombre/número de acá son SOLO para mandar la boleta —
+  // nunca se guardan solos. Si lo que se está tipeando no matchea
+  // ningún cliente ya registrado de este negocio, aparece un botón
+  // para, recién ahí y a propósito, darle una cuenta de verdad.
+  const [creandoCuentaCheckout, setCreandoCuentaCheckout] = useState(false);
+  const [checkoutCuentaError, setCheckoutCuentaError] = useState("");
+  const [checkoutCuentaCreada, setCheckoutCuentaCreada] = useState(false);
+
   /* ---- boleta digital por WhatsApp: "Copiar Boleta" captura
      (html2canvas) el TicketBoleta oculto -> imagen -> portapapeles;
      "Enviar Boleta por WhatsApp" solo abre el chat correcto (wa.me)
@@ -2923,37 +2933,10 @@ export default function App() {
       metodoPago: checkoutMetodo,
       timestamp,
     });
-    // Directorio de clientes desde CUALQUIER venta (no solo fiado): un
-    // comprador de contado/Yape/Plin que deja su número solo para
-    // recibir la boleta antes NUNCA quedaba guardado en ningún lado —
-    // el próximo cajero no lo encontraba ni de casualidad en el
-    // buscador de arriba (checkoutWhatsappSuggestions ya busca en
-    // 'clientes_fiado', pero ese número jamás llegaba a existir ahí).
-    // Se reusa create-cliente (tipo 'cliente', SIN pin — mismo camino
-    // que ya prueba el alta rápida desde Fiado) en vez de un insert
-    // propio: ya trae el dedupe por (celular, negocio) y la
-    // reutilización de identidad entre negocios. Si el celular ya es
-    // cliente de este negocio, la función responde 409 y no hay nada
-    // más que hacer — por eso el catch se traga el error en silencio,
-    // nunca debe interrumpir ni demorar la venta ya registrada.
-    if (checkoutMetodo !== "FIADO" && whatsapp) {
-      const celularNormalizado = toPeruWhatsappNumber(whatsapp);
-      if (celularNormalizado && /^\d{6,15}$/.test(celularNormalizado)) {
-        supabase.functions
-          .invoke("create-cliente", {
-            body: {
-              tipo: "cliente",
-              nombre: nombre || "Cliente",
-              celular: celularNormalizado,
-              negocioId,
-            },
-          })
-          .catch(() => {});
-      }
-    }
-
     setCheckoutNombre("");
     setCheckoutWhatsapp("");
+    setCheckoutCuentaCreada(false);
+    setCheckoutCuentaError("");
     setCheckoutRucEnabled(false);
     setCheckoutRuc("");
     setCheckoutMetodo(null);
@@ -3079,20 +3062,25 @@ export default function App() {
      vincula ambos campos entre sí — elegir una sugerencia por nombre
      también completa su WhatsApp (si lo tiene), y viceversa. Puramente
      un atajo de tipeo: no obliga a que el cliente exista, el checkout
-     normal (no-Fiado) sigue aceptando cualquier nombre/número nuevo. ---- */
+     normal (no-Fiado) sigue aceptando cualquier nombre/número nuevo.
+     A propósito busca en 'clientes' (TODOS los clientes de este
+     negocio) y NO en 'clientesVisibles' — esa otra lista además exige
+     fiado_habilitado Y la sucursal activa (pensada para la Libreta),
+     así que un cliente sin fiado, o de otra sucursal del mismo
+     negocio, jamás aparecía acá aunque estuviera registrado. ---- */
   const checkoutNombreSuggestions = useMemo(() => {
     const q = checkoutNombre.trim().toLowerCase();
     if (!q) return [];
-    return clientesVisibles.filter((c) => c.nombre?.toLowerCase().includes(q)).slice(0, 6);
-  }, [checkoutNombre, clientesVisibles]);
+    return clientes.filter((c) => c.nombre?.toLowerCase().includes(q)).slice(0, 6);
+  }, [checkoutNombre, clientes]);
 
   const checkoutWhatsappSuggestions = useMemo(() => {
     const q = checkoutWhatsapp.replace(/[^\d]/g, "");
     if (!q) return [];
-    return clientesVisibles
+    return clientes
       .filter((c) => c.whatsapp && c.whatsapp.replace(/[^\d]/g, "").includes(q))
       .slice(0, 6);
-  }, [checkoutWhatsapp, clientesVisibles]);
+  }, [checkoutWhatsapp, clientes]);
 
   const selectCheckoutClienteByNombre = (c) => {
     setCheckoutNombre(c.nombre || "");
@@ -3104,6 +3092,68 @@ export default function App() {
     setCheckoutWhatsapp(c.whatsapp || "");
     if (c.nombre) setCheckoutNombre(c.nombre);
     setCheckoutWhatsappSuggestOpen(false);
+  };
+
+  // ¿El número que se está tipeando ya es cliente de este negocio? A
+  // diferencia de checkoutWhatsappSuggestions (matchea por "contiene",
+  // para el autocompletado), esto exige coincidencia EXACTA de
+  // dígitos — es lo que decide si mostrar el botón de "Crear cuenta".
+  const checkoutWhatsappDigits = checkoutWhatsapp.replace(/[^\d]/g, "");
+  const checkoutWhatsappTieneCuenta = clientes.some(
+    (c) => c.whatsapp && c.whatsapp.replace(/[^\d]/g, "") === checkoutWhatsappDigits
+  );
+
+  /* ---- "Crear cuenta" opcional desde el WhatsApp general del
+     checkout: a diferencia del alta de Fiado (que YA es un alta a
+     propósito), acá el nombre/número existen solo para mandar la
+     boleta — nada se guarda hasta que el cajero toca este botón EN
+     SERIO. Reusa create-cliente (tipo 'cliente', sin pin), mismo
+     camino que el resto de altas de cliente. ---- */
+  const crearCuentaDesdeCheckout = async () => {
+    const nombre = checkoutNombre.trim();
+    const celular = toPeruWhatsappNumber(checkoutWhatsapp);
+    if (!nombre) {
+      setCheckoutCuentaError("Ingresa el nombre del cliente.");
+      return;
+    }
+    if (!celular || !/^\d{6,15}$/.test(celular)) {
+      setCheckoutCuentaError("Ingresa un WhatsApp válido.");
+      return;
+    }
+    setCreandoCuentaCheckout(true);
+    setCheckoutCuentaError("");
+    const { data, error } = await supabase.functions.invoke("create-cliente", {
+      body: {
+        tipo: "cliente",
+        nombre,
+        celular,
+        negocioId,
+        sucursalId: sucursalOperativaId,
+        cajaId: cajaOperativaId,
+      },
+    });
+    setCreandoCuentaCheckout(false);
+    if (error) {
+      const body = await error.context?.json?.().catch(() => null);
+      setCheckoutCuentaError(body?.error || "No se pudo crear la cuenta.");
+      return;
+    }
+    // La respuesta no trae la fila completa de clientes_fiado — se
+    // arma localmente con lo que ya se sabe, para que quede
+    // disponible de una en el buscador de esta misma sesión sin
+    // esperar a recargarDatos().
+    setClientes((prev) => [
+      {
+        id: data?.id,
+        nombre,
+        whatsapp: celular,
+        fiadoHabilitado: false,
+        sucursalId: sucursalOperativaId || null,
+        cajaId: cajaOperativaId || null,
+      },
+      ...prev,
+    ]);
+    setCheckoutCuentaCreada(true);
   };
 
   /* ---- checkout: ¿ya se puede mostrar "Enviar Venta"? ---- */
@@ -8086,6 +8136,18 @@ export default function App() {
                   </p>
                   {lastSale && (
                     <>
+                      {/* Alternativa para cuando el cliente no tiene
+                         teléfono: imprime el MISMO ticket oculto de
+                         abajo (ticketRef) — @media print (Styles.jsx)
+                         oculta todo lo demás de la página durante la
+                         impresión, no hace falta ventana aparte. */}
+                      <button
+                        type="button"
+                        className="tz-whatsapp-send-btn tz-print-boleta-btn"
+                        onClick={() => window.print()}
+                      >
+                        <Printer size={15} /> Imprimir Boleta
+                      </button>
                       <a
                         href={buildWhatsappLink(
                           lastSale.whatsapp,
@@ -8124,7 +8186,11 @@ export default function App() {
 
                       {/* ---- ticket oculto: fuera de pantalla, solo existe
                          para que html2canvas lo capture como imagen ---- */}
-                      <div ref={ticketRef} style={{ position: "absolute", left: -9999, top: 0 }}>
+                      <div
+                        ref={ticketRef}
+                        className="tz-print-boleta-area"
+                        style={{ position: "absolute", left: -9999, top: 0 }}
+                      >
                         <TicketBoleta
                           orden={{
                             id: lastSale.purchaseId,
@@ -8257,6 +8323,8 @@ export default function App() {
                           onChange={(e) => {
                             setCheckoutWhatsapp(e.target.value);
                             setCheckoutWhatsappSuggestOpen(true);
+                            setCheckoutCuentaCreada(false);
+                            setCheckoutCuentaError("");
                           }}
                           onFocus={() => setCheckoutWhatsappSuggestOpen(true)}
                         />
@@ -8276,6 +8344,37 @@ export default function App() {
                           </div>
                         )}
                       </div>
+
+                      {/* ---- "Crear cuenta" opcional: el nombre/WhatsApp
+                         de acá son solo para la boleta — nada se guarda
+                         hasta que el cajero toca este botón a propósito.
+                         Solo aparece con un número que todavía no es
+                         cliente de este negocio. ---- */}
+                      {checkoutWhatsappDigits.length >= 6 && !checkoutWhatsappTieneCuenta && (
+                        checkoutCuentaCreada ? (
+                          <p className="tz-checkout-cuenta-ok">
+                            <Check size={13} /> Cuenta creada — ya va a aparecer en el buscador.
+                          </p>
+                        ) : (
+                          <div className="tz-checkout-cuenta-row">
+                            <button
+                              type="button"
+                              className="tz-checkout-cuenta-btn"
+                              onClick={crearCuentaDesdeCheckout}
+                              disabled={creandoCuentaCheckout}
+                            >
+                              {creandoCuentaCheckout ? (
+                                <Loader2 size={13} className="tz-spin" />
+                              ) : (
+                                <Plus size={13} />
+                              )}
+                              Crear cuenta para este cliente (opcional)
+                            </button>
+                            {checkoutCuentaError && <p className="tz-error">{checkoutCuentaError}</p>}
+                          </div>
+                        )
+                      )}
+
                       {checkoutRucEnabled && (
                         <input
                           type="text"
