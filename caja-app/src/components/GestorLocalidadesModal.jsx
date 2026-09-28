@@ -7,7 +7,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { X, Loader2, Plus, Pencil, Check, GripVertical, Trash2, ChevronDown, ChevronUp, MapPin } from "lucide-react";
+import { X, Loader2, Plus, Pencil, Check, GripVertical, Trash2, ChevronDown, ChevronUp, MapPin, EyeOff } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Styles from "./Styles";
 
@@ -38,13 +38,14 @@ function useDragItem(id) {
   };
 }
 
-function SucursalRow({ sucursal, onRename, onDelete }) {
+function SucursalRow({ sucursal, onRename, onDelete, onDesactivar }) {
   const drag = useDragItem(`sucursal:${sucursal.id}`);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(sucursal.nombre);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [desactivando, setDesactivando] = useState(false);
   const [error, setError] = useState("");
   const [fkConflict, setFkConflict] = useState(false);
 
@@ -75,23 +76,43 @@ function SucursalRow({ sucursal, onRename, onDelete }) {
     }
   };
 
+  const handleDesactivar = async () => {
+    setDesactivando(true);
+    setError("");
+    const { error: err } = await onDesactivar(sucursal);
+    setDesactivando(false);
+    if (err) {
+      setError(err.message ? `No se pudo desactivar: ${err.message}` : "No se pudo desactivar.");
+    }
+    // Si funcionó, el padre ya la sacó de la lista (deja de ser 'activo').
+  };
+
   if (confirming) {
     return (
       <div className="tz-vis-confirm-delete tz-gl-confirm">
         <p>¿Eliminar la sucursal <strong>{sucursal.nombre}</strong>?</p>
         {fkConflict && (
-          <p className="tz-error">
-            No se puede eliminar: todavía tiene cajas, ventas o cajeros asociados.
-          </p>
+          <>
+            <p className="tz-error">
+              No se puede eliminar: todavía tiene cajas, ventas o cajeros asociados.
+            </p>
+            <p className="tz-stock-editor-sub">
+              Podés desactivarla en su lugar — deja de verse en selectores/catálogo, sin borrar nada de su historial.
+            </p>
+          </>
         )}
         {error && <p className="tz-error">{error}</p>}
         <div className="tz-vis-confirm-actions">
-          {!fkConflict && (
+          {!fkConflict ? (
             <button type="button" className="tz-cliente-action-btn tz-cliente-action-deuda" onClick={handleDelete} disabled={deleting}>
               {deleting ? <Loader2 size={13} className="tz-spin" /> : <Trash2 size={13} />} Sí, eliminar
             </button>
+          ) : (
+            <button type="button" className="tz-cliente-action-btn tz-cliente-action-pago" onClick={handleDesactivar} disabled={desactivando}>
+              {desactivando ? <Loader2 size={13} className="tz-spin" /> : <EyeOff size={13} />} Desactivar
+            </button>
           )}
-          <button type="button" className="tz-cliente-action-btn" onClick={() => { setConfirming(false); setFkConflict(false); setError(""); }} disabled={deleting}>
+          <button type="button" className="tz-cliente-action-btn" onClick={() => { setConfirming(false); setFkConflict(false); setError(""); }} disabled={deleting || desactivando}>
             <X size={13} /> Cancelar
           </button>
         </div>
@@ -137,7 +158,7 @@ function SucursalRow({ sucursal, onRename, onDelete }) {
   );
 }
 
-function LocalidadRow({ localidad, sucursales, onRenameLocalidad, onDeleteLocalidad, onSucursalDragEnd, onRenameSucursal, onDeleteSucursal, onCrearSucursal }) {
+function LocalidadRow({ localidad, sucursales, onRenameLocalidad, onDeleteLocalidad, onDesactivarLocalidad, onSucursalDragEnd, onRenameSucursal, onDeleteSucursal, onDesactivarSucursal, onCrearSucursal }) {
   const drag = useDragItem(`localidad:${localidad.id}`);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(localidad.nombre);
@@ -145,6 +166,7 @@ function LocalidadRow({ localidad, sucursales, onRenameLocalidad, onDeleteLocali
   const [expanded, setExpanded] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [desactivando, setDesactivando] = useState(false);
   const [error, setError] = useState("");
   const [fkConflict, setFkConflict] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -175,6 +197,16 @@ function LocalidadRow({ localidad, sucursales, onRenameLocalidad, onDeleteLocali
       if (isFk) setFkConflict(true);
       else setError(err.message ? `No se pudo eliminar: ${err.message}` : "No se pudo eliminar.");
       return;
+    }
+  };
+
+  const handleDesactivar = async () => {
+    setDesactivando(true);
+    setError("");
+    const { error: err } = await onDesactivarLocalidad(localidad);
+    setDesactivando(false);
+    if (err) {
+      setError(err.message ? `No se pudo desactivar: ${err.message}` : "No se pudo desactivar.");
     }
   };
 
@@ -227,18 +259,27 @@ function LocalidadRow({ localidad, sucursales, onRenameLocalidad, onDeleteLocali
         <div className="tz-vis-confirm-delete tz-gl-confirm">
           <p>¿Eliminar la localidad <strong>{localidad.nombre}</strong>?</p>
           {fkConflict && (
-            <p className="tz-error">
-              No se puede eliminar: todavía tiene sucursales adentro. Movelas o eliminalas primero.
-            </p>
+            <>
+              <p className="tz-error">
+                No se puede eliminar: todavía tiene sucursales adentro. Movelas o eliminalas primero.
+              </p>
+              <p className="tz-stock-editor-sub">
+                Podés desactivarla en su lugar — deja de verse en selectores/catálogo, sin borrar nada de su historial.
+              </p>
+            </>
           )}
           {error && <p className="tz-error">{error}</p>}
           <div className="tz-vis-confirm-actions">
-            {!fkConflict && (
+            {!fkConflict ? (
               <button type="button" className="tz-cliente-action-btn tz-cliente-action-deuda" onClick={handleDelete} disabled={deleting}>
                 {deleting ? <Loader2 size={13} className="tz-spin" /> : <Trash2 size={13} />} Sí, eliminar
               </button>
+            ) : (
+              <button type="button" className="tz-cliente-action-btn tz-cliente-action-pago" onClick={handleDesactivar} disabled={desactivando}>
+                {desactivando ? <Loader2 size={13} className="tz-spin" /> : <EyeOff size={13} />} Desactivar
+              </button>
             )}
-            <button type="button" className="tz-cliente-action-btn" onClick={() => { setConfirming(false); setFkConflict(false); setError(""); }} disabled={deleting}>
+            <button type="button" className="tz-cliente-action-btn" onClick={() => { setConfirming(false); setFkConflict(false); setError(""); }} disabled={deleting || desactivando}>
               <X size={13} /> Cancelar
             </button>
           </div>
@@ -250,7 +291,7 @@ function LocalidadRow({ localidad, sucursales, onRenameLocalidad, onDeleteLocali
           <DndContext sensors={sensors} onDragEnd={(e) => onSucursalDragEnd(localidad.id, e)}>
             <SortableContext items={sucursales.map((s) => `sucursal:${s.id}`)} strategy={verticalListSortingStrategy}>
               {sucursales.map((s) => (
-                <SucursalRow key={s.id} sucursal={s} onRename={onRenameSucursal} onDelete={onDeleteSucursal} />
+                <SucursalRow key={s.id} sucursal={s} onRename={onRenameSucursal} onDelete={onDeleteSucursal} onDesactivar={onDesactivarSucursal} />
               ))}
             </SortableContext>
           </DndContext>
@@ -370,6 +411,17 @@ export default function GestorLocalidadesModal({ negocioId, onClose }) {
     return { error: null };
   };
 
+  // Alternativa cuando el borrado choca con historial real: mismo
+  // criterio que negocios/rubros/productos en el resto de la app — se
+  // oculta (activo=false) en vez de borrar, sin perder nada.
+  const handleDesactivarLocalidad = async (localidad) => {
+    const { error: err } = await supabase.from("localidades").update({ activo: false }).eq("id", localidad.id);
+    if (err) return { error: err };
+    setLocalidades((prev) => prev.filter((l) => l.id !== localidad.id));
+    setChanged(true);
+    return { error: null };
+  };
+
   const handleRenameSucursal = async (sucursal, nombre) => {
     const { error: err } = await supabase.from("sucursales").update({ nombre }).eq("id", sucursal.id);
     if (!err) {
@@ -382,6 +434,14 @@ export default function GestorLocalidadesModal({ negocioId, onClose }) {
   const handleDeleteSucursal = async (sucursal) => {
     const { error: err } = await supabase.from("sucursales").delete().eq("id", sucursal.id);
     if (err) return { error: err, fkConflict: err.code === "23503" };
+    setSucursales((prev) => prev.filter((s) => s.id !== sucursal.id));
+    setChanged(true);
+    return { error: null };
+  };
+
+  const handleDesactivarSucursal = async (sucursal) => {
+    const { error: err } = await supabase.from("sucursales").update({ activo: false }).eq("id", sucursal.id);
+    if (err) return { error: err };
     setSucursales((prev) => prev.filter((s) => s.id !== sucursal.id));
     setChanged(true);
     return { error: null };
@@ -446,9 +506,11 @@ export default function GestorLocalidadesModal({ negocioId, onClose }) {
                       sucursales={sucursalesPorLocalidad(l.id)}
                       onRenameLocalidad={handleRenameLocalidad}
                       onDeleteLocalidad={handleDeleteLocalidad}
+                      onDesactivarLocalidad={handleDesactivarLocalidad}
                       onSucursalDragEnd={handleSucursalDragEnd}
                       onRenameSucursal={handleRenameSucursal}
                       onDeleteSucursal={handleDeleteSucursal}
+                      onDesactivarSucursal={handleDesactivarSucursal}
                       onCrearSucursal={handleCrearSucursal}
                     />
                   ))}
