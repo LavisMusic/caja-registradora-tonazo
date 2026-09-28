@@ -1670,7 +1670,14 @@ export default function App() {
   const clientesVisibles = useMemo(
     () =>
       tieneVistaActiva
-        ? clientes.filter((c) => c.sucursalId === sucursalOperativaId && c.fiadoHabilitado)
+        ? clientes.filter(
+            // sucursalId == null (auto-registro público, o un fiado
+            // viejo de antes del fix de create-cliente que 0085 no pudo
+            // inferir por falta de historial): sin sucursal "dueña"
+            // conocida, se muestra en TODAS las del negocio en vez de
+            // quedar invisible para siempre por esa columna vacía.
+            (c) => (c.sucursalId === sucursalOperativaId || c.sucursalId == null) && c.fiadoHabilitado
+          )
         : [],
     [clientes, sucursalOperativaId, tieneVistaActiva]
   );
