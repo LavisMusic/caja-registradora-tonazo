@@ -175,7 +175,31 @@ Deno.serve(async (req) => {
   const pinConfigurado = !!pinProvided;
   const password = pinProvided || crypto.randomUUID().replace(/-/g, "");
 
+  // Identidad de cliente compartida entre negocios (decidido con el
+  // usuario): antes de intentar crear una cuenta nueva, bloquear el
+  // caso real de duplicado — este celular YA es cliente de ESTE mismo
+  // negocio.
+  if (tipo === "cliente") {
+    const { data: yaEnEsteNegocio, error: dupErr } = await admin
+      .from("clientes_fiado")
+      .select("id")
+      .eq("whatsapp", celular)
+      .eq("negocio_id", callerNegocioId)
+      .maybeSingle();
+    if (dupErr) return json(500, { error: "No se pudo verificar el celular." });
+    if (yaEnEsteNegocio) {
+      return json(409, { error: "Ese celular ya es cliente de este negocio." });
+    }
+  }
+
   // 3) Crear el usuario en Supabase Auth (server-side, con service_role).
+  let newUserId: string;
+  // Se estampa profiles/clientes_fiado más abajo SOLO si esta cuenta es
+  // nueva de verdad — si se reusa una existente, ya tiene su fila de
+  // profiles (y clientes_fiado nace igual, con el negocio_id de ESTE
+  // negocio, más abajo).
+  let cuentaNueva = true;
+
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email: dummyEmail,
     password,
@@ -183,39 +207,63 @@ Deno.serve(async (req) => {
   });
 
   if (createErr) {
-    const msg = /already been registered|already registered/i.test(createErr.message || "")
-      ? tipo === "cliente"
-        ? "Ya existe un cliente registrado con ese celular."
-        : "Ya existe una cuenta con ese usuario."
-      : createErr.message;
-    return json(409, { error: msg });
+    const yaRegistrado = /already been registered|already registered/i.test(createErr.message || "");
+    // Un cliente que YA tiene cuenta (por haber comprado en OTRO
+    // negocio) no es un error acá — es exactamente el caso que la
+    // identidad compartida entre negocios tiene que soportar: se reusa
+    // su auth_user_id y se le crea una fila de clientes_fiado NUEVA
+    // para este negocio, en vez de fallar con "ya existe".
+    if (tipo === "cliente" && yaRegistrado) {
+      const { data: cuentaExistente, error: buscarErr } = await admin
+        .from("clientes_fiado")
+        .select("auth_user_id")
+        .eq("whatsapp", celular)
+        .not("auth_user_id", "is", null)
+        .limit(1)
+        .maybeSingle();
+      if (buscarErr || !cuentaExistente?.auth_user_id) {
+        return json(409, { error: "Ya existe un cliente registrado con ese celular." });
+      }
+      newUserId = cuentaExistente.auth_user_id;
+      cuentaNueva = false;
+    } else {
+      const msg = yaRegistrado
+        ? tipo === "cliente"
+          ? "Ya existe un cliente registrado con ese celular."
+          : "Ya existe una cuenta con ese usuario."
+        : createErr.message;
+      return json(409, { error: msg });
+    }
+  } else {
+    newUserId = created.user.id;
   }
 
-  const newUserId = created.user.id;
-
-  // 4) profile row (rol según tipo). 'nombre' se guarda siempre acá —
-  // aunque el de cliente TAMBIÉN vive en clientes_fiado.nombre (no se
-  // duplica por gusto: el panel de administración de usuarios lista
-  // cajeros Y clientes desde 'profiles' en una sola consulta, y
-  // necesita poder mostrar el nombre de ambos sin tener que hacer join
-  // con clientes_fiado).
-  const { error: profInsertErr } = await admin.from("profiles").insert({
-    id: newUserId,
-    role: tipo,
-    nombre,
-    pin_configurado: pinConfigurado,
-    sucursal_id: tipo === "cajero" ? sucursalId : null,
-    caja_id: tipo === "cajero" ? cajaId : null,
-    negocio_id: tipo === "admin" ? negocioId : tipo === "cajero" ? callerNegocioId : null,
-  });
-
-  if (profInsertErr) {
-    await admin.auth.admin.deleteUser(newUserId);
-    // Conflicto de FK típico acá: negocioId no existe (borrado entre que
-    // se abrió el formulario y se envió).
-    return json(500, {
-      error: profInsertErr.code === "23503" ? "Ese negocio ya no existe." : "No se pudo crear el perfil.",
+  // 4) profile row (rol según tipo) — solo para una cuenta REALMENTE
+  // nueva; si se reusó una existente, 'profiles' ya tiene su fila.
+  // 'nombre' se guarda siempre acá — aunque el de cliente TAMBIÉN vive
+  // en clientes_fiado.nombre (no se duplica por gusto: el panel de
+  // administración de usuarios lista cajeros Y clientes desde
+  // 'profiles' en una sola consulta, y necesita poder mostrar el
+  // nombre de ambos sin tener que hacer join con clientes_fiado).
+  if (cuentaNueva) {
+    const { error: profInsertErr } = await admin.from("profiles").insert({
+      id: newUserId,
+      role: tipo,
+      nombre,
+      pin_configurado: pinConfigurado,
+      sucursal_id: tipo === "cajero" ? sucursalId : null,
+      caja_id: tipo === "cajero" ? cajaId : null,
+      negocio_id: tipo === "admin" ? negocioId : tipo === "cajero" ? callerNegocioId : null,
     });
+
+    if (profInsertErr) {
+      await admin.auth.admin.deleteUser(newUserId);
+      // Conflicto de FK típico acá: negocioId no existe (borrado entre que
+      // se abrió el formulario y se envió).
+      return json(500, {
+        error: profInsertErr.code === "23503" ? "Ese negocio ya no existe." : "No se pudo crear el perfil.",
+      });
+    }
   }
 
   if (tipo === "cajero" || tipo === "admin") {
@@ -247,15 +295,21 @@ Deno.serve(async (req) => {
     .single();
 
   if (clienteErr) {
-    await admin.auth.admin.deleteUser(newUserId); // profiles cascadea por FK
+    // Solo se borra la cuenta de Auth si se creó DE CERO en esta misma
+    // llamada — una cuenta reusada (identidad compartida, otro negocio)
+    // sigue siendo válida ahí aunque esta fila puntual haya fallado.
+    if (cuentaNueva) await admin.auth.admin.deleteUser(newUserId); // profiles cascadea por FK
     return json(500, { error: "No se pudo crear el registro de cliente." });
   }
 
   // Espejo a Taxi-PE: solo si de verdad ya hay un PIN real (si el admin
   // registró solo nombre+teléfono, el espejo pasa recién cuando el
   // cliente lo cree en set-initial-pin — nunca con el password
-  // placeholder aleatorio).
-  if (pinConfigurado) {
+  // placeholder aleatorio) Y solo si la cuenta se creó de cero acá —
+  // una cuenta reusada (identidad compartida, ya existía en otro
+  // negocio) NO cambió de contraseña en esta llamada, así que "pin"
+  // acá no es su clave real y no hay nada que espejar.
+  if (pinConfigurado && cuentaNueva) {
     await mirrorCuentaATaxi({ telefono: celular, pin: pinProvided, nombre });
   }
 

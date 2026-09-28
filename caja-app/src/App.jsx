@@ -2029,9 +2029,11 @@ export default function App() {
       }));
 
       // 5) GASTOS + PROVEEDORES
-      const { data: proveedorRows, error: proveedorLoadError } = await supabase
-        .from("proveedores")
-        .select("*");
+      // negocio_id (deuda técnica de la Fase 1): proveedores quedó
+      // afuera cuando se acotó 'gastos' por negocio.
+      let proveedorQuery = supabase.from("proveedores").select("*");
+      if (negocioId) proveedorQuery = proveedorQuery.eq("negocio_id", negocioId);
+      const { data: proveedorRows, error: proveedorLoadError } = await proveedorQuery;
 
       if (proveedorLoadError) {
         console.error("Error cargando proveedores desde Supabase:", proveedorLoadError);
@@ -5319,7 +5321,7 @@ export default function App() {
         } else if (razonSocial) {
           const { data: insertedProv, error: provError } = await supabase
             .from("proveedores")
-            .insert([{ ruc, razon_social: razonSocial }])
+            .insert([{ ruc, razon_social: razonSocial, negocio_id: negocioId }])
             .select();
           if (provError) throw provError;
           const provRow = insertedProv && insertedProv[0];
