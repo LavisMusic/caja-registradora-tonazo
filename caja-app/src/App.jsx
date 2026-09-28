@@ -2923,6 +2923,35 @@ export default function App() {
       metodoPago: checkoutMetodo,
       timestamp,
     });
+    // Directorio de clientes desde CUALQUIER venta (no solo fiado): un
+    // comprador de contado/Yape/Plin que deja su número solo para
+    // recibir la boleta antes NUNCA quedaba guardado en ningún lado —
+    // el próximo cajero no lo encontraba ni de casualidad en el
+    // buscador de arriba (checkoutWhatsappSuggestions ya busca en
+    // 'clientes_fiado', pero ese número jamás llegaba a existir ahí).
+    // Se reusa create-cliente (tipo 'cliente', SIN pin — mismo camino
+    // que ya prueba el alta rápida desde Fiado) en vez de un insert
+    // propio: ya trae el dedupe por (celular, negocio) y la
+    // reutilización de identidad entre negocios. Si el celular ya es
+    // cliente de este negocio, la función responde 409 y no hay nada
+    // más que hacer — por eso el catch se traga el error en silencio,
+    // nunca debe interrumpir ni demorar la venta ya registrada.
+    if (checkoutMetodo !== "FIADO" && whatsapp) {
+      const celularNormalizado = toPeruWhatsappNumber(whatsapp);
+      if (celularNormalizado && /^\d{6,15}$/.test(celularNormalizado)) {
+        supabase.functions
+          .invoke("create-cliente", {
+            body: {
+              tipo: "cliente",
+              nombre: nombre || "Cliente",
+              celular: celularNormalizado,
+              negocioId,
+            },
+          })
+          .catch(() => {});
+      }
+    }
+
     setCheckoutNombre("");
     setCheckoutWhatsapp("");
     setCheckoutRucEnabled(false);
