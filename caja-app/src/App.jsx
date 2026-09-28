@@ -1133,7 +1133,7 @@ export default function App() {
 
     const { data, error } = await supabase
       .from("localidades")
-      .insert([{ nombre, activo: true }])
+      .insert([{ nombre, activo: true, negocio_id: negocioId }])
       .select()
       .single();
 
