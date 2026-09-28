@@ -7451,7 +7451,17 @@ export default function App() {
                   aria-label="Nueva sucursal"
                   onClick={async () => {
                     const result = await crearSucursalRapida(localidadFiltroId);
-                    if (result?.cajaId) elegirCajaActiva(result.cajaId);
+                    // No usar elegirCajaActiva() acá: busca la caja en el
+                    // array 'cajas' del closure de este render, que
+                    // todavía no incluye la recién creada aunque
+                    // crearSucursalRapida ya haya esperado el refetch —
+                    // React no actualiza ese closure hasta el próximo
+                    // render. Se setean los dos ids directo con los
+                    // valores que la propia creación ya devolvió.
+                    if (result?.cajaId) {
+                      setCajaActivaId(result.cajaId);
+                      setSucursalActivaId(result.sucursalId);
+                    }
                   }}
                 >
                   <Plus size={14} />
