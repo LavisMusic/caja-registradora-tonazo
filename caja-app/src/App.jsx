@@ -1667,20 +1667,33 @@ export default function App() {
     () => (tieneVistaActiva ? cierres.filter((c) => c.cajaId === cajaOperativaId) : []),
     [cierres, cajaOperativaId, tieneVistaActiva]
   );
-  const clientesVisibles = useMemo(
-    () =>
-      tieneVistaActiva
-        ? clientes.filter(
-            // sucursalId == null (auto-registro público, o un fiado
-            // viejo de antes del fix de create-cliente que 0085 no pudo
-            // inferir por falta de historial): sin sucursal "dueña"
-            // conocida, se muestra en TODAS las del negocio en vez de
-            // quedar invisible para siempre por esa columna vacía.
-            (c) => (c.sucursalId === sucursalOperativaId || c.sucursalId == null) && c.fiadoHabilitado
-          )
-        : [],
-    [clientes, sucursalOperativaId, tieneVistaActiva]
-  );
+  const clientesVisibles = useMemo(() => {
+    const result = tieneVistaActiva
+      ? clientes.filter(
+          // sucursalId == null (auto-registro público, o un fiado
+          // viejo de antes del fix de create-cliente que 0085 no pudo
+          // inferir por falta de historial): sin sucursal "dueña"
+          // conocida, se muestra en TODAS las del negocio en vez de
+          // quedar invisible para siempre por esa columna vacía.
+          (c) => (c.sucursalId === sucursalOperativaId || c.sucursalId == null) && c.fiadoHabilitado
+        )
+      : [];
+    // DEBUG TEMPORAL: diagnóstico del reporte "no aparece el buscador
+    // de Fiado" — sacar apenas se confirme la causa real.
+    console.log("[DEBUG clientesVisibles]", {
+      tieneVistaActiva,
+      sucursalOperativaId,
+      totalClientes: clientes.length,
+      clientesConFiado: clientes.filter((c) => c.fiadoHabilitado).map((c) => ({
+        id: c.id,
+        nombre: c.nombre,
+        sucursalId: c.sucursalId,
+        fiadoHabilitado: c.fiadoHabilitado,
+      })),
+      resultado: result.map((c) => c.nombre),
+    });
+    return result;
+  }, [clientes, sucursalOperativaId, tieneVistaActiva]);
   const fiadoItemsVisibles = useMemo(
     () => (tieneVistaActiva ? fiadoItems.filter((fi) => fi.cajaId === cajaOperativaId) : []),
     [fiadoItems, cajaOperativaId, tieneVistaActiva]
