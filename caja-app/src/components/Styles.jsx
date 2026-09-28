@@ -934,6 +934,107 @@ export default function Styles() {
         55%, 100% { transform: translateX(120%); }
       }
 
+      /* ---------- DIRECTORIO PÚBLICO (Fase 2, "/") ----------
+         .tz-main de por sí queda acotado a ~700px desde el breakpoint
+         de tablet (pensado para una columna de productos) — acá se
+         pisa ese ancho porque hace falta una grilla tipo Friv bien
+         ancha. Mobile: rubros arriba en una barra horizontal
+         (idéntica a .tz-tabs); desde tablet, el "cuadro fijo a la
+         izquierda" pedido — mismo estilo de .tz-tab pero en columna y
+         sticky, para que quede a la vista mientras se scrollea la
+         grilla. */
+      .tz-dir-main {
+        max-width: 1400px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .tz-dir-sidebar {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .tz-dir-sidebar-item {
+        flex: 1 1 calc(50% - 4px);
+        padding: 12px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.02);
+        color: var(--text-dim);
+        font-family: 'Orbitron', sans-serif;
+        font-size: 11.5px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        text-align: center;
+      }
+      .tz-dir-sidebar-item:hover { border-color: rgba(43,232,255,0.4); color: var(--text); }
+      .tz-dir-sidebar-item-active {
+        background: var(--cyan);
+        color: #06131a;
+        border-color: var(--cyan);
+        box-shadow: 0 0 22px rgba(43,232,255,0.45);
+      }
+      .tz-dir-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 14px;
+      }
+      .tz-dir-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 22px 14px;
+        border-radius: 16px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.03);
+        text-decoration: none;
+        transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      }
+      .tz-dir-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(43,232,255,0.5);
+        box-shadow: 0 0 22px rgba(43,232,255,0.25);
+      }
+      .tz-dir-card-logo { width: 72px; height: 72px; object-fit: cover; border-radius: 14px; }
+      .tz-dir-card-logo-placeholder {
+        width: 72px;
+        height: 72px;
+        border-radius: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.05);
+        color: var(--text-dim);
+      }
+      .tz-dir-card-nombre {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--text);
+        text-align: center;
+      }
+      @media (min-width: 768px) {
+        .tz-dir-main { flex-direction: row; align-items: flex-start; }
+        .tz-dir-sidebar {
+          flex-direction: column;
+          flex: 0 0 190px;
+          position: sticky;
+          top: 90px;
+        }
+        .tz-dir-sidebar-item { flex: none; text-align: left; }
+        .tz-dir-grid-wrap { flex: 1 1 auto; min-width: 0; }
+        .tz-dir-grid { grid-template-columns: repeat(3, 1fr); }
+      }
+      @media (min-width: 1024px) {
+        .tz-dir-grid { grid-template-columns: repeat(4, 1fr); }
+      }
+
       /* ---------- GROUPS / PRODUCTS ---------- */
       .tz-group { margin-bottom: 26px; }
       .tz-group-heading {

@@ -7,10 +7,14 @@ import EnviarComprobanteModal from "../components/EnviarComprobanteModal";
 import Styles from "../components/Styles";
 import { formatSoles } from "../utils/format";
 
-// Vista del propio fiado del cliente logueado. RLS garantiza que
-// clientes_fiado/fiado_items/movimientos_fiado solo devuelvan las filas
-// de este usuario (auth_user_id = auth.uid()), así que no hace falta
-// filtrar nada extra a mano acá.
+// Vista del propio fiado del cliente logueado, PARA UN NEGOCIO
+// PUNTUAL (Fase 2: la misma cuenta puede tener fiado en varios
+// negocios — clientes_fiado tiene una fila POR negocio, no una sola
+// por auth_user_id — así que hace falta 'negocioId' para saber cuál
+// mostrar; sin este filtro, un cliente con fiado en 2+ negocios
+// rompía acá con "multiple/no rows" apenas abría este modal desde
+// cualquiera de sus tiendas). RLS igual garantiza que las filas que
+// vuelven son siempre de este usuario (auth_user_id = auth.uid()).
 //
 // Usa deliberadamente las MISMAS clases tz- (y <Styles/>) que el panel
 // de Admin para que las tarjetas de deuda se vean idénticas — por eso
@@ -22,7 +26,7 @@ import { formatSoles } from "../utils/format";
 // El botón "Recordar" (link de WhatsApp) es exclusivo del admin: no
 // existe en este árbol de componentes, así que un cliente nunca puede
 // verlo, sin necesidad de ningún chequeo de rol adicional.
-export default function ClienteFiadoView({ onClose }) {
+export default function ClienteFiadoView({ negocioId, onClose }) {
   const { session } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -127,12 +131,13 @@ export default function ClienteFiadoView({ onClose }) {
         .from("clientes_fiado")
         .select("*")
         .eq("auth_user_id", session.user.id)
-        .single();
+        .eq("negocio_id", negocioId)
+        .maybeSingle();
 
       if (!active) return;
 
       if (clienteErr || !clienteRow) {
-        setError("No encontramos una cuenta de fiado asociada a tu usuario.");
+        setError("No encontramos una cuenta de fiado asociada a tu usuario en esta tienda.");
         setLoading(false);
         return;
       }
@@ -145,7 +150,7 @@ export default function ClienteFiadoView({ onClose }) {
     return () => {
       active = false;
     };
-  }, [session?.user?.id]);
+  }, [session?.user?.id, negocioId]);
 
   /* ---- Realtime: escucha UPDATE en pagos_pendientes de ESTE cliente.
      Requiere que la tabla esté agregada a la publicación

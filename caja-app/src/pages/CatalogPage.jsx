@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CreditCard, CalendarClock } from "lucide-react";
+import { useParams, Link } from "react-router-dom";
+import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CreditCard, CalendarClock, Store } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCatalog } from "../hooks/useCatalog";
 import { usePedidosBadge } from "../hooks/usePedidosBadge";
@@ -84,6 +85,43 @@ function formatDescuentoBadge(product) {
 // checkbox, sin selector de cantidad (ver .tz-card-readonly abajo).
 export default function CatalogPage() {
   const { session, loading: authLoading, signOut, isCliente, tieneFiado, nombre, saldoTaxi } = useAuth();
+
+  /* ---- Fase 2: esta misma pantalla ahora sirve la tienda de
+     CUALQUIER negocio, resuelto por slug (/:slug/tienda, ver
+     main.jsx) — antes era Tonazo hardcodeado. Se resuelve UNA vez al
+     entrar; todo lo que sigue (localidades, sucursales, useCatalog)
+     queda scopeado por negocio.id apenas está disponible. Un slug que
+     no existe (o un negocio desactivado por el super-admin) no debe
+     mostrar el catálogo de OTRO negocio por error — termina en un
+     estado de error explícito, nunca en una lista vacía silenciosa. */
+  const { slug } = useParams();
+  const [negocio, setNegocio] = useState(null);
+  const [negocioLoading, setNegocioLoading] = useState(true);
+  const [negocioError, setNegocioError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setNegocioLoading(true);
+    setNegocioError("");
+    supabase
+      .from("negocios")
+      .select("id, nombre, slug, logo_url")
+      .eq("slug", slug)
+      .eq("activo", true)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error || !data) {
+          setNegocioError("No encontramos esta tienda.");
+        } else {
+          setNegocio(data);
+        }
+        setNegocioLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [slug]);
   const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
     session?.user?.id,
     isCliente
@@ -175,18 +213,25 @@ export default function CatalogPage() {
   );
 
   useEffect(() => {
+    if (!negocio) return undefined;
     let active = true;
     async function loadLocales() {
-      const [{ data: locRows, error: locErr }, { data: sucRows, error: sucErr }] = await Promise.all([
-        supabase.from("localidades").select("id, nombre").eq("activo", true).order("nombre"),
-        supabase
-          .from("sucursales")
-          .select("id, nombre, localidad_id, lat, lng")
-          .eq("activo", true)
-          .order("nombre"),
-      ]);
+      const { data: locRows, error: locErr } = await supabase
+        .from("localidades")
+        .select("id, nombre")
+        .eq("activo", true)
+        .eq("negocio_id", negocio.id)
+        .order("orden");
       if (!active) return;
       if (locErr) console.error("[CatalogPage] Error cargando localidades:", locErr);
+      const localidadIds = (locRows || []).map((r) => r.id);
+      const { data: sucRows, error: sucErr } = await supabase
+        .from("sucursales")
+        .select("id, nombre, localidad_id, lat, lng")
+        .eq("activo", true)
+        .in("localidad_id", localidadIds.length ? localidadIds : ["00000000-0000-0000-0000-000000000000"])
+        .order("orden");
+      if (!active) return;
       if (sucErr) console.error("[CatalogPage] Error cargando sucursales:", sucErr);
       setPublicLocalidades(locRows || []);
       setPublicSucursales(sucRows || []);
@@ -196,7 +241,7 @@ export default function CatalogPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [negocio]);
 
   useEffect(() => {
     if (publicLocalesLoading) return;
@@ -303,7 +348,7 @@ export default function CatalogPage() {
     stock,
     loading: catalogLoading,
     error,
-  } = useCatalog(publicSucursalId);
+  } = useCatalog(publicSucursalId, negocio?.id);
   const [activeTab, setActiveTab] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
   const [fiadoOpen, setFiadoOpen] = useState(false);
@@ -391,6 +436,28 @@ export default function CatalogPage() {
   // (o sea, ya con sesión) — sin rama "sin sesión" que abra el login.
   const handleFiadosClick = () => setFiadoOpen(true);
 
+  if (negocioLoading) {
+    return (
+      <div className="tz-root tz-loading">
+        <Styles />
+        <Loader2 className="tz-spin" size={34} />
+      </div>
+    );
+  }
+
+  if (negocioError || !negocio) {
+    return (
+      <div className="tz-root tz-loading">
+        <Styles />
+        <Store size={34} />
+        <p>{negocioError || "No encontramos esta tienda."}</p>
+        <Link to="/" className="tz-header-btn">
+          Ir al directorio
+        </Link>
+      </div>
+    );
+  }
+
   if (catalogLoading) {
     return (
       <div className="tz-root tz-loading">
@@ -406,7 +473,7 @@ export default function CatalogPage() {
       <Styles />
       {mostrarBienvenida && (
         <AnimacionNeonBienvenida
-          eyebrow="✦ Bienvenido a Tonazo ✦"
+          eyebrow={`✦ Bienvenido a ${negocio.nombre} ✦`}
           titulo={nombre}
           descripcion="Ya puedes comprar en la tienda — ¡Qué disfrutes! 😉"
           onTerminar={marcarBienvenidaVista}
@@ -446,8 +513,12 @@ export default function CatalogPage() {
           </div>
 
           <div className="tz-header-center">
-            <LogoEasterEgg src={logo} alt="TONAZO!" className="tz-logo" />
-            <p className="tz-subtitle">Compra Ya</p>
+            <LogoEasterEgg
+              src={negocio.logo_url || logo}
+              alt={negocio.nombre}
+              className="tz-logo"
+            />
+            <p className="tz-subtitle">{negocio.nombre}</p>
           </div>
 
           <div className="tz-header-side tz-header-side-right">
@@ -752,7 +823,9 @@ export default function CatalogPage() {
       {loginOpen && (
         <LoginModal onClose={() => setLoginOpen(false)} onSuccess={() => setLoginOpen(false)} />
       )}
-      {fiadoOpen && <ClienteFiadoView onClose={() => setFiadoOpen(false)} />}
+      {fiadoOpen && (
+        <ClienteFiadoView negocioId={negocio.id} onClose={() => setFiadoOpen(false)} />
+      )}
       {checkoutOpen && (
         <PedidoCheckoutModal
           carrito={carritoIds.map((id) => ({
