@@ -431,7 +431,26 @@ export default function GestorLocalidadesModal({ negocioId, onClose }) {
     return { error: err };
   };
 
+  // Eliminar una sucursal en serio exige vaciarla primero: cajas.sucursal_id
+  // apunta a ella sin cascada, así que ni una sucursal recién creada (con
+  // su "Caja 1" automática, nunca abierta) se podía borrar antes — nada
+  // en la app ofrecía eliminar una caja suelta. Acá se intenta borrar
+  // primero sus cajas; si ALGUNA de esas cajas ya tiene historial real
+  // (ventas, cierres, fiados, un cajero asignado), ESA es la que rebota
+  // con 23503, y recién ahí se corta sin tocar la sucursal — nunca deja a
+  // una sucursal con ventas reales a medio vaciar.
   const handleDeleteSucursal = async (sucursal) => {
+    const { data: cajasDeLaSucursal, error: cajasErr } = await supabase
+      .from("cajas")
+      .select("id")
+      .eq("sucursal_id", sucursal.id);
+    if (cajasErr) return { error: cajasErr, fkConflict: false };
+
+    for (const caja of cajasDeLaSucursal || []) {
+      const { error: cajaDelErr } = await supabase.from("cajas").delete().eq("id", caja.id);
+      if (cajaDelErr) return { error: cajaDelErr, fkConflict: cajaDelErr.code === "23503" };
+    }
+
     const { error: err } = await supabase.from("sucursales").delete().eq("id", sucursal.id);
     if (err) return { error: err, fkConflict: err.code === "23503" };
     setSucursales((prev) => prev.filter((s) => s.id !== sucursal.id));
