@@ -79,6 +79,7 @@ import TicketBoleta from "./components/TicketBoleta";
 import ImageManager from "./components/ImageManager";
 import PesoModal from "./components/PesoModal";
 import Combobox from "./components/Combobox";
+import GestorLocalidadesModal from "./components/GestorLocalidadesModal";
 
 import logo from "./assets/logo.webp";
 
@@ -953,6 +954,7 @@ export default function App() {
      al nombre de la variable (viene del panel original "Cajeros",
      ampliado después a "Usuarios" sin renombrar todo el estado) — cada
      fila trae { id, nombre, role }. ---- */
+  const [gestorLocalidadesOpen, setGestorLocalidadesOpen] = useState(false);
   const [cajerosOpen, setCajerosOpen] = useState(false);
   const [cajeros, setCajeros] = useState([]);
   const [cajerosLoading, setCajerosLoading] = useState(false);
@@ -1004,7 +1006,7 @@ export default function App() {
     // que se filtran en cascada por los ids de localidades/sucursales
     // YA acotados a este negocio. Sin esto, el admin de un negocio
     // nuevo veía TODAS las localidades/sucursales/cajas de Tonazo.
-    let localidadesQuery = supabase.from("localidades").select("*").eq("activo", true).order("nombre");
+    let localidadesQuery = supabase.from("localidades").select("*").eq("activo", true).order("orden");
     if (negocioId) localidadesQuery = localidadesQuery.eq("negocio_id", negocioId);
     const { data: localidadesRows, error: localidadesErr } = await localidadesQuery;
 
@@ -1016,7 +1018,7 @@ export default function App() {
 
     const localidadIds = (localidadesRows || []).map((r) => r.id);
 
-    let sucursalesQuery = supabase.from("sucursales").select("*").eq("activo", true).order("nombre");
+    let sucursalesQuery = supabase.from("sucursales").select("*").eq("activo", true).order("orden");
     if (negocioId) sucursalesQuery = sucursalesQuery.in("localidad_id", localidadIds);
     const { data: sucursalesRows, error: sucursalesErr } = await sucursalesQuery;
 
@@ -1040,13 +1042,14 @@ export default function App() {
     }
 
     setLocalidades(
-      (localidadesRows || []).map((r) => ({ id: r.id, nombre: r.nombre }))
+      (localidadesRows || []).map((r) => ({ id: r.id, nombre: r.nombre, orden: r.orden }))
     );
     setSucursales(
       (sucursalesRows || []).map((r) => ({
         id: r.id,
         localidadId: r.localidad_id,
         nombre: r.nombre,
+        orden: r.orden,
         lat: r.lat != null ? Number(r.lat) : null,
         lng: r.lng != null ? Number(r.lng) : null,
       }))
@@ -1131,9 +1134,10 @@ export default function App() {
     const nombre = (window.prompt("Nombre de la nueva localidad:") || "").trim();
     if (!nombre) return null;
 
+    const orden = localidades.length;
     const { data, error } = await supabase
       .from("localidades")
-      .insert([{ nombre, activo: true, negocio_id: negocioId }])
+      .insert([{ nombre, activo: true, negocio_id: negocioId, orden }])
       .select()
       .single();
 
@@ -1154,9 +1158,10 @@ export default function App() {
     const nombre = (window.prompt("Nombre de la nueva sucursal:") || "").trim();
     if (!nombre) return null;
 
+    const orden = sucursalesPorLocalidad(localidadId).length;
     const { data: sucursalData, error } = await supabase
       .from("sucursales")
-      .insert([{ localidad_id: localidadId, nombre, activo: true }])
+      .insert([{ localidad_id: localidadId, nombre, activo: true, orden }])
       .select()
       .single();
 
@@ -8705,7 +8710,27 @@ export default function App() {
           <Package size={18} />
           Productos
         </button>
+        {isAdmin && (
+          <button
+            className="tz-footer-btn tz-footer-btn-localidades"
+            onClick={() => setGestorLocalidadesOpen(true)}
+          >
+            <Landmark size={18} />
+            Localidades
+          </button>
+        )}
       </footer>
+
+      {/* ---------------- MODAL: GESTOR DE LOCALIDADES/SUCURSALES ---------------- */}
+      {gestorLocalidadesOpen && (
+        <GestorLocalidadesModal
+          negocioId={negocioId}
+          onClose={(changed) => {
+            setGestorLocalidadesOpen(false);
+            if (changed) refetchJerarquia();
+          }}
+        />
+      )}
 
       {/* ---------------- MODAL: GESTOR DE PEDIDOS (Fase 1) ---------------- */}
       {gestorPedidosOpen && (

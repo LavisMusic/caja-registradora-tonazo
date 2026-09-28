@@ -19,11 +19,13 @@ import {
   ImagePlus,
   Trash2,
   Users,
+  UserCog,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import Styles from "../components/Styles";
 import NegocioClientesModal from "./NegocioClientesModal.jsx";
+import CuentasManagerModal from "./CuentasManagerModal.jsx";
 import logo from "../assets/logo.webp";
 
 /* Fase 1 del super-admin: gestor de rubros (columna izquierda, estilo
@@ -510,6 +512,7 @@ export default function SuperAdminPanel() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [verClientesNegocio, setVerClientesNegocio] = useState(null);
+  const [cuentasOpen, setCuentasOpen] = useState(false);
 
   const [creatingRubro, setCreatingRubro] = useState(false);
   const [nuevoRubro, setNuevoRubro] = useState("");
@@ -748,6 +751,13 @@ export default function SuperAdminPanel() {
           <h1>Super Admin</h1>
           <p>{nombre || "Directorio de negocios"}</p>
         </div>
+        <button
+          type="button"
+          className="tz-header-btn tz-sa-cuentas-btn"
+          onClick={() => setCuentasOpen(true)}
+        >
+          <UserCog size={15} /> Gestor de Cuentas
+        </button>
         <button type="button" className="tz-header-btn tz-sa-logout" onClick={signOut}>
           <LogOut size={15} /> Salir
         </button>
@@ -898,6 +908,10 @@ export default function SuperAdminPanel() {
 
       {verClientesNegocio && (
         <NegocioClientesModal negocio={verClientesNegocio} onClose={() => setVerClientesNegocio(null)} />
+      )}
+
+      {cuentasOpen && (
+        <CuentasManagerModal negocios={negocios} onClose={() => setCuentasOpen(false)} />
       )}
     </div>
   );

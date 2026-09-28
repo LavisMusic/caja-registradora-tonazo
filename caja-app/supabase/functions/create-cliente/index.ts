@@ -254,6 +254,11 @@ Deno.serve(async (req) => {
       sucursal_id: tipo === "cajero" ? sucursalId : null,
       caja_id: tipo === "cajero" ? cajaId : null,
       negocio_id: tipo === "admin" ? negocioId : tipo === "cajero" ? callerNegocioId : null,
+      // Espejo de texto plano del "usuario" de login (Gestor de
+      // Cuentas del super-admin, migración 0081) — el dato real vive
+      // en el email dummy de Auth (usuario@tonazo.staff), que el
+      // cliente no puede leer sin service_role.
+      usuario: tipo === "admin" || tipo === "cajero" ? usuario : null,
     });
 
     if (profInsertErr) {

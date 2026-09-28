@@ -2304,6 +2304,11 @@ export default function Styles() {
         border: 1.5px solid var(--yape);
         box-shadow: 0 0 20px rgba(182,33,255,0.5);
       }
+      .tz-footer-btn-localidades {
+        background: var(--pink);
+        color: #2b0018;
+        box-shadow: 0 0 20px rgba(255,47,158,0.5);
+      }
 
       /* ---------- MODAL ---------- */
       .tz-modal-backdrop {
@@ -2424,6 +2429,51 @@ export default function Styles() {
       .tz-gc-coords-set { color: var(--green, #39ffb0) !important; border-color: rgba(57,255,176,0.5) !important; }
       .tz-gc-coords-edit { display: inline-flex; align-items: center; gap: 5px; }
       .tz-gc-coords-input { width: 170px; padding: 5px 9px; font-size: 12px; }
+
+      /* ---- Gestor de Localidades (botón rosa del pie de página) ---- */
+      .tz-gl-list { display: flex; flex-direction: column; gap: 10px; }
+      .tz-gl-localidad {
+        border: 1px solid var(--border-soft);
+        border-radius: 10px;
+        background: rgba(255,255,255,0.02);
+        padding: 10px 12px;
+      }
+      .tz-gl-localidad-head { display: flex; align-items: center; gap: 6px; }
+      .tz-gl-localidad-toggle {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: transparent;
+        border: none;
+        color: var(--text);
+        font-family: 'Orbitron', sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        padding: 4px 0;
+        text-align: left;
+      }
+      .tz-gl-localidad-count { color: var(--text-dim); font-weight: 500; font-size: 12px; }
+      .tz-gl-confirm { margin-top: 8px; }
+      .tz-gl-sucursales {
+        margin: 10px 0 0 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .tz-gl-sucursal-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border: 1px solid var(--border-soft);
+        border-radius: 8px;
+        background: rgba(255,255,255,0.015);
+      }
+      .tz-gl-sucursal-icon { color: var(--pink); flex-shrink: 0; }
+      .tz-gl-sucursal-nombre { flex: 1 1 auto; font-size: 13px; color: var(--text); }
+      .tz-gl-add-sucursal-btn { margin-top: 2px; font-size: 12px; padding: 7px; }
       .tz-gc-caja-row {
         display: flex;
         flex-wrap: wrap;
@@ -6123,6 +6173,37 @@ export default function Styles() {
         font-size: 11.5px;
         color: var(--yellow);
         text-align: center;
+      }
+
+      /* ---- Gestor de Cuentas (super-admin) ---- */
+      .tz-sa-cuentas-btn {
+        background: transparent;
+        border: 1px solid rgba(43,232,255,0.4);
+        color: var(--cyan);
+      }
+      .tz-cuentas-filtros {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      .tz-cuentas-filtros .tz-text-input { flex: 1 1 200px; }
+      .tz-cuentas-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 12px 14px;
+        width: 100%;
+      }
+      .tz-cuentas-nombre {
+        font-weight: 700;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+      }
+      .tz-cuentas-detalle {
+        font-size: 12.5px;
+        color: var(--text-dim);
       }
 
       .tz-sa-negocio-card-new {
