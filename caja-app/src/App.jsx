@@ -1667,33 +1667,20 @@ export default function App() {
     () => (tieneVistaActiva ? cierres.filter((c) => c.cajaId === cajaOperativaId) : []),
     [cierres, cajaOperativaId, tieneVistaActiva]
   );
-  const clientesVisibles = useMemo(() => {
-    const result = tieneVistaActiva
-      ? clientes.filter(
-          // sucursalId == null (auto-registro público, o un fiado
-          // viejo de antes del fix de create-cliente que 0085 no pudo
-          // inferir por falta de historial): sin sucursal "dueña"
-          // conocida, se muestra en TODAS las del negocio en vez de
-          // quedar invisible para siempre por esa columna vacía.
-          (c) => (c.sucursalId === sucursalOperativaId || c.sucursalId == null) && c.fiadoHabilitado
-        )
-      : [];
-    // DEBUG TEMPORAL: diagnóstico del reporte "no aparece el buscador
-    // de Fiado" — sacar apenas se confirme la causa real.
-    console.log("[DEBUG clientesVisibles]", {
-      tieneVistaActiva,
-      sucursalOperativaId,
-      totalClientes: clientes.length,
-      clientesConFiado: clientes.filter((c) => c.fiadoHabilitado).map((c) => ({
-        id: c.id,
-        nombre: c.nombre,
-        sucursalId: c.sucursalId,
-        fiadoHabilitado: c.fiadoHabilitado,
-      })),
-      resultado: result.map((c) => c.nombre),
-    });
-    return result;
-  }, [clientes, sucursalOperativaId, tieneVistaActiva]);
+  const clientesVisibles = useMemo(
+    () =>
+      tieneVistaActiva
+        ? clientes.filter(
+            // sucursalId == null (auto-registro público, o un fiado
+            // viejo de antes del fix de create-cliente que 0085 no pudo
+            // inferir por falta de historial): sin sucursal "dueña"
+            // conocida, se muestra en TODAS las del negocio en vez de
+            // quedar invisible para siempre por esa columna vacía.
+            (c) => (c.sucursalId === sucursalOperativaId || c.sucursalId == null) && c.fiadoHabilitado
+          )
+        : [],
+    [clientes, sucursalOperativaId, tieneVistaActiva]
+  );
   const fiadoItemsVisibles = useMemo(
     () => (tieneVistaActiva ? fiadoItems.filter((fi) => fi.cajaId === cajaOperativaId) : []),
     [fiadoItems, cajaOperativaId, tieneVistaActiva]
@@ -1735,6 +1722,23 @@ export default function App() {
   const streamRef = useRef(null);
   const fileInputRef = useRef(null);
   const submitBarRef = useRef(null);
+  const pageFooterRef = useRef(null);
+
+  /* ---- botón flotante "ir al pie de página": aparece recién cuando
+     ya hay algo scrolleado (en la parte de arriba no tiene sentido, el
+     footer con Gastos/Stock/Productos ya se ve o está cerca) — la
+     entrada/salida con slide-up la hace el CSS (.tz-scrolltop-fab-
+     visible), acá solo se decide el booleano. ---- */
+  const [scrollFabVisible, setScrollFabVisible] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrollFabVisible(window.scrollY > 260);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  const scrollToFooter = () => {
+    pageFooterRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  };
 
   /* ---- cierra el menú "Métodos de Pago" del header al hacer clic afuera ---- */
   useEffect(() => {
@@ -5008,9 +5012,15 @@ export default function App() {
     if (!nodeRef.current) {
       throw new Error("No se pudo preparar la boleta. Intenta de nuevo.");
     }
-    if (!navigator.clipboard?.write || typeof window.ClipboardItem !== "function") {
-      throw new Error("Este navegador no permite copiar imágenes al portapapeles.");
-    }
+    // navigator.clipboard.write (imágenes) exige "contexto seguro":
+    // https, o http://localhost — abrir la app por la IP de la red
+    // local (ej. http://192.168.x.x:5174, como en el celu/otra PC de
+    // prueba) NO califica, así que acá SIEMPRE va a faltar. En vez de
+    // dejar al cajero sin ninguna boleta, se degrada a descargar la
+    // imagen (el navegador la deja adjuntar a mano en WhatsApp Web/app
+    // desde la carpeta de descargas).
+    const puedeCopiarAlPortapapeles =
+      !!navigator.clipboard?.write && typeof window.ClipboardItem === "function";
     try {
       const isMobile = window.innerWidth < 768;
       const canvasPromise = html2canvas(nodeRef.current, {
@@ -5025,7 +5035,21 @@ export default function App() {
       const canvas = await Promise.race([canvasPromise, timeoutPromise]);
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       if (!blob) throw new Error("No se pudo generar la imagen de la boleta.");
-      await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
+
+      if (puedeCopiarAlPortapapeles) {
+        await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
+        return { downloaded: false };
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `boleta-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return { downloaded: true };
     } catch (err) {
       if (err?.message === "TIMEOUT_RENDER") {
         throw new Error(
@@ -5045,8 +5069,12 @@ export default function App() {
     setBoletaError("");
     setCopiandoBoleta(true);
     try {
-      await copiarBoletaAlPortapapeles(ticketRef);
-      alert("¡Boleta copiada! Ve a WhatsApp y pégala en el chat");
+      const { downloaded } = await copiarBoletaAlPortapapeles(ticketRef);
+      alert(
+        downloaded
+          ? "Este navegador no permite copiar imágenes — se descargó la boleta. Adjúntala a mano en WhatsApp."
+          : "¡Boleta copiada! Ve a WhatsApp y pégala en el chat"
+      );
     } catch (err) {
       console.error("Error copiando la boleta al portapapeles:", err);
       setBoletaError(err?.message || "No se pudo copiar la boleta. Intenta de nuevo.");
@@ -5093,8 +5121,12 @@ export default function App() {
       // podría capturar el estado anterior por la carrera entre el
       // re-render de React y la lectura del DOM.
       flushSync(() => setHistorialBoletaData(datos));
-      await copiarBoletaAlPortapapeles(historialBoletaRef);
-      alert("¡Boleta copiada! Ve a WhatsApp y pégala en el chat");
+      const { downloaded } = await copiarBoletaAlPortapapeles(historialBoletaRef);
+      alert(
+        downloaded
+          ? "Este navegador no permite copiar imágenes — se descargó la boleta. Adjúntala a mano en WhatsApp."
+          : "¡Boleta copiada! Ve a WhatsApp y pégala en el chat"
+      );
     } catch (err) {
       console.error("Error generando la boleta desde el historial:", err);
       setHistorialBoletaError(err?.message || "No se pudo copiar la boleta. Intenta de nuevo.");
@@ -8803,7 +8835,19 @@ export default function App() {
          campos = más alto). Ahora viven en el flujo normal del
          documento, al final de la página — igual que ya se hizo con
          el header — así es estructuralmente imposible que tapen nada. */}
-      <footer className="tz-page-footer">
+      <button
+        type="button"
+        className={`tz-scrolltop-fab ${scrollFabVisible ? "tz-scrolltop-fab-visible" : ""} ${
+          barVisible ? "tz-scrolltop-fab-raised" : ""
+        }`}
+        onClick={scrollToFooter}
+        aria-label="Ir al pie de página"
+        title="Ir al pie de página"
+      >
+        <ChevronDown size={22} />
+      </button>
+
+      <footer className="tz-page-footer" ref={pageFooterRef}>
         {/* "Cerrar Caja" ahora es exclusivo del cajero: cierra SU
            PROPIA fila en 'cajas' (ver ejecutarCierre). El admin ya no
            tiene una caja global que cerrar desde acá — Parte 3

@@ -2050,6 +2050,36 @@ export default function Styles() {
       .tz-submitbar-visible { transform: translateY(0); }
       .tz-submitbar-hidden { transform: translateY(120%); }
 
+      /* ---- Botón flotante "ir al pie de página" (solo interfaz de
+         negocio, admin/cajero) — oculto hasta que se scrollea hacia
+         abajo, entra con un slide-up + fade desde el borde inferior. ---- */
+      .tz-scrolltop-fab {
+        position: fixed;
+        right: 18px;
+        bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+        z-index: 50;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(10, 14, 26, 0.9);
+        border: 1.5px solid var(--cyan);
+        color: var(--cyan);
+        box-shadow: 0 0 18px rgba(43,232,255,0.55), 0 0 4px rgba(43,232,255,0.8);
+        cursor: pointer;
+        opacity: 0;
+        transform: translateY(140%);
+        pointer-events: none;
+        transition: transform 0.3s ease, opacity 0.3s ease, bottom 0.2s ease;
+      }
+      .tz-scrolltop-fab-visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+      .tz-scrolltop-fab:hover { background: rgba(43,232,255,0.15); }
+      /* Con el carrito/resumen de venta abierto (.tz-submitbar, fixed
+         al piso) el botón se levanta para no quedar tapado por ella. */
+      .tz-scrolltop-fab-raised { bottom: 100px; }
+
       /* "Manija" para ocultar la barra a mano: una lengüeta que
          sobresale de su borde superior, en vez de un botón más dentro
          del contenido (ya bastante apretado en móvil). */
