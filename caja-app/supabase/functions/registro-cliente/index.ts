@@ -71,6 +71,25 @@ Deno.serve(async (req) => {
 
   const dummyEmail = `${celular}@tonazo.app`;
 
+  // negocio_id (Fase 1 del super-admin): clientes_fiado.negocio_id es
+  // NOT NULL desde la migración 0073 — este registro público (sin
+  // sesión, sin admin de por medio) todavía no tiene forma de saber
+  // "para cuál negocio" (CatalogPage.jsx sigue siendo de un solo
+  // negocio, la Fase 2 del directorio público es la que le va a dar
+  // esa noción real vía slug). Hasta que exista eso, cae siempre a
+  // Tonazo por su slug — mismo bug que ya rompió create-cliente,
+  // reproducido en vivo acá también.
+  const { data: negocioDefault, error: negocioErr } = await admin
+    .from("negocios")
+    .select("id")
+    .eq("slug", "tonazo")
+    .maybeSingle();
+  if (negocioErr || !negocioDefault) {
+    console.error("[registro-cliente] no se encontró el negocio 'tonazo':", negocioErr);
+    return json(500, { error: "No se pudo crear tu cuenta. Intenta de nuevo." });
+  }
+  const negocioId = negocioDefault.id;
+
   const { data: existente, error: findErr } = await admin
     .from("clientes_fiado")
     .select("id, auth_user_id")
@@ -148,6 +167,7 @@ Deno.serve(async (req) => {
       fecha: Date.now(),
       auth_user_id: newUserId,
       fiado_habilitado: false,
+      negocio_id: negocioId,
     });
     if (clienteErr) {
       await admin.auth.admin.deleteUser(newUserId);

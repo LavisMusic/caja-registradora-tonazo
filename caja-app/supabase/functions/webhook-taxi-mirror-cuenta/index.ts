@@ -174,9 +174,15 @@ Deno.serve(async (req) => {
       return jsonResponse(500, { error: "no se pudo vincular el registro de cliente" });
     }
   } else {
+    // negocio_id (Fase 1 del super-admin): clientes_fiado.negocio_id es
+    // NOT NULL desde la migración 0073 — mismo bug ya encontrado en
+    // create-cliente/registro-cliente. Este mirror de Taxi-PE tampoco
+    // tiene noción de "para cuál negocio" todavía, cae a Tonazo por su
+    // slug hasta que exista el directorio público (Fase 2).
+    const { data: negocioDefault } = await admin.from("negocios").select("id").eq("slug", "tonazo").maybeSingle();
     const { error: clienteErr } = await admin
       .from("clientes_fiado")
-      .insert({ nombre, whatsapp: telefono, fecha: Date.now(), auth_user_id: newUserId });
+      .insert({ nombre, whatsapp: telefono, fecha: Date.now(), auth_user_id: newUserId, negocio_id: negocioDefault?.id });
     if (clienteErr) {
       await admin.auth.admin.deleteUser(newUserId);
       console.error("[webhook-taxi-mirror-cuenta] error creando clientes_fiado:", clienteErr);
