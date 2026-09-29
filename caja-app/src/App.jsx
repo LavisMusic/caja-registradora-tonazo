@@ -4591,65 +4591,6 @@ export default function App() {
     resetCobroForm();
   };
 
-  /* ---- eliminar cliente + su historial de fiado (Libreta): borra
-     primero las tablas hijas (fiado_items, movimientos_fiado) — que
-     tienen FK a clientes_fiado.id — y recién al final la fila del
-     cliente, en ese orden, para no chocar con la FK. Nota: esto NO
-     borra su cuenta de Supabase Auth (auth_user_id) — un cliente
-     eliminado acá simplemente deja de poder loguearse a ver un fiado
-     que ya no existe, pero su acceso no queda revocado explícitamente;
-     revocarlo requeriría otra Edge Function con service_role. ---- */
-  const eliminarClienteFiado = async (cliente) => {
-    if (
-      !window.confirm(
-        `¿Estás seguro de eliminar el registro de "${cliente.nombre}"? Esto borra también todo su historial de fiados y pagos.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const { error: itemsError } = await supabase
-        .from("fiado_items")
-        .delete()
-        .eq("cliente_id", cliente.id);
-      if (itemsError) {
-        console.error("Error eliminando fiado_items del cliente:", itemsError);
-        alert("No se pudo eliminar el historial de deuda de este cliente.");
-        return;
-      }
-
-      const { error: movError } = await supabase
-        .from("movimientos_fiado")
-        .delete()
-        .eq("cliente_id", cliente.id);
-      if (movError) {
-        console.error("Error eliminando movimientos_fiado del cliente:", movError);
-        alert("No se pudo eliminar el historial de pagos de este cliente.");
-        return;
-      }
-
-      const { error: clienteError } = await supabase
-        .from("clientes_fiado")
-        .delete()
-        .eq("id", cliente.id);
-      if (clienteError) {
-        console.error("Error eliminando cliente:", clienteError);
-        alert("No se pudo eliminar el cliente.");
-        return;
-      }
-
-      setClientes((prev) => prev.filter((c) => c.id !== cliente.id));
-      setFiadoItems((prev) => prev.filter((it) => it.clienteId !== cliente.id));
-      setMovimientos((prev) => prev.filter((m) => m.clienteId !== cliente.id));
-      if (selectedClienteId === cliente.id) setSelectedClienteId(null);
-      if (checkoutFiadoClienteId === cliente.id) setCheckoutFiadoClienteId(null);
-    } catch (err) {
-      console.error("Error eliminando cliente:", err);
-      alert("No se pudo eliminar el cliente. Intenta de nuevo.");
-    }
-  };
-
   const handleCobroMontoChange = (value) => {
     if (value === "" || /^\d*\.?\d{0,2}$/.test(value)) {
       setCobroMonto(value);
@@ -10994,15 +10935,6 @@ export default function App() {
                                       <MessageCircle size={13} /> Recordar
                                     </button>
                                   )}
-                                  <button
-                                    type="button"
-                                    className="tz-cliente-action-btn tz-cliente-action-delete"
-                                    onClick={() => eliminarClienteFiado(c)}
-                                    aria-label={`Eliminar cliente ${c.nombre}`}
-                                    title="Eliminar cliente"
-                                  >
-                                    <Trash2 size={13} /> Eliminar
-                                  </button>
                                 </div>
 
                                 {formOpen &&
