@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabaseTaxi } from "../lib/supabaseTaxi";
 
 // Estado + chat + acciones de UNA entrega delivery, desde la app de Caja
@@ -49,6 +49,16 @@ export function useEntregaCaja(sessionToken, { rol = "cajero" } = {}) {
     return () => clearInterval(t);
   }, [cargar]);
 
+  // Canal persistente para ESTA entrega — se guarda en un ref para que
+  // enviarMensaje/expirarOferta lo reusen al emitir. Antes cada envío
+  // creaba un canal nuevo con supabaseTaxi.channel(...).send(...) SIN
+  // haberlo suscrito nunca: el cliente de Realtime tiene que completar
+  // el handshake de "join" del canal antes de poder emitir de verdad,
+  // así que cada mensaje pagaba ese viaje de ida y vuelta entero —
+  // de ahí el retraso real (quedaba dependiendo del poll de 8s en vez
+  // de llegar instantáneo). Mismo patrón que ya usa el chat de viajes
+  // (useChatMensajes.js, channelRef) del lado de Taxi-PE.
+  const channelRef = useRef(null);
   useEffect(() => {
     if (!entrega?.id) return;
     const ch = supabaseTaxi
@@ -57,7 +67,9 @@ export function useEntregaCaja(sessionToken, { rol = "cajero" } = {}) {
       .on("broadcast", { event: "mensaje" }, cargar)
       .on("broadcast", { event: "oferta" }, cargar)
       .subscribe();
+    channelRef.current = ch;
     return () => {
+      channelRef.current = null;
       supabaseTaxi.removeChannel(ch);
     };
   }, [entrega?.id, cargar]);
@@ -97,9 +109,8 @@ export function useEntregaCaja(sessionToken, { rol = "cajero" } = {}) {
     async (ofertaId) => {
       const { data, error } = await supabaseTaxi.rpc("rpc_entrega_oferta_expirar", { p_oferta_id: ofertaId });
       if (!error && data?.status === "ok" && entrega?.id) {
-        await supabaseTaxi
-          .channel(canalEntrega(entrega.id))
-          .send({ type: "broadcast", event: "oferta", payload: { estado: "expirada" } })
+        channelRef.current
+          ?.send({ type: "broadcast", event: "oferta", payload: { estado: "expirada" } })
           .catch(() => {});
       }
       await cargar();
@@ -133,12 +144,9 @@ export function useEntregaCaja(sessionToken, { rol = "cajero" } = {}) {
         p_conductor_id: null,
       });
       if (!error && data?.status === "ok") {
-        if (entrega?.id) {
-          await supabaseTaxi
-            .channel(canalEntrega(entrega.id))
-            .send({ type: "broadcast", event: "mensaje", payload: { hilo } })
-            .catch(() => {});
-        }
+        channelRef.current
+          ?.send({ type: "broadcast", event: "mensaje", payload: { hilo } })
+          .catch(() => {});
         await cargar();
         return { error: null };
       }
