@@ -81,22 +81,35 @@ export function imprimirBoleta(nodeRef) {
 
   const doc = iframe.contentDocument;
   doc.open();
+  // La hoja ES la boleta: 80 mm de ancho, y el contenido la ocupa entera
+  // (4 mm de margen a cada lado = los 72 mm imprimibles del cabezal).
   doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>Boleta</title><style>
-    @page { margin: 0; }
     html, body { margin: 0; padding: 0; background: #fff; }
-    body { width: 72mm; margin: 0 auto; }
+    body { width: 80mm; }
     .boleta > div {
-      width: 72mm !important;
+      width: 80mm !important;
       box-sizing: border-box !important;
-      padding: 3mm 1mm 6mm !important;
+      padding: 4mm 4mm 6mm !important;
       background: #fff !important;
     }
     .boleta, .boleta * { color: #000 !important; border-color: #000 !important; }
-    .boleta img { max-width: 38mm !important; height: auto !important; filter: grayscale(1) contrast(1.4); }
+    .boleta img { max-width: 40mm !important; height: auto !important; filter: grayscale(1) contrast(1.4); }
   </style></head><body><div class="boleta">${clon.innerHTML}</div></body></html>`);
   doc.close();
 
   const imprimir = () => {
+    // Sin @page size, el navegador usa el papel POR DEFECTO de la
+    // impresora (A4 en la mayoría de los drivers): la boleta quedaba
+    // chica en el medio de una hoja entera. Acá la hoja se define con el
+    // ancho del rollo y el alto EXACTO del contenido ya renderizado
+    // (logo incluido — por eso se mide recién después de cargarlo), así
+    // el rollo corta justo donde termina la boleta, sin papel en blanco.
+    const altoPx = doc.documentElement.scrollHeight;
+    const altoMm = Math.ceil((altoPx * 25.4) / 96) + 2;
+    const pagina = doc.createElement("style");
+    pagina.textContent = `@page { size: 80mm ${altoMm}mm; margin: 0; }`;
+    doc.head.appendChild(pagina);
+
     iframe.contentWindow.focus();
     iframe.contentWindow.print();
     // El diálogo de impresión es bloqueante en la mayoría de navegadores;

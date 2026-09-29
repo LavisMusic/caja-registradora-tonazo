@@ -2973,7 +2973,7 @@ export default function Styles() {
       }
       .tz-filtrobar-saldo .tz-stat-chip { min-width: 80px; padding: 6px 7px; gap: 2px; }
       .tz-filtrobar-saldo .tz-stat-label { font-size: 10px; gap: 3px; }
-      .tz-filtrobar-saldo .tz-stat-value { font-size: 20px; }
+      .tz-filtrobar-saldo .tz-stat-value { font-size: 15px; }
 
       @media (min-width: 1024px) {
         /* Mismo ajuste fino de siempre, PARA EL PANEL ADMIN — clases propias
