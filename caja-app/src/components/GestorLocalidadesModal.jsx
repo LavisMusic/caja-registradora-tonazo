@@ -94,7 +94,7 @@ function SucursalRow({ sucursal, onRename, onDelete, onDesactivar }) {
         {fkConflict && (
           <>
             <p className="tz-error">
-              No se puede eliminar: todavía tiene cajas, ventas o cajeros asociados.
+              No se puede eliminar: todavía tiene cajas, ventas, cajeros o pedidos asociados.
             </p>
             <p className="tz-stock-editor-sub">
               Podés desactivarla en su lugar — deja de verse en selectores/catálogo, sin borrar nada de su historial.
