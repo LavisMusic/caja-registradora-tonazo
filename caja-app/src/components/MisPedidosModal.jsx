@@ -72,15 +72,21 @@ export default function MisPedidosModal({ session, onClose }) {
     if (!boletaPedido) return;
     let alive = true;
     (async () => {
-      const extra = { sede: "", entrega: null };
+      const extra = { sede: "", entrega: null, logoUrl: null };
       try {
         if (boletaPedido.sucursal_id) {
+          // Embed encadenado sucursal -> localidad -> negocio: el
+          // logo real de ESE negocio puntual (un cliente puede tener
+          // pedidos de varios, identidad compartida — nunca alcanza
+          // con negocioLogoUrl de useAuth(), que para un 'cliente'
+          // siempre es null, ver TicketBoleta.jsx).
           const { data: suc } = await supabase
             .from("sucursales")
-            .select("nombre")
+            .select("nombre, localidades(negocios(logo_url))")
             .eq("id", boletaPedido.sucursal_id)
             .maybeSingle();
           if (suc?.nombre) extra.sede = suc.nombre;
+          extra.logoUrl = suc?.localidades?.negocios?.logo_url || null;
         }
         if (boletaPedido.entrega_session_token) {
           const { data: est } = await supabaseTaxi.rpc("rpc_entrega_estado", {
@@ -384,6 +390,7 @@ export default function MisPedidosModal({ session, onClose }) {
               cliente={{ nombre: misDatos?.nombre || "" }}
               sede={boletaExtra?.sede || ""}
               entrega={boletaExtra?.entrega || null}
+              logoUrl={boletaExtra?.logoUrl || null}
               productos={(boletaPedido.pedido_items || []).map((it) => ({
                 cantidad: it.cantidad,
                 nombre: it.nombre,

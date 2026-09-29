@@ -50,13 +50,18 @@ const rowStyle = {
 // cambiar esto alcanza para que aparezca en TODAS las boletas.
 const EMISOR_RUC = "";
 
-export default function TicketBoleta({ orden, cliente, productos, totales, sede, entrega }) {
-  // Logo REAL del negocio (Fase 1 del super-admin) — cae al logo
-  // estático de Tonazo si el negocio todavía no subió el suyo, o si
-  // quien genera la boleta no tiene negocio asociado (ej. todavía no
-  // existe el directorio público multi-negocio de la Fase 2).
+export default function TicketBoleta({ orden, cliente, productos, totales, sede, entrega, logoUrl }) {
+  // Logo REAL del negocio: 'logoUrl' (prop explícita) es para cuando
+  // quien genera la boleta es un CLIENTE — su perfil no tiene
+  // negocio_id propio (identidad compartida entre negocios, Fase 1),
+  // así que 'negocioLogoUrl' de useAuth() siempre da null para un
+  // cliente sin importar de qué negocio sea el pedido; PedidoCheckout-
+  // Modal/MisPedidosModal resuelven el logo real del negocio del
+  // PEDIDO puntual y lo pasan acá. 'negocioLogoUrl' sigue siendo la
+  // fuente para admin/cajero (boletas del POS), y el logo estático de
+  // Tonazo es el último fallback si ninguno de los dos resolvió.
   const { negocioLogoUrl } = useAuth();
-  const logoAMostrar = negocioLogoUrl || logo;
+  const logoAMostrar = logoUrl || negocioLogoUrl || logo;
 
   const nombreCliente = cliente?.nombre?.trim() ? cliente.nombre.trim() : "Público General";
   const rucCliente = cliente?.ruc?.trim() || "";

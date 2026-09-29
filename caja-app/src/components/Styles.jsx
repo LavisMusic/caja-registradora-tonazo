@@ -4498,6 +4498,7 @@ export default function Styles() {
         color: var(--orange);
         background: rgba(255,149,0,0.12);
       }
+      .tz-gasto-tipo-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
       .tz-ruc-hint {
         display: flex;
