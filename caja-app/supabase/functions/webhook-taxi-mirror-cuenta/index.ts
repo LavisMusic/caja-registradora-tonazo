@@ -31,6 +31,27 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("WEBHOOK_SECRET_TAXI_TO_CAJA")!;
 
+// Copia créditos/membresía de Taxi-PE a TODAS las filas de ese teléfono
+// (una por negocio). Se usa al espejar una cuenta nueva desde Taxi-PE:
+// la membresía gratis de registro nace en el INSERT del pasajero allá,
+// antes de que exista la fila acá, así que el evento de saldo suelto no
+// tenía dónde guardarse — viaja junto con el alta en vez de perderse.
+async function aplicarSaldo(
+  admin: ReturnType<typeof createClient>,
+  telefono: string,
+  data: Record<string, unknown>
+) {
+  if (!("creditos_disponibles" in data) && !("membresia_vencimiento" in data)) return;
+  const { error } = await admin
+    .from("clientes_fiado")
+    .update({
+      creditos_disponibles: Number(data.creditos_disponibles) || 0,
+      membresia_vencimiento: (data.membresia_vencimiento as string | null) ?? null,
+    })
+    .eq("whatsapp", telefono);
+  if (error) console.error("[webhook-taxi-mirror-cuenta] error copiando saldo del alta:", error);
+}
+
 async function manejarSaldo(env: WebhookEnvelope): Promise<Response> {
   const data = env.data as Record<string, unknown>;
   const telefono = String(data?.telefono || "").trim();
@@ -63,11 +84,14 @@ async function manejarEliminado(env: WebhookEnvelope): Promise<Response> {
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
-  const { data: cliente, error: findErr } = await admin
+  // Varias filas posibles (una por negocio) — ver el alta más abajo.
+  const { data: filas, error: findErr } = await admin
     .from("clientes_fiado")
     .select("auth_user_id")
     .eq("whatsapp", telefono)
-    .maybeSingle();
+    .not("auth_user_id", "is", null)
+    .limit(1);
+  const cliente = filas?.[0] ?? null;
 
   if (findErr) {
     console.error("[webhook-taxi-mirror-cuenta] error buscando clientes_fiado:", findErr);
@@ -119,11 +143,16 @@ Deno.serve(async (req) => {
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   const dummyEmail = `${telefono}@tonazo.app`;
 
-  const { data: existente, error: findErr } = await admin
+  // Un cliente puede tener VARIAS filas (una por negocio, identidad
+  // compartida) — .maybeSingle() reventaba con 2+ y el espejo fallaba
+  // con 500. Se prefiere la que ya tiene login vinculado.
+  const { data: existentes, error: findErr } = await admin
     .from("clientes_fiado")
     .select("id, auth_user_id")
     .eq("whatsapp", telefono)
-    .maybeSingle();
+    .order("auth_user_id", { ascending: true, nullsFirst: false })
+    .limit(1);
+  const existente = existentes?.[0] ?? null;
 
   if (findErr) {
     console.error("[webhook-taxi-mirror-cuenta] error buscando clientes_fiado:", findErr);
@@ -136,6 +165,7 @@ Deno.serve(async (req) => {
     const { error: updErr } = await admin.auth.admin.updateUserById(existente.auth_user_id, { password: pin });
     if (updErr) return jsonResponse(500, { error: updErr.message });
     await admin.from("profiles").update({ pin_configurado: true }).eq("id", existente.auth_user_id);
+    await aplicarSaldo(admin, telefono, env.data as Record<string, unknown>);
     return jsonResponse(200, { status: "ok", accion: "actualizado" });
   }
 
@@ -190,5 +220,6 @@ Deno.serve(async (req) => {
     }
   }
 
+  await aplicarSaldo(admin, telefono, env.data as Record<string, unknown>);
   return jsonResponse(200, { status: "ok", accion: "creado" });
 });

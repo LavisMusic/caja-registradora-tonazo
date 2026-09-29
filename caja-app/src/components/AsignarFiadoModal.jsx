@@ -21,7 +21,7 @@ export default function AsignarFiadoModal({ onClose, onAsignado }) {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     const q = query.trim();
-    if (q.length < 2) {
+    if (q.length < 3) {
       setResultados([]);
       return undefined;
     }
@@ -91,8 +91,8 @@ export default function AsignarFiadoModal({ onClose, onAsignado }) {
             <p className="tz-stock-editor-sub">
               <Loader2 size={14} className="tz-spin" /> Buscando…
             </p>
-          ) : query.trim().length < 2 ? (
-            <p className="tz-stock-editor-sub">Escribí al menos 2 caracteres.</p>
+          ) : query.trim().length < 3 ? (
+            <p className="tz-stock-editor-sub">Escribí al menos 3 caracteres.</p>
           ) : resultados.length === 0 ? (
             <p className="tz-stock-editor-sub">Sin resultados (o ese cliente ya tiene Fiados).</p>
           ) : (

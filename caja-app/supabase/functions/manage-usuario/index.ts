@@ -62,9 +62,6 @@ Deno.serve(async (req) => {
 
   const callerRole = callerProfileErr ? null : callerProfile?.role;
   const callerNegocioId = callerProfileErr ? null : callerProfile?.negocio_id ?? null;
-  if (callerRole !== "admin") {
-    return json(403, { error: "Solo el admin puede gestionar usuarios." });
-  }
 
   // 2) Validar input
   let body: {
@@ -84,19 +81,32 @@ Deno.serve(async (req) => {
 
   const { action, userId } = body;
 
-  // Buscador GLOBAL de "Asignar Fiado" (AsignarFiadoModal.jsx): el
-  // admin busca por nombre/celular/DNI entre TODOS los clientes de la
-  // plataforma, no solo los de su propio negocio — clientes_fiado
-  // tiene RLS negocio-scoped (un admin no puede leer filas de OTRO
-  // negocio desde su propia sesión), así que esta búsqueda tiene que
-  // pasar por acá (service_role). Va ANTES de la validación de userId
-  // de más abajo: buscar no apunta a ningún usuario puntual todavía.
-  if (action === "buscar-cliente-fiado") {
+  // Las búsquedas las usa también el cajero (sugerencias del carrito);
+  // TODO lo demás (PIN, borrar, reasignar, Fiados) sigue siendo solo admin.
+  const esBusqueda = action === "buscar-cliente-fiado" || action === "buscar-cliente";
+  if (callerRole !== "admin" && !(esBusqueda && callerRole === "cajero")) {
+    return json(403, { error: "Solo el admin puede gestionar usuarios." });
+  }
+
+  // Buscadores GLOBALES de clientes: entre TODOS los clientes de la
+  // plataforma (identidad compartida entre negocios), no solo los que
+  // ya tienen fila en este negocio — clientes_fiado tiene RLS
+  // negocio-scoped (nadie puede leer filas de OTRO negocio desde su
+  // propia sesión), así que tiene que pasar por acá (service_role).
+  //   buscar-cliente-fiado → Asignar Fiado: excluye a quien YA tiene
+  //                          Fiados en este negocio.
+  //   buscar-cliente       → sugerencias de Nombre/WhatsApp del carrito:
+  //                          todos.
+  // Van ANTES de la validación de userId: buscar no apunta a nadie aún.
+  if (esBusqueda) {
     if (!callerNegocioId) return json(400, { error: "Tu cuenta no tiene un negocio asociado." });
+    const soloAsignables = action === "buscar-cliente-fiado";
     // Sin comas/paréntesis/comodines: el texto va dentro de un filtro
     // .or() de PostgREST, donde esos caracteres cortan la sintaxis.
     const q = String(body.query || "").replace(/[,()%*\\]/g, " ").trim();
-    if (q.length < 2) return json(200, { resultados: [] });
+    // Mínimo 3: evita listar la base entera de clientes de la
+    // plataforma con una o dos letras sueltas.
+    if (q.length < 3) return json(200, { resultados: [] });
 
     const { data: filas, error: buscarErr } = await admin
       .from("clientes_fiado")
@@ -125,8 +135,8 @@ Deno.serve(async (req) => {
       });
     }
     const resultados = [...porAuthId.values()]
-      .filter((r) => !r.yaHabilitado)
-      .slice(0, 15)
+      .filter((r) => !soloAsignables || !r.yaHabilitado)
+      .slice(0, soloAsignables ? 15 : 8)
       .map(({ auth_user_id, nombre, whatsapp, dni }) => ({ auth_user_id, nombre, whatsapp, dni }));
 
     return json(200, { resultados });

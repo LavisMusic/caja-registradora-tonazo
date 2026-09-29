@@ -3097,19 +3097,83 @@ export default function App() {
      fiado_habilitado Y la sucursal activa (pensada para la Libreta),
      así que un cliente sin fiado, o de otra sucursal del mismo
      negocio, jamás aparecía acá aunque estuviera registrado. ---- */
+  // Además de 'clientes' (este negocio), se busca en la base GLOBAL de
+  // clientes de la plataforma — alguien registrado desde el directorio
+  // u otro negocio también tiene que aparecer acá. Eso no se puede leer
+  // desde esta sesión (RLS por negocio), así que va por manage-usuario
+  // (acción 'buscar-cliente'), con debounce para no pegarle en cada tecla.
+  const [globalNombreSug, setGlobalNombreSug] = useState([]);
+  const [globalWhatsappSug, setGlobalWhatsappSug] = useState([]);
+  const buscarClientesGlobal = useCallback(async (q) => {
+    const { data, error } = await supabase.functions.invoke("manage-usuario", {
+      body: { action: "buscar-cliente", query: q },
+    });
+    if (error) return [];
+    return (data?.resultados || []).map((r) => ({
+      id: r.auth_user_id,
+      nombre: r.nombre || "",
+      whatsapp: r.whatsapp || "",
+    }));
+  }, []);
+  useEffect(() => {
+    const q = checkoutNombre.trim();
+    if (q.length < 3) {
+      setGlobalNombreSug([]);
+      return undefined;
+    }
+    let vigente = true;
+    const t = setTimeout(async () => {
+      const r = await buscarClientesGlobal(q);
+      if (vigente) setGlobalNombreSug(r);
+    }, 300);
+    return () => {
+      vigente = false;
+      clearTimeout(t);
+    };
+  }, [checkoutNombre, buscarClientesGlobal]);
+  useEffect(() => {
+    const q = checkoutWhatsapp.replace(/[^\d]/g, "");
+    if (q.length < 3) {
+      setGlobalWhatsappSug([]);
+      return undefined;
+    }
+    let vigente = true;
+    const t = setTimeout(async () => {
+      const r = await buscarClientesGlobal(q);
+      if (vigente) setGlobalWhatsappSug(r);
+    }, 300);
+    return () => {
+      vigente = false;
+      clearTimeout(t);
+    };
+  }, [checkoutWhatsapp, buscarClientesGlobal]);
+
+  // Locales primero; una misma persona (mismo celular) no se repite.
+  const mezclarSugerencias = (locales, globales) => {
+    const vistos = new Set();
+    const salida = [];
+    for (const c of [...locales, ...globales]) {
+      const clave = (c.whatsapp || "").replace(/[^\d]/g, "") || `n:${(c.nombre || "").toLowerCase()}`;
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      salida.push(c);
+    }
+    return salida.slice(0, 6);
+  };
+
   const checkoutNombreSuggestions = useMemo(() => {
     const q = checkoutNombre.trim().toLowerCase();
     if (!q) return [];
-    return clientes.filter((c) => c.nombre?.toLowerCase().includes(q)).slice(0, 6);
-  }, [checkoutNombre, clientes]);
+    const locales = clientes.filter((c) => c.nombre?.toLowerCase().includes(q));
+    return mezclarSugerencias(locales, globalNombreSug);
+  }, [checkoutNombre, clientes, globalNombreSug]);
 
   const checkoutWhatsappSuggestions = useMemo(() => {
     const q = checkoutWhatsapp.replace(/[^\d]/g, "");
     if (!q) return [];
-    return clientes
-      .filter((c) => c.whatsapp && c.whatsapp.replace(/[^\d]/g, "").includes(q))
-      .slice(0, 6);
-  }, [checkoutWhatsapp, clientes]);
+    const locales = clientes.filter((c) => c.whatsapp && c.whatsapp.replace(/[^\d]/g, "").includes(q));
+    return mezclarSugerencias(locales, globalWhatsappSug);
+  }, [checkoutWhatsapp, clientes, globalWhatsappSug]);
 
   const selectCheckoutClienteByNombre = (c) => {
     setCheckoutNombre(c.nombre || "");
@@ -3128,7 +3192,7 @@ export default function App() {
   // para el autocompletado), esto exige coincidencia EXACTA de
   // dígitos — es lo que decide si mostrar el botón de "Crear cuenta".
   const checkoutWhatsappDigits = checkoutWhatsapp.replace(/[^\d]/g, "");
-  const checkoutWhatsappTieneCuenta = clientes.some(
+  const checkoutWhatsappTieneCuenta = [...clientes, ...globalWhatsappSug].some(
     (c) => c.whatsapp && c.whatsapp.replace(/[^\d]/g, "") === checkoutWhatsappDigits
   );
 
@@ -3140,7 +3204,12 @@ export default function App() {
      camino que el resto de altas de cliente. ---- */
   const crearCuentaDesdeCheckout = async () => {
     const nombre = checkoutNombre.trim();
-    const celular = toPeruWhatsappNumber(checkoutWhatsapp);
+    // Mismo formato que el resto de las altas (9 dígitos, sin el 51 de
+    // WhatsApp): el celular es también el usuario de login y la clave
+    // con la que Taxi-PE espeja el saldo — con el 51 adelante esta
+    // cuenta no matcheaba ni una ni otra cosa.
+    const digitos = checkoutWhatsapp.replace(/[^\d]/g, "");
+    const celular = digitos.length === 11 && digitos.startsWith("51") ? digitos.slice(2) : digitos;
     if (!nombre) {
       setCheckoutCuentaError("Ingresa el nombre del cliente.");
       return;

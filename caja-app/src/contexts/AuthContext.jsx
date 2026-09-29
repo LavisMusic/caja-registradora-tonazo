@@ -173,12 +173,21 @@ export function AuthProvider({ children }) {
       if (!active) return;
       const filas = data || [];
       setTieneFiado(filas.some((f) => f.fiado_habilitado === true));
-      const conSaldo = filas[0];
-      setSaldoTaxi(
-        conSaldo
-          ? { creditos_disponibles: conSaldo.creditos_disponibles, membresia_vencimiento: conSaldo.membresia_vencimiento }
-          : null
-      );
+      if (filas.length === 0) {
+        setSaldoTaxi(null);
+        return;
+      }
+      // Se toma lo MEJOR de todas las filas, no la primera que llegue:
+      // una fila creada en otro negocio después del último evento de
+      // Taxi-PE nace sin saldo copiado (null/0) y, si justo venía
+      // primera, tapaba la membresía real de las demás.
+      const membresia = filas
+        .map((f) => f.membresia_vencimiento)
+        .filter(Boolean)
+        .sort()
+        .pop() ?? null;
+      const creditos = Math.max(0, ...filas.map((f) => Number(f.creditos_disponibles) || 0));
+      setSaldoTaxi({ creditos_disponibles: creditos, membresia_vencimiento: membresia });
     };
     cargarSaldoYFiado();
 
