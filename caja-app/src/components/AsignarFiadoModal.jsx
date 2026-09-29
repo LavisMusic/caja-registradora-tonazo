@@ -3,13 +3,14 @@ import { X, Search, UserCheck, Loader2 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
 // Botón "Asignar a un usuario existente" de la Libreta (Fiados): busca
-// entre clientes que YA tienen cuenta de login pero todavía NO tienen
-// Fiados habilitado (auto-registrados por su cuenta, ver
-// registro-cliente) y le prende fiado_habilitado a quien elija el
-// admin — vía manage-usuario (mismo bridge service_role que
-// reset-pin/set-sucursal, 'clientes_fiado' no tiene RLS de UPDATE
-// abierta para el admin tocar la fila de otro usuario).
-export default function AsignarFiadoModal({ onClose, onAsignado, negocioId }) {
+// entre TODOS los clientes de la plataforma (identidad compartida
+// entre negocios, Fase 1) — no solo los que ya tienen una fila de
+// clientes_fiado en ESTE negocio — y le crea/habilita Fiados a quien
+// elija el admin, para este negocio puntual. clientes_fiado tiene RLS
+// negocio-scoped (un admin no puede leer filas de OTRO negocio desde
+// su propia sesión), así que tanto la búsqueda como el alta pasan por
+// manage-usuario (service_role), no por una consulta directa acá.
+export default function AsignarFiadoModal({ onClose, onAsignado }) {
   const [query, setQuery] = useState("");
   const [resultados, setResultados] = useState([]);
   const [buscando, setBuscando] = useState(false);
@@ -26,31 +27,24 @@ export default function AsignarFiadoModal({ onClose, onAsignado, negocioId }) {
     }
     debounceRef.current = setTimeout(async () => {
       setBuscando(true);
-      // negocio_id (Fase 1 del super-admin): una misma persona puede
-      // tener una fila de clientes_fiado por cada negocio donde
-      // compró — sin este filtro, el buscador ofrecía asignar Fiados a
-      // clientes que en realidad pertenecen a OTRO negocio.
-      let searchQuery = supabase
-        .from("clientes_fiado")
-        .select("id, nombre, whatsapp, dni, auth_user_id")
-        .not("auth_user_id", "is", null)
-        .eq("fiado_habilitado", false)
-        .or(`nombre.ilike.%${q}%,whatsapp.ilike.%${q}%,dni.ilike.%${q}%`)
-        .limit(15);
-      if (negocioId) searchQuery = searchQuery.eq("negocio_id", negocioId);
-      const { data, error: err } = await searchQuery;
+      const { data, error: err } = await supabase.functions.invoke("manage-usuario", {
+        body: { action: "buscar-cliente-fiado", query: q },
+      });
       setBuscando(false);
       if (err) {
         console.error("[AsignarFiadoModal] error buscando:", err);
+        const body = await err.context?.json?.().catch(() => null);
+        setError(body?.error || "No se pudo buscar clientes.");
         return;
       }
-      setResultados(data || []);
+      setError("");
+      setResultados(data?.resultados || []);
     }, 300);
     return () => clearTimeout(debounceRef.current);
   }, [query]);
 
   const asignar = async (cliente) => {
-    setAsignandoId(cliente.id);
+    setAsignandoId(cliente.auth_user_id);
     setError("");
     const { error: fnError } = await supabase.functions.invoke("manage-usuario", {
       body: { action: "set-fiado", userId: cliente.auth_user_id, habilitado: true },
@@ -104,10 +98,10 @@ export default function AsignarFiadoModal({ onClose, onAsignado, negocioId }) {
           ) : (
             resultados.map((c) => (
               <button
-                key={c.id}
+                key={c.auth_user_id}
                 type="button"
                 className="tz-asignar-fiado-item"
-                disabled={asignandoId === c.id}
+                disabled={asignandoId === c.auth_user_id}
                 onClick={() => asignar(c)}
               >
                 <span className="tz-asignar-fiado-info">
@@ -117,7 +111,7 @@ export default function AsignarFiadoModal({ onClose, onAsignado, negocioId }) {
                     {c.dni ? ` · DNI ${c.dni}` : ""}
                   </span>
                 </span>
-                {asignandoId === c.id ? <Loader2 size={14} className="tz-spin" /> : <UserCheck size={14} />}
+                {asignandoId === c.auth_user_id ? <Loader2 size={14} className="tz-spin" /> : <UserCheck size={14} />}
               </button>
             ))
           )}

@@ -152,37 +152,49 @@ export function AuthProvider({ children }) {
       return undefined;
     }
     let active = true;
-    supabase
-      .from("clientes_fiado")
-      .select("fiado_habilitado, creditos_disponibles, membresia_vencimiento")
-      .eq("auth_user_id", session.user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!active) return;
-        setTieneFiado(data?.fiado_habilitado === true);
-        setSaldoTaxi(
-          data ? { creditos_disponibles: data.creditos_disponibles, membresia_vencimiento: data.membresia_vencimiento } : null
-        );
-      });
+
+    // Un cliente puede tener VARIAS filas de clientes_fiado (una por
+    // negocio donde compró — identidad compartida, Fase 1) — .maybeSingle()
+    // reventaba (PGRST116, "multiple rows") apenas tenía 2+, y el error
+    // se ignoraba en silencio: tieneFiado/saldoTaxi quedaban en null
+    // para SIEMPRE, aunque el cliente sí tuviera fiado/membresía activa
+    // en alguno de esos negocios. creditos_disponibles/
+    // membresia_vencimiento SÍ son iguales en todas sus filas (el
+    // webhook de Taxi-PE las actualiza TODAS a la vez, ver
+    // webhook-taxi-mirror-cuenta), así que cualquiera sirve para el
+    // saldo; fiado_habilitado en cambio es real por negocio, así que
+    // acá (fuera de un negocio puntual) se toma "tiene fiado en AL
+    // MENOS uno" como señal global para mostrar el botón "Fiados".
+    const cargarSaldoYFiado = async () => {
+      const { data } = await supabase
+        .from("clientes_fiado")
+        .select("fiado_habilitado, creditos_disponibles, membresia_vencimiento")
+        .eq("auth_user_id", session.user.id);
+      if (!active) return;
+      const filas = data || [];
+      setTieneFiado(filas.some((f) => f.fiado_habilitado === true));
+      const conSaldo = filas[0];
+      setSaldoTaxi(
+        conSaldo
+          ? { creditos_disponibles: conSaldo.creditos_disponibles, membresia_vencimiento: conSaldo.membresia_vencimiento }
+          : null
+      );
+    };
+    cargarSaldoYFiado();
 
     // Realtime: el admin puede asignar Fiados (AsignarFiadoModal) MIENTRAS
     // este mismo cliente sigue con la tienda abierta — sin esto, recién
     // se enteraba recargando la página. Mismo canal para el saldo de
-    // Taxi-PE (creditos_disponibles/membresia_vencimiento): Taxi-PE
-    // actualiza ESTA MISMA fila por webhook apenas cambia algo, así que
-    // no hace falta un segundo canal.
+    // Taxi-PE. Se relee todo en vez de confiar en el payload de UN
+    // evento puntual — con varias filas, un solo UPDATE no alcanza para
+    // saber el estado combinado real (ej. fiado_habilitado de un
+    // negocio distinto al que acaba de cambiar).
     const channel = supabase
       .channel(`tiene-fiado-${session.user.id}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "clientes_fiado", filter: `auth_user_id=eq.${session.user.id}` },
-        (payload) => {
-          setTieneFiado(payload.new?.fiado_habilitado === true);
-          setSaldoTaxi({
-            creditos_disponibles: payload.new?.creditos_disponibles,
-            membresia_vencimiento: payload.new?.membresia_vencimiento,
-          });
-        }
+        cargarSaldoYFiado
       )
       .subscribe();
 

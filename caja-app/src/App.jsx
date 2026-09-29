@@ -8897,12 +8897,14 @@ export default function App() {
 
       {asignarFiadoOpen && (
         <AsignarFiadoModal
-          negocioId={negocioId}
           onClose={() => setAsignarFiadoOpen(false)}
-          onAsignado={(cliente) => {
-            setClientes((prev) =>
-              prev.map((c) => (c.id === cliente.id ? { ...c, fiadoHabilitado: true } : c))
-            );
+          onAsignado={() => {
+            // El cliente asignado puede ser una fila NUEVA para este
+            // negocio (identidad global, nunca había comprado acá) —
+            // no está en el 'clientes' local todavía, así que un patch
+            // puntual no alcanza; se recarga entero, mismo criterio que
+            // el resto de altas.
+            recargarDatos();
           }}
         />
       )}
