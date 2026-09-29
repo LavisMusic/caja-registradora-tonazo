@@ -6387,6 +6387,34 @@ export default function Styles() {
         color: var(--text-dim);
       }
 
+      /* ---- Estadísticas (super-admin) ---- */
+      .tz-est-table-wrap { overflow-x: auto; }
+      .tz-est-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .tz-est-table th, .tz-est-table td {
+        padding: 10px 12px;
+        text-align: left;
+        white-space: nowrap;
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .tz-est-table th {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 10.5px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+      .tz-est-table tbody tr:hover { background: rgba(255,255,255,0.03); }
+      .tz-est-table tfoot td {
+        font-weight: 700;
+        color: var(--cyan);
+        border-bottom: none;
+        border-top: 1.5px solid rgba(43,232,255,0.4);
+      }
+
       .tz-sa-negocio-card-new {
         align-items: stretch;
         justify-content: center;

@@ -20,12 +20,14 @@ import {
   Trash2,
   Users,
   UserCog,
+  BarChart3,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import Styles from "../components/Styles";
 import NegocioClientesModal from "./NegocioClientesModal.jsx";
 import CuentasManagerModal from "./CuentasManagerModal.jsx";
+import EstadisticasModal from "./EstadisticasModal.jsx";
 import logo from "../assets/logo.webp";
 
 /* Fase 1 del super-admin: gestor de rubros (columna izquierda, estilo
@@ -513,6 +515,7 @@ export default function SuperAdminPanel() {
   const [loadError, setLoadError] = useState("");
   const [verClientesNegocio, setVerClientesNegocio] = useState(null);
   const [cuentasOpen, setCuentasOpen] = useState(false);
+  const [estadisticasOpen, setEstadisticasOpen] = useState(false);
 
   const [creatingRubro, setCreatingRubro] = useState(false);
   const [nuevoRubro, setNuevoRubro] = useState("");
@@ -754,6 +757,13 @@ export default function SuperAdminPanel() {
         <button
           type="button"
           className="tz-header-btn tz-sa-cuentas-btn"
+          onClick={() => setEstadisticasOpen(true)}
+        >
+          <BarChart3 size={15} /> Estadísticas
+        </button>
+        <button
+          type="button"
+          className="tz-header-btn tz-sa-cuentas-btn"
           onClick={() => setCuentasOpen(true)}
         >
           <UserCog size={15} /> Gestor de Cuentas
@@ -912,6 +922,10 @@ export default function SuperAdminPanel() {
 
       {cuentasOpen && (
         <CuentasManagerModal negocios={negocios} onClose={() => setCuentasOpen(false)} />
+      )}
+
+      {estadisticasOpen && (
+        <EstadisticasModal negocios={negocios} onClose={() => setEstadisticasOpen(false)} />
       )}
     </div>
   );
