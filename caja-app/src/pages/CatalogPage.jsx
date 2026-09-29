@@ -544,94 +544,92 @@ export default function CatalogPage() {
                 <span className="tz-header-btn-label">Login</span>
               </button>
             )}
-            {/* Copia de escritorio/tablet — oculta en mobile por CSS
-               (tz-header-saldo tiene display:none bajo 768px). La
-               copia de mobile vive más abajo, junto al botón Taxi-PE
-               en la 3ra línea del filtro. */}
-            {saldoChipContenido && <div className="tz-header-saldo">{saldoChipContenido}</div>}
           </div>
         </div>
       </header>
 
-      {/* ---------------- Filtro Público de Sucursales ---------------- */}
+      {/* ---------------- Filtro Público de Sucursales ----------------
+         Grid de 3 columnas (tz-filtrobar-grid, ver Styles.jsx): Taxi-PE
+         a la izquierda, filtros centrados, saldo a la derecha — posición
+         fija en la propia barra, no un valor a mano por breakpoint. */}
       {!publicLocalesLoading && publicLocalidades.length > 0 && (
         <div className="tz-admin-filterbar">
-          {/* Localidad + Sucursal viven juntos en tz-admin-filter-pareja
-             (centrado real, sin el botón Taxi-PE de al lado corriendo
-             el centro) — ver comentario largo en Styles.jsx. */}
-          <div className="tz-admin-filter-pareja">
-            <div className="tz-admin-filter-group tz-filtro-localidad-group">
-              <label className="tz-admin-filter-label tz-filtro-localidad-label">Localidad</label>
-              <select
-                className="tz-admin-filter-select"
-                value={publicLocalidadId}
-                onChange={(e) => {
-                  const locId = e.target.value;
-                  setPublicLocalidadId(locId);
-                  // La sucursal elegida puede no pertenecer a la nueva
-                  // localidad — se limpia para forzar a elegir una de
-                  // verdad, en vez de dejar el catálogo mostrando el
-                  // stock de una sucursal que ya no coincide con lo
-                  // elegido arriba.
-                  const sigueValiendo = publicSucursales.some(
-                    (s) => s.id === publicSucursalId && s.localidad_id === locId
-                  );
-                  if (!sigueValiendo) setPublicSucursalId("");
-                }}
-              >
-                {publicLocalidades.map((loc) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="tz-admin-filter-group tz-filtro-sucursal-group">
-              <label className="tz-admin-filter-label tz-filtro-sucursal-label">Sucursal</label>
-              {/* tz-admin-filter-row: select + etiqueta EN LA MISMA
-                 LÍNEA (a la derecha del select) — antes la etiqueta
-                 quedaba apilada debajo, lo que hacía a este grupo más
-                 alto que el de Localidad y, con align-items:flex-end en
-                 la pareja, los dos labels terminaban a alturas
-                 distintas. */}
-              <div className="tz-admin-filter-row">
-                <select
-                  className="tz-admin-filter-select"
-                  value={publicSucursalId}
-                  onChange={(e) => setPublicSucursalId(e.target.value)}
-                >
-                  <option value="">Elige una sucursal…</option>
-                  {publicSucursalesDeLocalidad.map((suc) => (
-                    <option key={suc.id} value={suc.id}>
-                      {suc.nombre}
-                    </option>
-                  ))}
-                </select>
-                {publicSucursalId && sucursalEnLinea !== null && (
-                  <span className={`tz-admin-filter-tag tz-filtro-estado-tag ${sucursalEnLinea ? "is-abierta" : "is-cerrada"}`}>
-                    <span className="tz-admin-filter-tag-dot" />
-                    {sucursalEnLinea ? "En línea" : "Cerrado"}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="tz-filtro-linea3-mobile">
+          <div className="tz-filtrobar-grid">
+            <div className="tz-filtrobar-side tz-filtrobar-side-left">
               {TAXI_PE_URL && (
                 <a
                   href={TAXI_PE_URL}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="tz-admin-filter-taxipe-btn tz-filtro-taxipe-btn-pos"
+                  className="tz-admin-filter-taxipe-btn"
                   aria-label="Ir a Taxi-PE"
                   title="Ir a Taxi-PE"
                 >
                   <img src={logoTaxiPe} alt="Taxi-PE" />
                 </a>
               )}
-              {/* Copia de mobile del badge de saldo — la de desktop/
-                 tablet (tz-header-saldo, en el header) se oculta por
-                 CSS bajo 768px. */}
-              {saldoChipContenido && <div className="tz-filtro-saldo-mobile">{saldoChipContenido}</div>}
+            </div>
+
+            <div className="tz-admin-filter-pareja">
+              <div className="tz-admin-filter-group tz-filtro-localidad-group">
+                <label className="tz-admin-filter-label tz-filtro-localidad-label">Localidad</label>
+                <select
+                  className="tz-admin-filter-select"
+                  value={publicLocalidadId}
+                  onChange={(e) => {
+                    const locId = e.target.value;
+                    setPublicLocalidadId(locId);
+                    // La sucursal elegida puede no pertenecer a la nueva
+                    // localidad — se limpia para forzar a elegir una de
+                    // verdad, en vez de dejar el catálogo mostrando el
+                    // stock de una sucursal que ya no coincide con lo
+                    // elegido arriba.
+                    const sigueValiendo = publicSucursales.some(
+                      (s) => s.id === publicSucursalId && s.localidad_id === locId
+                    );
+                    if (!sigueValiendo) setPublicSucursalId("");
+                  }}
+                >
+                  {publicLocalidades.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="tz-admin-filter-group tz-filtro-sucursal-group">
+                <label className="tz-admin-filter-label tz-filtro-sucursal-label">Sucursal</label>
+                {/* tz-admin-filter-row: select + etiqueta EN LA MISMA
+                   LÍNEA (a la derecha del select) — antes la etiqueta
+                   quedaba apilada debajo, lo que hacía a este grupo más
+                   alto que el de Localidad y, con align-items:flex-end en
+                   la pareja, los dos labels terminaban a alturas
+                   distintas. */}
+                <div className="tz-admin-filter-row">
+                  <select
+                    className="tz-admin-filter-select"
+                    value={publicSucursalId}
+                    onChange={(e) => setPublicSucursalId(e.target.value)}
+                  >
+                    <option value="">Elige una sucursal…</option>
+                    {publicSucursalesDeLocalidad.map((suc) => (
+                      <option key={suc.id} value={suc.id}>
+                        {suc.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {publicSucursalId && sucursalEnLinea !== null && (
+                    <span className={`tz-admin-filter-tag tz-filtro-estado-tag ${sucursalEnLinea ? "is-abierta" : "is-cerrada"}`}>
+                      <span className="tz-admin-filter-tag-dot" />
+                      {sucursalEnLinea ? "En línea" : "Cerrado"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="tz-filtrobar-side tz-filtrobar-side-right">
+              {saldoChipContenido && <div className="tz-filtrobar-saldo">{saldoChipContenido}</div>}
             </div>
           </div>
         </div>

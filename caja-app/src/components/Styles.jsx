@@ -602,19 +602,6 @@ export default function Styles() {
           max-width: none;
           min-width: 170px;
         }
-        /* El botón sale del flujo y se clava pegado al lateral derecho
-           de LA PAREJA (no de toda la barra) — así queda cerca de los
-           filtros con una separación fija (margin-left), en vez de
-           pegado al borde de la pantalla en monitores anchos. En
-           mobile (columna) sigue en el flujo normal, apilado como uno
-           más — ahí no hay "derecha" que valga. */
-        .tz-admin-filter-taxipe-btn {
-          position: absolute;
-          top: 50%;
-          left: 100%;
-          margin-left: 14px;
-          transform: translateY(-50%);
-        }
       }
       .tz-admin-filter-label {
         font-family: 'Orbitron', sans-serif;
@@ -2914,17 +2901,10 @@ export default function Styles() {
         color: #05030c;
       }
 
-      /* Botón "ir a Taxi-PE" dentro de la barra Localidad/Sucursal —
-         SIN recuadro (pedido explícito): solo el logo, que hace zoom
-         in al pasar el cursor y vuelve solo al sacarlo (transition en
-         la imagen, no un :hover con estado propio). Abre en pestaña
-         nueva, no toca la sesión de Caja. El contenedor sigue teniendo
-         un ancho/alto (sin fondo/borde visibles) para reservar espacio
-         de layout y una zona de clic razonable. En mobile (columna) la
-         separación del resto sale sola del gap de tz-admin-filterbar.
-         En desktop (ver media query 768px más abajo) pasa a
-         position:absolute pegado al borde derecho, para no correr el
-         centro de Localidad/Sucursal hacia la izquierda. */
+      /* Botón "ir a Taxi-PE" — sin recuadro (pedido explícito): solo el
+         logo, que hace zoom in al pasar el cursor. Vive en su propia
+         columna de tz-filtrobar-grid (ver más abajo), no ya pegado ni
+         encimado a la pareja de filtros. */
       .tz-admin-filter-taxipe-btn {
         flex: 0 0 auto;
         display: flex;
@@ -2945,141 +2925,42 @@ export default function Styles() {
         transform: scale(1.15);
       }
 
-      /* Badge de membresía/créditos (cliente) — mismo tz-stat-chip que
-         ya usa el conductor en Taxi-PE para este mismo par (Créditos/
-         Vigencia), solo que acá se muestra UNO SOLO (el que corresponda
-         según lo que el cliente tiene) en vez de los dos juntos, y más
-         chico que el tamaño de base.
-         position:absolute (contra tz-header-row, ver position:relative
-         ahí) A PROPÓSITO: si viviera en el flujo normal de
-         tz-header-side-right (junto al botón Salir), ese botón dejaría
-         de ser el único hijo de esa columna y perdería el centrado
-         vertical que tenía antes de que existiera este badge — sacarlo
-         del flujo deja al botón Salir intacto en su posición de
-         siempre, y este badge fijo a la altura de "Compra Ya" (top/right
-         medidos en vivo con getBoundingClientRect, no una estimación a
-         ojo). */
-      /* Wrapper posicionado — el chip visual (tz-stat-chip) vive ADENTRO
-         (saldoChipContenido en CatalogPage.jsx), así que el tamaño se
-         define contra ese hijo, no contra este div. display:none por
-         defecto (mobile): a ese ancho el badge se muestra en la 3ra
-         línea del filtro (junto al botón Taxi-PE, ver
-         tz-filtro-saldo-mobile) en vez de acá — mostrar los dos a la
-         vez duplicaría el dato en pantalla. */
-      .tz-header-saldo {
-        display: none;
-        position: absolute;
-        /* Valor base (tablet, 768-1023px): medido EN VIVO a 960px de
-           ancho (antes decía 167px, calculado a mano — quedaba 60px+
-           más abajo del borde real de tz-header-row, metiéndose encima
-           de la barra de filtros). El ajuste fino a 236px/190px
-           (ventana ancha, aprobado a mano) vive en el @media
-           min-width:1024px de más abajo, junto a los otros ajustes de
-           Localidad/Sucursal/etiqueta/botón. */
-        top: 129px;
-        transform: translateY(-50%);
-        right: 24px;
-      }
-      @media (min-width: 768px) {
-        .tz-header-saldo { display: block; }
-      }
-      .tz-header-saldo .tz-stat-chip {
-        min-width: 80px;
-        padding: 6px 7px;
-        gap: 2px;
-      }
-      .tz-header-saldo .tz-stat-label {
-        font-size: 10px;
-        gap: 3px;
-      }
-      .tz-header-saldo .tz-stat-value {
-        font-size: 20px;
-      }
-
-      /* 3ra línea del filtro público en mobile (<768px): botón Taxi-PE
-         + badge de saldo, centrados juntos — la copia del badge que
-         SÍ se ve acá (tz-header-saldo se oculta a este ancho). En
-         768px+ el wrapper se "disuelve" (display:contents) para no
-         interferir con el layout/posicionamiento normal de esos
-         elementos en la pareja. */
-      .tz-filtro-linea3-mobile {
-        display: flex;
+      /* Barra de filtros del catálogo público: grid de 3 columnas para
+         que Taxi-PE / filtros / saldo queden simétricos en cualquier
+         ancho de ventana SIN pixeles puestos a mano — reemplaza una
+         pila de position:absolute + valores fijos por breakpoint que
+         se desordenaba con cualquier cambio de contenido. En mobile
+         (<768px) los filtros ocupan la fila de arriba, completa;
+         Taxi-PE y el saldo comparten la fila de abajo, cada uno
+         centrado en su mitad. Desde 768px pasan a vivir en columnas
+         laterales fijas (1fr auto 1fr), con los filtros perfectamente
+         centrados en el medio — igual que en la interfaz de admin,
+         que no tiene estos dos elementos compitiendo por el centro. */
+      .tz-filtrobar-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas: "filtros filtros" "left right";
         align-items: center;
-        justify-content: center;
-        gap: 30px;
+        gap: 12px;
       }
+      .tz-filtrobar-side { display: flex; align-items: center; }
+      .tz-filtrobar-side-left { grid-area: left; justify-content: flex-end; }
+      .tz-filtrobar-side-right { grid-area: right; justify-content: flex-start; }
+      .tz-filtrobar-grid .tz-admin-filter-pareja { grid-area: filtros; justify-self: center; }
       @media (min-width: 768px) {
-        .tz-filtro-linea3-mobile { display: contents; }
-      }
-      .tz-filtro-saldo-mobile .tz-stat-chip {
-        min-width: 80px;
-        padding: 6px 7px;
-        gap: 2px;
-      }
-      .tz-filtro-saldo-mobile .tz-stat-label {
-        font-size: 10px;
-        gap: 3px;
-      }
-      .tz-filtro-saldo-mobile .tz-stat-value {
-        font-size: 20px;
-      }
-      @media (min-width: 768px) {
-        .tz-filtro-saldo-mobile { display: none; }
-      }
-
-      /* Franja angosta (768-1023px, navegador acoplado a un costado):
-         fila unica con el boton Taxi-PE en el extremo IZQUIERDO, los
-         filtros agrupados al medio y el badge de creditos en el
-         extremo DERECHO. tz-filtro-linea3-mobile ya se disuelve
-         (display:contents) desde los 768px, asi que el boton y el
-         badge ya son hijos directos de tz-admin-filter-pareja acá —
-         por eso 'order' + margin-left:auto se aplican a ESE nivel
-         (pareja pasa a width:100% para que el espacio se reparta en
-         toda la barra, no solo en su ancho ajustado). No se disuelve
-         tz-admin-filter-pareja en si (probado: anidar dos
-         display:contents seguidos rompe el 'order' en este motor).
-         Este bloque NO toca min-width:1024px (ese layout ya esta
-         aprobado a mano y usa su propio mecanismo, ver mas abajo). */
-      @media (min-width: 768px) and (max-width: 1023px) {
-        /* :has() para NO afectar tz-admin-filter-pareja del panel
-           admin (App.jsx) — esa clase se comparte entre las dos
-           pantallas, pero solo la tienda pública tiene adentro un
-           tz-filtro-localidad-group. */
-        .tz-admin-filter-pareja:has(.tz-filtro-localidad-group) { width: 100%; }
-        .tz-admin-filter-taxipe-btn {
-          /* Pisa la regla vieja de la línea ~606 (position:absolute,
-             pensada para "pegado a la derecha de la pareja") — acá
-             queremos que vuelva al flujo normal para que 'order' lo
-             pueda ubicar como primer item de la fila. */
-          position: static;
-          order: -1;
+        .tz-filtrobar-grid {
+          grid-template-columns: 1fr auto 1fr;
+          grid-template-areas: "left filtros right";
         }
-        .tz-filtro-localidad-group { order: 0; margin-left: auto; }
-        .tz-filtro-sucursal-group { order: 1; }
-        .tz-header-saldo { display: none; }
-        .tz-filtro-saldo-mobile { display: block; order: 2; margin-left: auto; }
+        .tz-filtrobar-side-left { justify-content: center; }
+        .tz-filtrobar-side-right { justify-content: center; }
       }
+      .tz-filtrobar-saldo .tz-stat-chip { min-width: 80px; padding: 6px 7px; gap: 2px; }
+      .tz-filtrobar-saldo .tz-stat-label { font-size: 10px; gap: 3px; }
+      .tz-filtrobar-saldo .tz-stat-value { font-size: 20px; }
 
-      /* Ajustes finos manuales de posición (Localidad/Sucursal/etiqueta/
-         botón Taxi-PE en la tienda pública, y su badge de saldo) —
-         probados y aprobados a ventana ancha. Puestos acá adentro de
-         min-width:1024px (mismo breakpoint "desktop" que ya usa el
-         resto del sitio, ver más abajo) para que SOLO se apliquen ahí:
-         en mobile y en ventanas angostas (navegador acoplado a un
-         costado de la pantalla) estos números de píxeles fijos no
-         tendrían sentido — ahí se cae solo al layout de flexbox de
-         siempre (ya probado en 375px/768px/1920px), que se adapta a
-         cualquier ancho sin necesitar ningún valor a mano. */
       @media (min-width: 1024px) {
-        .tz-filtro-localidad-group { position: relative; top: -10px; left: 90px; }
-        .tz-filtro-localidad-label { position: relative; top: 0px; left: 4px; }
-        .tz-filtro-sucursal-group { position: relative; top: -5px; left: 100px; }
-        .tz-filtro-sucursal-label { position: relative; top: 5px; left: -45px; }
-        .tz-filtro-estado-tag { position: relative; top: -5px; left: 18px; }
-        .tz-filtro-taxipe-btn-pos { position: relative; top: 20px; left: -613px; }
-        .tz-header-saldo { top: 236px; right: 190px; }
-
-        /* Mismo ajuste fino pero PARA EL PANEL ADMIN — clases propias
+        /* Mismo ajuste fino de siempre, PARA EL PANEL ADMIN — clases propias
            (no las de arriba) para que mover esto no mueva también la
            tienda pública ya aprobada. Arrancan en los mismos valores
            que compartían antes de separarlas; ajustar libremente. */
