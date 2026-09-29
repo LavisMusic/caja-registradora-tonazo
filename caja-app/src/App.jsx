@@ -81,6 +81,7 @@ import ImageManager from "./components/ImageManager";
 import PesoModal from "./components/PesoModal";
 import Combobox from "./components/Combobox";
 import GestorLocalidadesModal from "./components/GestorLocalidadesModal";
+import { imprimirBoleta } from "./lib/boleta";
 
 import logo from "./assets/logo.webp";
 
@@ -554,7 +555,11 @@ export default function App() {
     sucursalId: authSucursalId,
     cajaId: authCajaId,
     negocioId,
+    negocioLogoUrl,
   } = useAuth();
+  // Logo real de ESTE negocio (el mismo que ya usa la boleta) — cae al
+  // de Tonazo solo si el negocio todavía no subió uno.
+  const logoNegocio = negocioLogoUrl || logo;
   // Nombre a mostrar para "quién está operando" (p.ej. Cierre de Caja):
   // el nombre real del perfil autenticado si existe, y solo si no hay
   // uno cargado cae al rol genérico.
@@ -7215,7 +7220,7 @@ export default function App() {
       <div className="tz-root tz-caja-blocked">
         <Styles />
         {bienvenidaStaffOverlay}
-        <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
+        <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <Lock size={44} />
         <h1>Sin Caja Asignada</h1>
         <p>Tu cuenta no tiene una sucursal/caja asignada todavía. Pide al admin que te asigne una.</p>
@@ -7239,7 +7244,7 @@ export default function App() {
       <div className="tz-root tz-caja-blocked">
         <Styles />
         {bienvenidaStaffOverlay}
-        <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
+        <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <Lock size={44} />
         <h1>{turnoFinalizado ? "Turno Finalizado" : "Caja Cerrada"}</h1>
         <p>
@@ -7264,7 +7269,7 @@ export default function App() {
       <div className="tz-root tz-caja-blocked">
         <Styles />
         {bienvenidaStaffOverlay}
-        <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
+        <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <DollarSign size={44} />
         <h1>Confirmar Turno</h1>
         <p>Caja abierta por {estadoCaja.abiertaPor || "el admin"}.</p>
@@ -7352,7 +7357,7 @@ export default function App() {
           </div>
 
           <div className="tz-header-center">
-            <LogoEasterEgg src={logo} alt="TONAZO!" className="tz-logo" />
+            <LogoEasterEgg src={logoNegocio} alt="Logo del negocio" className="tz-logo" />
             {/* UX Bug 3: subtítulo dinámico — el cajero siempre ve el
                nombre de SU sucursal (fija, de su perfil); el admin ve la
                que tenga activa en los dropdowns de arriba, o
@@ -8131,13 +8136,18 @@ export default function App() {
                     <>
                       {/* Alternativa para cuando el cliente no tiene
                          teléfono: imprime el MISMO ticket oculto de
-                         abajo (ticketRef) — @media print (Styles.jsx)
-                         oculta todo lo demás de la página durante la
-                         impresión, no hace falta ventana aparte. */}
+                         abajo (ticketRef), en formato de ticketera de
+                         80 mm (ver imprimirBoleta en lib/boleta.js). */}
                       <button
                         type="button"
                         className="tz-whatsapp-send-btn tz-print-boleta-btn"
-                        onClick={() => window.print()}
+                        onClick={() => {
+                          try {
+                            imprimirBoleta(ticketRef);
+                          } catch (err) {
+                            setBoletaError(err?.message || "No se pudo imprimir la boleta.");
+                          }
+                        }}
                       >
                         <Printer size={15} /> Imprimir Boleta
                       </button>
@@ -8181,7 +8191,6 @@ export default function App() {
                          para que html2canvas lo capture como imagen ---- */}
                       <div
                         ref={ticketRef}
-                        className="tz-print-boleta-area"
                         style={{ position: "absolute", left: -9999, top: 0 }}
                       >
                         <TicketBoleta

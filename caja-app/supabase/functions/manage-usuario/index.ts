@@ -74,6 +74,7 @@ Deno.serve(async (req) => {
     sucursalId?: string;
     cajaId?: string;
     habilitado?: boolean;
+    query?: string;
   };
   try {
     body = await req.json();
@@ -82,6 +83,55 @@ Deno.serve(async (req) => {
   }
 
   const { action, userId } = body;
+
+  // Buscador GLOBAL de "Asignar Fiado" (AsignarFiadoModal.jsx): el
+  // admin busca por nombre/celular/DNI entre TODOS los clientes de la
+  // plataforma, no solo los de su propio negocio — clientes_fiado
+  // tiene RLS negocio-scoped (un admin no puede leer filas de OTRO
+  // negocio desde su propia sesión), así que esta búsqueda tiene que
+  // pasar por acá (service_role). Va ANTES de la validación de userId
+  // de más abajo: buscar no apunta a ningún usuario puntual todavía.
+  if (action === "buscar-cliente-fiado") {
+    if (!callerNegocioId) return json(400, { error: "Tu cuenta no tiene un negocio asociado." });
+    // Sin comas/paréntesis/comodines: el texto va dentro de un filtro
+    // .or() de PostgREST, donde esos caracteres cortan la sintaxis.
+    const q = String(body.query || "").replace(/[,()%*\\]/g, " ").trim();
+    if (q.length < 2) return json(200, { resultados: [] });
+
+    const { data: filas, error: buscarErr } = await admin
+      .from("clientes_fiado")
+      .select("auth_user_id, nombre, whatsapp, dni, negocio_id, fiado_habilitado")
+      .not("auth_user_id", "is", null)
+      .or(`nombre.ilike.%${q}%,whatsapp.ilike.%${q}%,dni.ilike.%${q}%`)
+      .limit(60);
+    if (buscarErr) {
+      console.error("[manage-usuario] buscar-cliente-fiado:", buscarErr);
+      return json(500, { error: "No se pudo buscar clientes." });
+    }
+
+    // La misma persona puede aparecer varias veces (una fila por
+    // negocio) — se agrupa por auth_user_id, y se descarta a quien YA
+    // tiene Fiados habilitado en ESTE negocio (nada que asignar ahí).
+    const porAuthId = new Map<string, { auth_user_id: string; nombre: string; whatsapp: string | null; dni: string | null; yaHabilitado: boolean }>();
+    for (const fila of filas || []) {
+      const previa = porAuthId.get(fila.auth_user_id);
+      const habilitadoAca = fila.negocio_id === callerNegocioId && fila.fiado_habilitado === true;
+      porAuthId.set(fila.auth_user_id, {
+        auth_user_id: fila.auth_user_id,
+        nombre: previa?.nombre || fila.nombre,
+        whatsapp: previa?.whatsapp || fila.whatsapp,
+        dni: previa?.dni || fila.dni,
+        yaHabilitado: (previa?.yaHabilitado ?? false) || habilitadoAca,
+      });
+    }
+    const resultados = [...porAuthId.values()]
+      .filter((r) => !r.yaHabilitado)
+      .slice(0, 15)
+      .map(({ auth_user_id, nombre, whatsapp, dni }) => ({ auth_user_id, nombre, whatsapp, dni }));
+
+    return json(200, { resultados });
+  }
+
   if (!userId) return json(400, { error: "Falta el usuario a modificar." });
 
   // Blindaje: nunca gestionar la propia cuenta desde acá — evita que el
@@ -238,59 +288,6 @@ Deno.serve(async (req) => {
     });
     if (insertErr) return json(500, { error: insertErr.message || "No se pudo asignar Fiados." });
     return json(200, { ok: true });
-  }
-
-  // Buscador GLOBAL de "Asignar Fiado" (AsignarFiadoModal.jsx): el
-  // admin busca por nombre/celular/DNI entre TODOS los clientes de la
-  // plataforma, no solo los de su propio negocio — clientes_fiado
-  // tiene RLS negocio-scoped (un admin no puede leer filas de OTRO
-  // negocio desde su propia sesión), así que esta búsqueda tiene que
-  // pasar por acá (service_role) en vez de una consulta directa del
-  // frontend.
-  if (action === "buscar-cliente-fiado") {
-    if (callerRole !== "admin") return json(403, { error: "Solo el admin puede buscar clientes." });
-    if (!callerNegocioId) return json(400, { error: "Tu cuenta no tiene un negocio asociado." });
-    const q = String(body.query || "").trim();
-    if (q.length < 2) return json(200, { resultados: [] });
-
-    const { data: filas, error: buscarErr } = await admin
-      .from("clientes_fiado")
-      .select("auth_user_id, nombre, whatsapp, dni, negocio_id, fiado_habilitado")
-      .not("auth_user_id", "is", null)
-      .or(`nombre.ilike.%${q}%,whatsapp.ilike.%${q}%,dni.ilike.%${q}%`)
-      .limit(60);
-    if (buscarErr) return json(500, { error: "No se pudo buscar clientes." });
-
-    // La misma persona puede aparecer varias veces (una fila por
-    // negocio) — se agrupa por auth_user_id, y se descarta a quien YA
-    // tiene Fiados habilitado en ESTE negocio puntual (nada que
-    // asignar ahí).
-    const porAuthId = new Map();
-    for (const fila of filas || []) {
-      const previa = porAuthId.get(fila.auth_user_id);
-      if (fila.negocio_id === callerNegocioId && fila.fiado_habilitado) {
-        porAuthId.set(fila.auth_user_id, { ...(previa || fila), yaHabilitado: true });
-        continue;
-      }
-      if (!previa) {
-        porAuthId.set(fila.auth_user_id, { ...fila, yaHabilitado: false });
-      } else if (!previa.yaHabilitado) {
-        // Completa nombre/celular/DNI si la primera fila encontrada los tenía vacíos.
-        porAuthId.set(fila.auth_user_id, {
-          auth_user_id: fila.auth_user_id,
-          nombre: previa.nombre || fila.nombre,
-          whatsapp: previa.whatsapp || fila.whatsapp,
-          dni: previa.dni || fila.dni,
-          yaHabilitado: previa.yaHabilitado,
-        });
-      }
-    }
-    const resultados = [...porAuthId.values()]
-      .filter((r) => !r.yaHabilitado)
-      .slice(0, 15)
-      .map((r) => ({ auth_user_id: r.auth_user_id, nombre: r.nombre, whatsapp: r.whatsapp, dni: r.dni }));
-
-    return json(200, { resultados });
   }
 
   return json(400, { error: "Acción no reconocida." });

@@ -2956,6 +2956,21 @@ export default function Styles() {
         .tz-filtrobar-side-left { justify-content: center; }
         .tz-filtrobar-side-right { justify-content: center; }
       }
+      /* La etiqueta de estado (En línea/Cerrado) sale del flujo y se
+         cuelga al costado derecho del select: así el grupo de Sucursal
+         mide SOLO lo que mide su select, y el texto "SUCURSAL" queda
+         centrado sobre el filtro y no sobre filtro+etiqueta. Solo desde
+         768px: en mobile el grupo ocupa todo el ancho y no hay "costado"
+         donde colgarla. */
+      @media (min-width: 768px) {
+        .tz-filtro-sucursal-group .tz-admin-filter-row { position: relative; }
+        .tz-filtro-sucursal-group .tz-filtro-estado-tag {
+          position: absolute;
+          left: calc(100% + 8px);
+          top: 50%;
+          transform: translateY(-50%);
+        }
+      }
       .tz-filtrobar-saldo .tz-stat-chip { min-width: 80px; padding: 6px 7px; gap: 2px; }
       .tz-filtrobar-saldo .tz-stat-label { font-size: 10px; gap: 3px; }
       .tz-filtrobar-saldo .tz-stat-value { font-size: 20px; }
@@ -4671,6 +4686,18 @@ export default function Styles() {
          de '.tz-checkout-crm', así que hereda acá el mismo flex-basis
          que antes tenía '.tz-checkout-input'. */
       .tz-checkout-crm .tz-global-search-wrap { flex: 1 1 140px; }
+      /* Bug: las sugerencias de Nombre/WhatsApp del checkout se abrían
+         HACIA ABAJO (top:100%), pero estos campos viven dentro de
+         .tz-submitbar, que está fija al borde inferior de la pantalla —
+         el desplegable se dibujaba entero fuera del viewport, así que
+         nunca se veía aunque sí hubiera coincidencias. Acá se abre hacia
+         arriba, sobre el resto de la barra. */
+      .tz-submitbar .tz-global-search-dropdown {
+        top: auto;
+        bottom: calc(100% + 6px);
+        max-height: min(260px, 40vh);
+        z-index: 70;
+      }
       .tz-checkout-cuenta-row { width: 100%; display: flex; flex-direction: column; gap: 4px; }
       .tz-checkout-cuenta-btn {
         display: flex;
@@ -4724,20 +4751,6 @@ export default function Styles() {
         color: var(--cyan);
       }
       .tz-print-boleta-btn:hover { background: rgba(43,232,255,0.22); }
-      /* La boleta oculta (fuera de pantalla, para html2canvas) se vuelve
-         la ÚNICA cosa visible al imprimir — @media print gana por
-         especificidad de medio, no hace falta tocar el estilo inline
-         que la mantiene offscreen en pantalla. */
-      @media print {
-        body * { visibility: hidden; }
-        .tz-print-boleta-area, .tz-print-boleta-area * { visibility: visible; }
-        .tz-print-boleta-area {
-          position: fixed !important;
-          left: 0 !important;
-          top: 0 !important;
-          width: 100%;
-        }
-      }
       /* Variante sólida: la boleta-imagen es la acción principal (vs. el
          resumen de texto, que queda como link secundario en outline) —
          más peso visual, mismo verde de marca de WhatsApp. */
