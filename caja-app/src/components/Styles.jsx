@@ -2938,12 +2938,13 @@ export default function Styles() {
          que no tiene estos dos elementos compitiendo por el centro. */
       .tz-filtrobar-grid {
         display: grid;
+        width: 100%;
         grid-template-columns: 1fr 1fr;
         grid-template-areas: "filtros filtros" "left right";
         align-items: center;
         gap: 12px;
       }
-      .tz-filtrobar-side { display: flex; align-items: center; }
+      .tz-filtrobar-side { display: flex; align-items: center; height: 100%; }
       .tz-filtrobar-side-left { grid-area: left; justify-content: flex-end; }
       .tz-filtrobar-side-right { grid-area: right; justify-content: flex-start; }
       .tz-filtrobar-grid .tz-admin-filter-pareja { grid-area: filtros; justify-self: center; }
