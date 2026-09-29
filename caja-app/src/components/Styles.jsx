@@ -2942,7 +2942,11 @@ export default function Styles() {
         grid-template-columns: 1fr 1fr;
         grid-template-areas: "filtros filtros" "left right";
         align-items: center;
-        gap: 12px;
+        /* En celular Taxi-PE y el saldo quedan uno al lado del otro en la
+           fila de abajo: 40px de aire entre ambos para que no se vean
+           pegados. En escritorio van a los costados de los filtros. */
+        row-gap: 12px;
+        column-gap: 40px;
       }
       .tz-filtrobar-side { display: flex; align-items: center; height: 100%; }
       .tz-filtrobar-side-left { grid-area: left; justify-content: flex-end; }
@@ -2952,6 +2956,7 @@ export default function Styles() {
         .tz-filtrobar-grid {
           grid-template-columns: 1fr auto 1fr;
           grid-template-areas: "left filtros right";
+          column-gap: 12px;
         }
         .tz-filtrobar-side-left { justify-content: center; }
         .tz-filtrobar-side-right { justify-content: center; }
