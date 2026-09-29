@@ -6,7 +6,6 @@ import { useEntregaCaja } from "../../hooks/useEntregaCaja";
 import { useRadarReparto } from "../../hooks/useRadarReparto";
 import { supabaseTaxi } from "../../lib/supabaseTaxi";
 import MapaEntregaCaja from "./MapaEntregaCaja";
-import Confetti from "../Confetti";
 import { formatSoles } from "../../utils/format";
 
 // Montos rápidos para la tarifa de envío — MISMOS valores que
@@ -142,25 +141,29 @@ function Chat({ hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
   );
 }
 
-export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin = false, onClose }) {
+export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin = false, onClose, onEntregado }) {
   const { entrega, mensajes, ofertas, loading, ofertar, expirarOferta, cancelar, enviarMensaje, marcarLeido, recargar } =
     useEntregaCaja(sessionToken, { rol });
   const buscando = entrega?.estado === "buscando";
   const { conductores } = useRadarReparto(buscando);
 
-  // Confeti al ver, en vivo, que el repartidor confirmó la entrega —
-  // solo en la TRANSICIÓN real mientras el modal está abierto (no al
-  // abrir el modal de un pedido que ya estaba entregado de antes).
-  const [mostrarConfeti, setMostrarConfeti] = useState(false);
+  // Al confirmar la entrega (transición real, no al abrir un pedido que
+  // ya estaba entregado de antes) se avisa al padre en vez de festejar
+  // ACÁ ADENTRO: antes esto mostraba 2s de Confetti.jsx flotando ENCIMA
+  // de este mismo modal, que seguía abierto detrás — pedido explícito:
+  // que el modal (y el visor de QR, si estaba abierto) se CIERREN
+  // primero, y recién ahí aparezca la animación de éxito a pantalla
+  // completa (AnimacionExitoNeon, ver GestorPedidosModal.jsx/
+  // MisPedidosModal.jsx), sin nada de la pantalla de seguimiento
+  // asomando detrás.
   const estadoAnteriorRef = useRef(entrega?.estado);
   useEffect(() => {
     const anterior = estadoAnteriorRef.current;
     estadoAnteriorRef.current = entrega?.estado;
     if (anterior && anterior !== "entregado" && entrega?.estado === "entregado") {
-      setMostrarConfeti(true);
-      setTimeout(() => setMostrarConfeti(false), 2000);
+      onEntregado?.();
     }
-  }, [entrega?.estado]);
+  }, [entrega?.estado, onEntregado]);
   const ofertaPorConductor = useMemo(
     () => Object.fromEntries((ofertas || []).map((o) => [o.conductor_id, o.estado])),
     [ofertas]
@@ -270,7 +273,6 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
 
   return (
     <div className="tz-modal-backdrop">
-      {mostrarConfeti && <Confetti />}
       <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
         <button className="tz-modal-close" onClick={onClose} aria-label="Cerrar">
           <X size={18} />

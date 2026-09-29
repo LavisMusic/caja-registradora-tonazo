@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import { supabaseTaxi } from "../lib/supabaseTaxi";
 import ChatPedidoModal from "./ChatPedidoModal";
 import EntregaCajaModal from "./delivery/EntregaCajaModal";
+import AnimacionExitoNeon from "./AnimacionExitoNeon";
 import TicketBoleta from "./TicketBoleta";
 import { formatSoles, formatDate, formatTime } from "../utils/format";
 import { buildWhatsappLink } from "../lib/whatsapp";
@@ -38,6 +39,7 @@ export default function MisPedidosModal({ session, onClose }) {
   const [cancelandoId, setCancelandoId] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
   const [entregaToken, setEntregaToken] = useState(null);
+  const [animacionExito, setAnimacionExito] = useState(null); // texto del título, o null
   const [misDatos, setMisDatos] = useState(null);
   const [boletaPedido, setBoletaPedido] = useState(null);
   const [boletaExtra, setBoletaExtra] = useState(null); // { sede, entrega }
@@ -418,7 +420,18 @@ export default function MisPedidosModal({ session, onClose }) {
             setEntregaToken(null);
             load();
           }}
+          onEntregado={() => {
+            // Cierra el modal de seguimiento ANTES de festejar — la
+            // animación de éxito debe ser lo único en pantalla.
+            setEntregaToken(null);
+            load();
+            setAnimacionExito("¡Entrega confirmada!");
+          }}
         />
+      )}
+
+      {animacionExito && (
+        <AnimacionExitoNeon titulo={animacionExito} onTerminar={() => setAnimacionExito(null)} />
       )}
     </div>
   );

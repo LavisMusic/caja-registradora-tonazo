@@ -5,7 +5,7 @@ import { supabaseTaxi } from "../lib/supabaseTaxi";
 import { usePedidos } from "../hooks/usePedidos";
 import { usePedidosNoLeidos } from "../hooks/usePedidosNoLeidos";
 import ChatPedidoModal from "./ChatPedidoModal";
-import Confetti from "./Confetti";
+import AnimacionExitoNeon from "./AnimacionExitoNeon";
 import EntregaCajaModal from "./delivery/EntregaCajaModal";
 import TicketBoleta from "./TicketBoleta";
 import { formatSoles, formatDate, formatTime } from "../utils/format";
@@ -65,7 +65,7 @@ export default function GestorPedidosModal({
   // pedido puntual. null = sin filtrar (todos).
   const [filtroEstado, setFiltroEstado] = useState(null); // 'en_carrera' | 'entregado' | 'cancelado' | null
   const [comprobanteVer, setComprobanteVer] = useState(null); // url
-  const [mostrarConfeti, setMostrarConfeti] = useState(false);
+  const [animacionExito, setAnimacionExito] = useState(null); // texto del título, o null
   // Sucursal que el cliente eligió al hacer el pedido — es la misma
   // 'sucursalId' operativa del cajero (los pedidos ya vienen filtrados
   // por ella), pero se muestra igual en cada tarjeta a pedido explícito
@@ -268,8 +268,7 @@ export default function GestorPedidosModal({
         },
       ]);
 
-      setMostrarConfeti(true);
-      setTimeout(() => setMostrarConfeti(false), 2000);
+      setAnimacionExito("¡Entrega confirmada!");
       refetch();
     } catch (err) {
       console.error("[GestorPedidosModal] Error confirmando entrega:", err);
@@ -491,7 +490,6 @@ export default function GestorPedidosModal({
 
   return (
     <div className="tz-modal-backdrop">
-      {mostrarConfeti && <Confetti />}
       <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
         <button className="tz-modal-close" onClick={onClose} aria-label="Cerrar">
           <X size={18} />
@@ -768,7 +766,20 @@ export default function GestorPedidosModal({
             setEntregaModal(null);
             refetch();
           }}
+          onEntregado={() => {
+            // Cierra el modal de seguimiento de la entrega ANTES de
+            // festejar — pedido explícito: la animación de éxito debe
+            // ser lo único en pantalla, no algo flotando encima de una
+            // ventana que sigue abierta detrás.
+            setEntregaModal(null);
+            refetch();
+            setAnimacionExito("¡Entrega confirmada!");
+          }}
         />
+      )}
+
+      {animacionExito && (
+        <AnimacionExitoNeon titulo={animacionExito} onTerminar={() => setAnimacionExito(null)} />
       )}
 
       {boletaPedido && (
