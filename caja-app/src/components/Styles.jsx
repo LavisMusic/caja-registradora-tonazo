@@ -6268,6 +6268,15 @@ export default function Styles() {
         font-size: 12.5px;
         color: var(--text-dim);
       }
+      .tz-cuentas-search-icon {
+        position: absolute;
+        left: 11px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-dim);
+        pointer-events: none;
+      }
+      .tz-cuentas-search-input { padding-left: 32px; }
 
       /* ---- Estadísticas (super-admin) ---- */
       .tz-est-table-wrap { overflow-x: auto; }
