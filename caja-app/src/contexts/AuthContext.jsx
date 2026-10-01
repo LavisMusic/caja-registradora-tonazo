@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { reiniciarBienvenidas } from "../hooks/useBienvenidaNeon";
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, Headset } from "lucide-react";
+import { useContactoPlataforma } from "../hooks/useContactoPlataforma";
+import { buildWhatsappLink } from "../lib/whatsapp";
 import { supabase } from "../supabaseClient";
 
 const AuthContext = createContext(null);
@@ -9,6 +11,8 @@ const AuthContext = createContext(null);
 // la persona la sigue teniendo abierta en su dispositivo — mismo
 // patrón que TaxiAuthContext.jsx en taxi-pe-app.
 function CuentaEliminadaOverlay({ onCerrar }) {
+  const { whatsapp_soporte } = useContactoPlataforma();
+  const linkSoporte = buildWhatsappLink(whatsapp_soporte, "Hola, eliminaron mi cuenta de Tonazo y creo que es un error.");
   return (
     <div className="tz-modal-backdrop" style={{ zIndex: 999999 }}>
       <div
@@ -23,6 +27,17 @@ function CuentaEliminadaOverlay({ onCerrar }) {
         <p className="tz-brand-sub" style={{ marginTop: 8 }}>
           Un administrador eliminó esta cuenta. Si crees que es un error, comunícate con soporte.
         </p>
+        {linkSoporte && (
+          <a
+            href={linkSoporte}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="tz-scan-btn tz-payment-save"
+            style={{ marginTop: 16, width: "100%", display: "inline-flex", justifyContent: "center", gap: 8, textDecoration: "none" }}
+          >
+            <Headset size={16} /> Escribir a soporte
+          </a>
+        )}
         <button
           type="button"
           className="tz-scan-btn tz-cuenta-eliminada-salir-btn"
@@ -221,23 +236,40 @@ export function AuthProvider({ children }) {
   // tiene lectura pública para filas activas (migración 0075), así que
   // este fetch no depende de ningún permiso especial del rol actual.
   const [negocioLogoUrl, setNegocioLogoUrl] = useState(null);
+  // Fase 4: estado del plan del negocio (prueba/activo/gracia/
+  // suspendido/exento, calculado por la base — columna plan_estado,
+  // migración 0087). App.jsx lo usa para los avisos de vencimiento y la
+  // pantalla de plan suspendido. Se vuelve a leer cada 10 min para que
+  // una caja abierta todo el día cambie de estado sin recargar.
+  const [negocioPlan, setNegocioPlan] = useState(null);
   useEffect(() => {
     const negocioId = profile?.negocio_id;
     if (!negocioId) {
       setNegocioLogoUrl(null);
+      setNegocioPlan(null);
       return undefined;
     }
     let active = true;
-    supabase
-      .from("negocios")
-      .select("logo_url")
-      .eq("id", negocioId)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (active) setNegocioLogoUrl(data?.logo_url || null);
-      });
+    const leer = () =>
+      supabase
+        .from("negocios")
+        .select("logo_url, nombre, plan_estado, plan_vence_at, plan_exento")
+        .eq("id", negocioId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!active) return;
+          setNegocioLogoUrl(data?.logo_url || null);
+          setNegocioPlan(
+            data
+              ? { estado: data.plan_estado, venceAt: data.plan_vence_at, exento: data.plan_exento, negocioNombre: data.nombre }
+              : null
+          );
+        });
+    leer();
+    const intervalo = setInterval(leer, 10 * 60 * 1000);
     return () => {
       active = false;
+      clearInterval(intervalo);
     };
   }, [profile?.negocio_id]);
 
@@ -285,6 +317,7 @@ export function AuthProvider({ children }) {
     // null para 'super_admin', que no pertenece a ninguno en particular.
     negocioId: profile?.negocio_id ?? null,
     negocioLogoUrl,
+    negocioPlan,
     loading,
     isAdmin: profile?.role === "admin",
     isCliente: profile?.role === "cliente",

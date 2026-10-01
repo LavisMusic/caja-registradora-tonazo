@@ -6250,6 +6250,138 @@ export default function Styles() {
       .tz-sa-negocio-admin-form { width: 100%; }
       .tz-sa-negocio-admin-btn { width: 100%; font-size: 12px; padding: 8px; }
       .tz-sa-negocio-clientes-btn { width: 100%; font-size: 12px; padding: 8px; border-color: rgba(215,255,59,0.35); color: var(--yellow); }
+
+      /* ---- Fase 4: planes, pagos y avisos ---- */
+      .tz-sa-negocio-plan-btn { width: 100%; font-size: 12px; padding: 8px; border-color: rgba(57,255,176,0.35); color: var(--green); }
+      .tz-plan-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 9px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        color: var(--tz-plan-color);
+        border: 1px solid var(--tz-plan-color);
+        background: color-mix(in srgb, var(--tz-plan-color) 12%, transparent);
+        white-space: nowrap;
+      }
+      .tz-plan-resumen {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin: 2px 0 0;
+        font-size: 12px;
+        color: var(--text-dim);
+      }
+      .tz-plan-resumen-dias { font-variant-numeric: tabular-nums; }
+      .tz-plan-filtros { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+      .tz-plan-filtros .tz-gasto-tipo-btn { flex: 0 0 auto; padding: 7px 12px; font-size: 12px; }
+
+      .tz-plan-fila {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+        gap: 8px;
+        align-items: end;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .tz-plan-fila > .tz-text-input { grid-column: 1 / -1; }
+      .tz-plan-fila .tz-toggle { grid-column: 1 / 3; }
+      .tz-plan-fila-error { grid-column: 1 / -1; margin: 0; }
+      .tz-plan-campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+      .tz-plan-campo > span { font-size: 11px; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; }
+      .tz-plan-campo-ancho { flex: 1 1 100%; }
+      .tz-plan-seccion { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+      .tz-plan-pago-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
+      .tz-plan-pago-grid .tz-plan-campo-ancho { grid-column: 1 / -1; }
+      .tz-plan-subtitulo {
+        margin: 18px 0 10px;
+        font-size: 13px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--cyan);
+      }
+      .tz-plan-pagos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+      .tz-plan-pagos li {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 12px;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-soft);
+        font-size: 13px;
+      }
+      .tz-plan-pagos-hasta { color: var(--green); }
+      .tz-plan-pagos-nota { flex-basis: 100%; color: var(--text-dim); font-size: 12px; }
+
+      .tz-plan-aviso {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 10px auto;
+        max-width: 960px;
+        width: calc(100% - 32px);
+        padding: 10px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(215,255,59,0.45);
+        background: rgba(215,255,59,0.08);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .tz-plan-aviso > svg { flex: 0 0 auto; color: var(--yellow); }
+      .tz-plan-aviso > span { flex: 1 1 auto; min-width: 0; }
+      .tz-plan-aviso-gracia { border-color: rgba(255,84,112,0.55); background: rgba(255,84,112,0.1); }
+      .tz-plan-aviso-gracia > svg { color: var(--danger); }
+      .tz-plan-aviso-btn {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--green);
+        color: var(--green);
+        font-weight: 700;
+        font-size: 12px;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .tz-catalogo-sin-pedidos { justify-content: center; text-align: center; margin-top: 0; }
+      .tz-plan-suspendido-pagar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-top: 14px;
+        text-decoration: none;
+      }
+      .tz-dir-afiliar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        margin: 22px auto 6px;
+        max-width: 420px;
+        padding: 14px 18px;
+        border-radius: 14px;
+        border: 1px dashed rgba(43,232,255,0.55);
+        background: rgba(43,232,255,0.06);
+        color: var(--cyan);
+        text-decoration: none;
+        font-size: 14px;
+        text-align: center;
+      }
+      .tz-dir-afiliar strong { color: var(--text); }
+      .tz-dir-afiliar:hover { background: rgba(43,232,255,0.12); }
+      @media (max-width: 480px) {
+        .tz-plan-pago-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .tz-plan-aviso { flex-wrap: wrap; }
+      }
       .tz-sa-negocio-admin-ok {
         margin: 0;
         font-size: 11.5px;

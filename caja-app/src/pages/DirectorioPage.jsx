@@ -20,6 +20,9 @@ import MisPedidosModal from "../components/MisPedidosModal";
 import { formatDate } from "../utils/format";
 import logo from "../assets/logo.webp";
 import logoTaxiPe from "../assets/logo-taxipe.webp";
+import { planPermiteOnline } from "../lib/planes";
+import { useContactoPlataforma } from "../hooks/useContactoPlataforma";
+import { buildWhatsappLink } from "../lib/whatsapp";
 
 const TAXI_PE_URL = import.meta.env.VITE_TAXI_PE_URL || "https://taxi-pe-app.vercel.app";
 
@@ -44,6 +47,13 @@ const TAXI_PE_URL = import.meta.env.VITE_TAXI_PE_URL || "https://taxi-pe-app.ver
    junte los negocios que tienen una sede ahí. */
 export default function DirectorioPage() {
   const { session, loading: authLoading, signOut, isCliente, saldoTaxi, nombre } = useAuth();
+  // Botón "¿Tienes un negocio? Súmate a Tonazo" → WhatsApp de afiliación
+  // (lo configura el super admin en su gestor de contacto).
+  const { whatsapp_afiliacion } = useContactoPlataforma();
+  const linkAfiliacion = buildWhatsappLink(
+    whatsapp_afiliacion,
+    "Hola, tengo un negocio y quiero sumarlo al directorio de Tonazo."
+  );
   // Bienvenida del cliente — una vez por acceso. Comparte la clave
   // (session.user.id) con la del catálogo de cada negocio
   // (CatalogPage.jsx), así sale UNA sola vez: en el primer lugar donde
@@ -95,7 +105,7 @@ export default function DirectorioPage() {
         { data: sucursalesData, error: sucursalesErr },
       ] = await Promise.all([
         supabase.from("rubros").select("*").eq("activo", true).order("orden"),
-        supabase.from("negocios").select("*").eq("activo", true).order("orden"),
+        supabase.from("negocios").select("*, plan_estado").eq("activo", true).order("orden"),
         supabase.from("localidades").select("id, nombre, negocio_id").eq("activo", true),
         supabase.from("sucursales").select("id, nombre, localidad_id").eq("activo", true),
       ]);
@@ -109,7 +119,8 @@ export default function DirectorioPage() {
       // Un negocio sin slug todavía no tiene URL de tienda — no tiene
       // sentido mostrarlo en la vidriera pública (el super-admin lo ve
       // igual en su propio panel, con el aviso de "sin slug").
-      setNegocios((negociosData || []).filter((n) => n.slug));
+      // Fase 4: con el plan vencido (gracia/suspendido) sale de la vidriera.
+      setNegocios((negociosData || []).filter((n) => n.slug && planPermiteOnline(n.plan_estado)));
       setLocalidades(localidadesData || []);
       setSucursales(sucursalesData || []);
       setLoading(false);
@@ -333,6 +344,14 @@ export default function DirectorioPage() {
                 </Link>
               ))}
             </div>
+          )}
+          {linkAfiliacion && (
+            <a className="tz-dir-afiliar" href={linkAfiliacion} target="_blank" rel="noopener noreferrer">
+              <Store size={18} />
+              <span>
+                <strong>¿Tienes un negocio?</strong> Súmate a Tonazo
+              </span>
+            </a>
           )}
         </section>
       </main>
