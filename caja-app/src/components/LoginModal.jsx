@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { X, Lock, ShieldCheck, UserPlus, PartyPopper } from "lucide-react";
+import { X, Lock, ShieldCheck, UserPlus } from "lucide-react";
 import { supabase, setAuthPersistence } from "../supabaseClient";
 import { celularToDummyEmail } from "../lib/auth";
 import Styles from "./Styles";
-import Confetti from "./Confetti";
 import logo from "../assets/logo.webp";
 
 /* Login de clientes: solo Celular + PIN, sin correo, sin SMS. Por
@@ -33,8 +32,7 @@ import logo from "../assets/logo.webp";
    encima del catálogo público, que sigue con su propio tema claro/oscuro. */
 export default function LoginModal({ onClose, onSuccess }) {
   // 'screen': 'login' (celular + PIN juntos) | 'crear-pin' (primer login)
-  // | 'registro' (alta propia, nombre+celular+PIN) | 'registro-exito'
-  // (confeti antes de entrar)
+  // | 'registro' (alta propia, nombre+celular+PIN)
   const [screen, setScreen] = useState("login");
   const [celular, setCelular] = useState("");
   const [pin, setPin] = useState("");
@@ -173,18 +171,16 @@ export default function LoginModal({ onClose, onSuccess }) {
       return;
     }
 
-    // Confeti: este es el primer ingreso REAL de esta cuenta (recién
-    // ahora deja de tener el password placeholder aleatorio) — mismo
-    // criterio que el registro propio, no en un login normal.
-    setScreen("crear-pin-exito");
-    setTimeout(() => onSuccess?.(), 1900);
+    // Entra directo: la bienvenida a pantalla completa (useBienvenidaNeon,
+    // una vez por acceso) ya festeja este primer ingreso — la vieja
+    // pantalla de confeti acá hacía dos festejos seguidos.
+    onSuccess?.();
   };
 
   // Registro propio (sin admin de por medio): nombre + celular + PIN.
   // Nace SIN Fiados habilitado (ver registro-cliente / migración
   // 0068) — el admin lo asigna después si corresponde. Al terminar
-  // muestra la pantalla de confeti (screen 'registro-exito') antes de
-  // entrar de verdad, en vez de cerrar de una.
+  // entra directo (la bienvenida a pantalla completa hace de festejo).
   const handleRegistroSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -233,8 +229,7 @@ export default function LoginModal({ onClose, onSuccess }) {
       return;
     }
 
-    setScreen("registro-exito");
-    setTimeout(() => onSuccess?.(), 1900);
+    onSuccess?.();
   };
 
   return (
@@ -404,22 +399,6 @@ export default function LoginModal({ onClose, onSuccess }) {
                   {submitting ? "Creando cuenta..." : "Crear mi cuenta"}
                 </button>
               </form>
-            </>
-          )}
-
-          {(screen === "registro-exito" || screen === "crear-pin-exito") && (
-            <>
-              <Confetti />
-              <div className="tz-qr-confirmado">
-                <div className="tz-qr-confirmado-icono">
-                  <PartyPopper size={32} />
-                </div>
-                <h3>
-                  {screen === "registro-exito"
-                    ? "¡Cuenta creada! Bienvenido a Tonazo."
-                    : "¡Listo! Tu PIN quedó configurado."}
-                </h3>
-              </div>
             </>
           )}
 
