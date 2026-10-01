@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import AnimacionNeonBienvenida from "../components/AnimacionNeonBienvenida";
+import { useBienvenidaNeon } from "../hooks/useBienvenidaNeon";
 import {
   DndContext,
   PointerSensor,
@@ -507,7 +509,13 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete
 }
 
 export default function SuperAdminPanel() {
-  const { signOut, nombre } = useAuth();
+  const { signOut, nombre, session } = useAuth();
+  // Bienvenida del super admin — una vez por acceso, igual que el resto
+  // de los roles (ver useBienvenidaNeon.js).
+  const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
+    session?.user?.id,
+    true
+  );
   const [rubros, setRubros] = useState([]);
   const [negocios, setNegocios] = useState([]);
   const [selectedRubroId, setSelectedRubroId] = useState("todos");
@@ -748,6 +756,14 @@ export default function SuperAdminPanel() {
   return (
     <div className="tz-root tz-sa-root">
       <Styles />
+      {mostrarBienvenida && (
+        <AnimacionNeonBienvenida
+          eyebrow="✦ Bienvenido a Tonazo ✦"
+          titulo={nombre || "Super Admin"}
+          descripcion="Todos los negocios bajo control — ¡a por un gran día! 💪"
+          onTerminar={marcarBienvenidaVista}
+        />
+      )}
       <header className="tz-sa-header">
         <img src={logo} alt="TONAZO" className="tz-sa-header-logo" />
         <div className="tz-sa-header-title">

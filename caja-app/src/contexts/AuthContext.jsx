@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { reiniciarBienvenidas } from "../hooks/useBienvenidaNeon";
 import { ShieldAlert } from "lucide-react";
 import { supabase } from "../supabaseClient";
 
@@ -63,6 +64,7 @@ export function AuthProvider({ children }) {
   // suscribe ahora, así que antes esto solo hacía setProfile(null) en
   // silencio, sin avisar nada ni cerrar la sesión).
   const marcarCuentaEliminada = useCallback(() => {
+    reiniciarBienvenidas();
     supabase.auth.signOut();
     setSession(null);
     setProfile(null);
@@ -262,6 +264,7 @@ export function AuthProvider({ children }) {
   }, [session?.user?.id, marcarCuentaEliminada]);
 
   const signOut = async () => {
+    reiniciarBienvenidas();
     await supabase.auth.signOut();
     setSession(null);
     setProfile(null);

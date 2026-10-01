@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import AnimacionNeonBienvenida from "../components/AnimacionNeonBienvenida";
+import { useBienvenidaNeon } from "../hooks/useBienvenidaNeon";
 import { Link } from "react-router-dom";
 import {
   Loader2,
@@ -41,7 +43,15 @@ const TAXI_PE_URL = import.meta.env.VITE_TAXI_PE_URL || "https://taxi-pe-app.ver
    por nombre (case-insensitive) es la única forma de que "San Ramón"
    junte los negocios que tienen una sede ahí. */
 export default function DirectorioPage() {
-  const { session, loading: authLoading, signOut, isCliente, saldoTaxi } = useAuth();
+  const { session, loading: authLoading, signOut, isCliente, saldoTaxi, nombre } = useAuth();
+  // Bienvenida del cliente — una vez por acceso. Comparte la clave
+  // (session.user.id) con la del catálogo de cada negocio
+  // (CatalogPage.jsx), así sale UNA sola vez: en el primer lugar donde
+  // entre, directorio o catálogo.
+  const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
+    session?.user?.id,
+    isCliente
+  );
   const [loginOpen, setLoginOpen] = useState(false);
   const [misPedidosOpen, setMisPedidosOpen] = useState(false);
   const misPedidosBadge = usePedidosBadge({ clienteId: session?.user?.id || null });
@@ -167,6 +177,14 @@ export default function DirectorioPage() {
   return (
     <div className="tz-root">
       <Styles />
+      {mostrarBienvenida && (
+        <AnimacionNeonBienvenida
+          eyebrow="✦ Bienvenido a Tonazo ✦"
+          titulo={nombre || "Cliente"}
+          descripcion="Encuentra tus negocios favoritos y pide sin salir de casa — ¡Qué disfrutes! 😉"
+          onTerminar={marcarBienvenidaVista}
+        />
+      )}
       <header className="tz-header">
         <div className="tz-header-row">
           <div className="tz-header-side tz-header-side-left">
