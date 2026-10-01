@@ -1,0 +1,304 @@
+// Edge Function: manage-usuario
+//
+// Invocada desde el panel de administración de Usuarios (App.jsx) con:
+//   supabase.functions.invoke('manage-usuario', { body: { action: 'reset-pin', userId, pin } })
+//   supabase.functions.invoke('manage-usuario', { body: { action: 'delete', userId } })
+// El SDK adjunta automáticamente el JWT del admin en el header Authorization.
+//
+// Usa la service_role key (nunca presente en el bundle del navegador)
+// para forzar un cambio de contraseña (PIN) o eliminar la cuenta de
+// Auth de un cajero/cliente SIN pasar por el flujo normal de recuperar
+// contraseña por correo — estas cuentas usan un "dummy email"
+// (celular@tonazo.app / usuario@tonazo.staff, ver create-cliente), así
+// que ese flujo ni siquiera es una opción.
+//
+// Eliminar SOLO borra la cuenta de Auth: 'profiles' cascadea por FK
+// (profiles.id references auth.users(id) on delete cascade, ver
+// migración 0001), y clientes_fiado.auth_user_id queda en NULL (on
+// delete set null) — el historial de fiados/ventas de un cliente NUNCA
+// se borra acá, solo pierde su acceso de login.
+
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { mirrorCuentaATaxi, eliminarCuentaEnTaxi } from "../_shared/mirrorTaxi.ts";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+function json(status: number, body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  );
+
+  // 1) Verificar que quien llama es admin, usando SU JWT (nunca confiar
+  // en un flag que venga en el body de la petición).
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const jwt = authHeader.replace("Bearer ", "");
+  if (!jwt) return json(401, { error: "No autenticado." });
+
+  const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
+  if (userErr || !userData?.user) {
+    return json(401, { error: "No autenticado." });
+  }
+
+  const { data: callerProfile, error: callerProfileErr } = await admin
+    .from("profiles")
+    .select("role, negocio_id")
+    .eq("id", userData.user.id)
+    .single();
+
+  const callerRole = callerProfileErr ? null : callerProfile?.role;
+  const callerNegocioId = callerProfileErr ? null : callerProfile?.negocio_id ?? null;
+
+  // 2) Validar input
+  let body: {
+    action?: string;
+    userId?: string;
+    pin?: string;
+    sucursalId?: string;
+    cajaId?: string;
+    habilitado?: boolean;
+    query?: string;
+  };
+  try {
+    body = await req.json();
+  } catch {
+    return json(400, { error: "Cuerpo de la petición inválido." });
+  }
+
+  const { action, userId } = body;
+
+  // Las búsquedas las usa también el cajero (sugerencias del carrito);
+  // TODO lo demás (PIN, borrar, reasignar, Fiados) sigue siendo solo admin.
+  const esBusqueda = action === "buscar-cliente-fiado" || action === "buscar-cliente";
+  if (callerRole !== "admin" && !(esBusqueda && callerRole === "cajero")) {
+    return json(403, { error: "Solo el admin puede gestionar usuarios." });
+  }
+
+  // Buscadores GLOBALES de clientes: entre TODOS los clientes de la
+  // plataforma (identidad compartida entre negocios), no solo los que
+  // ya tienen fila en este negocio — clientes_fiado tiene RLS
+  // negocio-scoped (nadie puede leer filas de OTRO negocio desde su
+  // propia sesión), así que tiene que pasar por acá (service_role).
+  //   buscar-cliente-fiado → Asignar Fiado: excluye a quien YA tiene
+  //                          Fiados en este negocio.
+  //   buscar-cliente       → sugerencias de Nombre/WhatsApp del carrito:
+  //                          todos.
+  // Van ANTES de la validación de userId: buscar no apunta a nadie aún.
+  if (esBusqueda) {
+    if (!callerNegocioId) return json(400, { error: "Tu cuenta no tiene un negocio asociado." });
+    const soloAsignables = action === "buscar-cliente-fiado";
+    // Sin comas/paréntesis/comodines: el texto va dentro de un filtro
+    // .or() de PostgREST, donde esos caracteres cortan la sintaxis.
+    const q = String(body.query || "").replace(/[,()%*\\]/g, " ").trim();
+    // Mínimo 3: evita listar la base entera de clientes de la
+    // plataforma con una o dos letras sueltas.
+    if (q.length < 3) return json(200, { resultados: [] });
+
+    const { data: filas, error: buscarErr } = await admin
+      .from("clientes_fiado")
+      .select("auth_user_id, nombre, whatsapp, dni, negocio_id, fiado_habilitado")
+      .not("auth_user_id", "is", null)
+      .or(`nombre.ilike.%${q}%,whatsapp.ilike.%${q}%,dni.ilike.%${q}%`)
+      .limit(60);
+    if (buscarErr) {
+      console.error("[manage-usuario] buscar-cliente-fiado:", buscarErr);
+      return json(500, { error: "No se pudo buscar clientes." });
+    }
+
+    // La misma persona puede aparecer varias veces (una fila por
+    // negocio) — se agrupa por auth_user_id, y se descarta a quien YA
+    // tiene Fiados habilitado en ESTE negocio (nada que asignar ahí).
+    const porAuthId = new Map<string, { auth_user_id: string; nombre: string; whatsapp: string | null; dni: string | null; yaHabilitado: boolean }>();
+    for (const fila of filas || []) {
+      const previa = porAuthId.get(fila.auth_user_id);
+      const habilitadoAca = fila.negocio_id === callerNegocioId && fila.fiado_habilitado === true;
+      porAuthId.set(fila.auth_user_id, {
+        auth_user_id: fila.auth_user_id,
+        nombre: previa?.nombre || fila.nombre,
+        whatsapp: previa?.whatsapp || fila.whatsapp,
+        dni: previa?.dni || fila.dni,
+        yaHabilitado: (previa?.yaHabilitado ?? false) || habilitadoAca,
+      });
+    }
+    const resultados = [...porAuthId.values()]
+      .filter((r) => !soloAsignables || !r.yaHabilitado)
+      .slice(0, soloAsignables ? 15 : 8)
+      .map(({ auth_user_id, nombre, whatsapp, dni }) => ({ auth_user_id, nombre, whatsapp, dni }));
+
+    return json(200, { resultados });
+  }
+
+  if (!userId) return json(400, { error: "Falta el usuario a modificar." });
+
+  // Blindaje: nunca gestionar la propia cuenta desde acá — evita que el
+  // admin se cambie el PIN o se elimine a sí mismo por error y quede
+  // afuera del sistema sin forma de volver a entrar.
+  if (userId === userData.user.id) {
+    return json(400, { error: "No puedes gestionar tu propia cuenta desde acá." });
+  }
+
+  if (action === "reset-pin") {
+    const pin = body.pin || "";
+    // Mínimo 6: política real de Supabase Auth para el password (ver
+    // mismo comentario en create-cliente/registro-cliente).
+    if (!/^\d{6,10}$/.test(pin)) {
+      return json(400, { error: "El PIN/clave debe tener entre 6 y 10 dígitos." });
+    }
+    const { error } = await admin.auth.admin.updateUserById(userId, { password: pin });
+    if (error) return json(500, { error: error.message || "No se pudo cambiar el PIN." });
+
+    // Espejo a Taxi-PE: SOLO si el usuario reseteado es un cliente —
+    // un cajero/admin es personal interno de Caja, nunca un pasajero.
+    const { data: targetProfile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+    if (targetProfile?.role === "cliente") {
+      const { data: cliente } = await admin
+        .from("clientes_fiado")
+        .select("whatsapp, nombre")
+        .eq("auth_user_id", userId)
+        .maybeSingle();
+      if (cliente?.whatsapp) {
+        await mirrorCuentaATaxi({ telefono: cliente.whatsapp, pin, nombre: cliente.nombre });
+      }
+    }
+
+    return json(200, { ok: true });
+  }
+
+  if (action === "delete") {
+    // Capturar el whatsapp ANTES de borrar: unificación pasajero/cliente
+    // (ver 20260918140000_mirror_cuenta_caja.sql) — al eliminar un
+    // cliente acá hay que avisarle a Taxi-PE para que borre la misma
+    // cuenta ('usuarios' rol 'pasajero'), si no queda huérfana del otro
+    // lado. Después del deleteUser, clientes_fiado.auth_user_id ya
+    // quedó en NULL (on delete set null), así que hay que leerlo antes.
+    const { data: targetProfile } = await admin
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .maybeSingle();
+
+    let telefonoParaEspejo: string | null = null;
+    if (targetProfile?.role === "cliente") {
+      const { data: cliente } = await admin
+        .from("clientes_fiado")
+        .select("whatsapp")
+        .eq("auth_user_id", userId)
+        .maybeSingle();
+      telefonoParaEspejo = cliente?.whatsapp || null;
+    }
+
+    const { error } = await admin.auth.admin.deleteUser(userId);
+    if (error) return json(500, { error: error.message || "No se pudo eliminar el usuario." });
+
+    if (telefonoParaEspejo) {
+      await eliminarCuentaEnTaxi({ telefono: telefonoParaEspejo });
+    }
+
+    return json(200, { ok: true });
+  }
+
+  // Bug: el frontend (App.jsx, "Reasignar Sucursal" de un cajero ya
+  // existente) siempre invocó esta acción, pero acá nunca se había
+  // implementado — la petición caía en el 400 de "Acción no
+  // reconocida" y 'profiles.sucursal_id' jamás se actualizaba, sin
+  // importar cuántas veces se reintentara desde el panel.
+  if (action === "set-sucursal") {
+    const sucursalId = (body.sucursalId || "").trim();
+    const cajaId = (body.cajaId || "").trim();
+    if (!sucursalId || !cajaId) {
+      return json(400, { error: "Falta la sucursal/caja." });
+    }
+    const { error } = await admin
+      .from("profiles")
+      .update({ sucursal_id: sucursalId, caja_id: cajaId })
+      .eq("id", userId);
+    if (error) return json(500, { error: error.message || "No se pudo reasignar la sucursal." });
+    return json(200, { ok: true });
+  }
+
+  // Asigna (o quita) el acceso a Fiados de un cliente YA existente —
+  // botón "Asignar a un usuario existente" de la Libreta. Un
+  // auto-registro propio (registro-cliente) nace SIN esto; recién acá
+  // el admin lo autoriza a mano.
+  if (action === "set-fiado") {
+    const habilitado = body.habilitado !== false; // default true (es el uso normal: "asignar")
+    const { data: targetProfile } = await admin
+      .from("profiles")
+      .select("role, nombre")
+      .eq("id", userId)
+      .maybeSingle();
+    if (targetProfile?.role !== "cliente") {
+      return json(400, { error: "Ese usuario no es un cliente." });
+    }
+    if (!callerNegocioId) {
+      return json(400, { error: "Tu cuenta no tiene un negocio asociado." });
+    }
+
+    // negocio_id (Fase 1 del super-admin): un cliente puede tener una
+    // fila de clientes_fiado POR CADA negocio donde compró — filtrar
+    // solo por auth_user_id habilitaría Fiados en TODOS esos negocios
+    // de una sola vez, no solo en el del admin que lo está asignando.
+    const { data: filaExistente, error: buscarErr } = await admin
+      .from("clientes_fiado")
+      .select("id")
+      .eq("auth_user_id", userId)
+      .eq("negocio_id", callerNegocioId)
+      .maybeSingle();
+    if (buscarErr) return json(500, { error: "No se pudo verificar el cliente." });
+
+    if (filaExistente) {
+      const { error } = await admin
+        .from("clientes_fiado")
+        .update({ fiado_habilitado: habilitado })
+        .eq("id", filaExistente.id);
+      if (error) return json(500, { error: error.message || "No se pudo asignar Fiados." });
+      return json(200, { ok: true });
+    }
+
+    // Bug: sin esto, un cliente que existe globalmente (identidad
+    // compartida) pero nunca compró/tuvo fiado en ESTE negocio hacía
+    // que el UPDATE de arriba no tocara ninguna fila — Postgres no
+    // avisa nada (0 filas afectadas no es un error), así que el admin
+    // se quedaba pensando que "Asignar Fiados" funcionó cuando en
+    // realidad no pasó nada. Acá se crea la fila nueva para este
+    // negocio, reusando el nombre/celular/DNI de cualquier otra fila
+    // que ya tenga (o el nombre de su perfil si no tiene ninguna).
+    const { data: otraFila } = await admin
+      .from("clientes_fiado")
+      .select("nombre, whatsapp, dni")
+      .eq("auth_user_id", userId)
+      .limit(1)
+      .maybeSingle();
+    const { error: insertErr } = await admin.from("clientes_fiado").insert({
+      auth_user_id: userId,
+      negocio_id: callerNegocioId,
+      nombre: otraFila?.nombre || targetProfile?.nombre || "Cliente",
+      whatsapp: otraFila?.whatsapp || null,
+      dni: otraFila?.dni || null,
+      fiado_habilitado: habilitado,
+      fecha: Date.now(),
+    });
+    if (insertErr) return json(500, { error: insertErr.message || "No se pudo asignar Fiados." });
+    return json(200, { ok: true });
+  }
+
+  return json(400, { error: "Acción no reconocida." });
+});

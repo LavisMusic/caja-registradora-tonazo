@@ -83,15 +83,45 @@ export default function PedidoCheckoutModal({
       .then(({ data }) => setMisDatos(data || null));
   }, [session]);
 
+  const [sedeCentro, setSedeCentro] = useState(null);
+  const [sedeLogoUrl, setSedeLogoUrl] = useState(null);
   useEffect(() => {
     if (!sucursalId) return;
     supabase
       .from("sucursales")
-      .select("nombre")
+      // Embed encadenado sucursal -> localidad -> negocio: el logo real
+      // de ESTE negocio para la boleta — negocioLogoUrl de useAuth()
+      // siempre da null para un cliente (identidad compartida entre
+      // negocios, sin negocio_id propio en su perfil, ver
+      // TicketBoleta.jsx).
+      .select("nombre, lat, lng, localidades(negocios(logo_url))")
       .eq("id", sucursalId)
       .maybeSingle()
-      .then(({ data }) => setSedeNombre(data?.nombre || ""));
+      .then(({ data }) => {
+        setSedeNombre(data?.nombre || "");
+        setSedeLogoUrl(data?.localidades?.negocios?.logo_url || null);
+        // Centro inicial del mapa de entrega (Fase 3, multi-negocio):
+        // sin esto, MapPicker caía a un default hardcodeado en Lima —
+        // un negocio en otra ciudad obligaba al cliente a buscar su
+        // propia ciudad a mano en el mapa antes de poder marcar nada.
+        setSedeCentro(
+          data?.lat != null && data?.lng != null
+            ? { lat: Number(data.lat), lng: Number(data.lng) }
+            : null
+        );
+      });
   }, [sucursalId]);
+
+  // Sin coordenadas fijadas en esta sucursal (el admin todavía no usó
+  // "Fijar coordenadas" en el Gestor de Cajas), el repartidor de Taxi-PE
+  // no tiene de dónde recoger el pedido — entrega-iniciar mandaría
+  // origen_lat/lng en null. Se oculta Delivery hasta que la sucursal
+  // tenga un punto de partida real; si el cliente ya lo había elegido
+  // antes de que esto resolviera, se lo vuelve a "Retiro en tienda".
+  const deliveryDisponible = sedeCentro != null;
+  useEffect(() => {
+    if (!deliveryDisponible && modoEntrega === "delivery") setModoEntrega("tienda");
+  }, [deliveryDisponible, modoEntrega]);
 
   const esRetiro = modoEntrega === "tienda";
 
@@ -281,11 +311,17 @@ export default function PedidoCheckoutModal({
                   type="button"
                   className={`tz-gasto-tipo-btn ${modoEntrega === "delivery" ? "tz-gasto-tipo-active" : ""}`}
                   onClick={() => setModoEntrega("delivery")}
+                  disabled={!deliveryDisponible}
+                  title={!deliveryDisponible ? "Esta sucursal todavía no tiene delivery disponible." : undefined}
                 >
-                  <Bike size={14} /> Envío a domicilio
+                  <Bike size={14} /> Delivery
                 </button>
               </div>
-              {modoEntrega === "delivery" && <MapPicker value={ubicacion} onChange={setUbicacion} />}
+              {!deliveryDisponible && (
+                <p className="tz-stock-editor-sub">
+                  Delivery no disponible en esta sucursal todavía — solo retiro en tienda.
+                </p>
+              )}
             </div>
 
             <PaymentMethodPicker
@@ -296,6 +332,10 @@ export default function PedidoCheckoutModal({
               onMontoRecibidoChange={setMontoRecibido}
               methods={esRetiro ? METODOS_SIN_EFECTIVO : undefined}
             />
+
+            {modoEntrega === "delivery" && (
+              <MapPicker value={ubicacion} onChange={setUbicacion} centroInicial={sedeCentro} />
+            )}
 
             {esRetiro && (
               <div className="tz-checkout-comprobante">
@@ -339,6 +379,7 @@ export default function PedidoCheckoutModal({
                 }}
                 cliente={{ nombre: misDatos?.nombre || "" }}
                 sede={sedeNombre}
+                logoUrl={sedeLogoUrl}
                 entrega={
                   esRetiro
                     ? null

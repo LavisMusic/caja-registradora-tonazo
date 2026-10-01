@@ -179,19 +179,27 @@ export async function crearProducto({
   // les asigne stock desde el Gestor de Productos (useCatalog las
   // muestra en 0 con un aviso en consola mientras tanto).
   sucursalId,
+  // negocio_id (Fase 1 del super-admin): categorias/productos/stock ya
+  // se filtran por negocio en useCatalog — sin estampar esto acá, un
+  // producto/categoría nuevo de un negocio distinto a Tonazo quedaría
+  // con negocio_id NULL, invisible para todos (ver comentario largo en
+  // useCatalog.js). El lookup de "¿ya existe esta categoría?" también
+  // tiene que acotarse por negocio — si no, un negocio nuevo podía
+  // "encontrar" la categoría de OTRO negocio con el mismo nombre, no
+  // crear la suya propia, y sus productos quedaban sin categoría
+  // visible en su propio catálogo.
+  negocioId,
 }) {
   const categoriaNombre = (categoria || "").trim();
-  const { data: catExistente, error: catLookupError } = await supabase
-    .from("categorias")
-    .select("id")
-    .eq("nombre", categoriaNombre)
-    .maybeSingle();
+  let catQuery = supabase.from("categorias").select("id").eq("nombre", categoriaNombre);
+  if (negocioId) catQuery = catQuery.eq("negocio_id", negocioId);
+  const { data: catExistente, error: catLookupError } = await catQuery.maybeSingle();
   if (catLookupError) throw catLookupError;
 
   if (!catExistente) {
     const { error: catInsertError } = await supabase
       .from("categorias")
-      .insert([{ nombre: categoriaNombre, activo: true, orden: safeOrdenValue() }]);
+      .insert([{ nombre: categoriaNombre, activo: true, orden: safeOrdenValue(), negocio_id: negocioId }]);
     if (catInsertError) throw catInsertError;
   }
 
@@ -229,6 +237,7 @@ export async function crearProducto({
     visible_publico: true,
     orden: safeOrdenValue(),
     venta_por_peso: !!ventaPorPeso,
+    negocio_id: negocioId,
   };
 
   // Log explícito del payload exacto antes del INSERT, para poder
@@ -262,7 +271,7 @@ export async function crearProducto({
   // en 'inventario_sucursales', por sucursal.
   const { error: stockError } = await supabase
     .from("stock")
-    .upsert([{ nombre: stockKey, cantidad: 0, etiqueta: nombreCompleto }], { onConflict: "nombre" });
+    .upsert([{ nombre: stockKey, cantidad: 0, etiqueta: nombreCompleto, negocio_id: negocioId }], { onConflict: "nombre" });
   if (stockError) throw stockError;
 
   if (sucursalId) {
@@ -301,19 +310,17 @@ export async function crearProducto({
    receta) — así un combo puede incluir a su vez otro combo como
    ingrediente (su 'consumes' ya viene aplanado a claves reales) sin
    ningún ajuste extra. */
-export async function crearCombo({ nombre, categoria, subgrupo, precio, items }) {
+export async function crearCombo({ nombre, categoria, subgrupo, precio, items, negocioId }) {
   const categoriaNombre = (categoria || "").trim();
-  const { data: catExistente, error: catLookupError } = await supabase
-    .from("categorias")
-    .select("id")
-    .eq("nombre", categoriaNombre)
-    .maybeSingle();
+  let catQuery = supabase.from("categorias").select("id").eq("nombre", categoriaNombre);
+  if (negocioId) catQuery = catQuery.eq("negocio_id", negocioId);
+  const { data: catExistente, error: catLookupError } = await catQuery.maybeSingle();
   if (catLookupError) throw catLookupError;
 
   if (!catExistente) {
     const { error: catInsertError } = await supabase
       .from("categorias")
-      .insert([{ nombre: categoriaNombre, activo: true, orden: safeOrdenValue() }]);
+      .insert([{ nombre: categoriaNombre, activo: true, orden: safeOrdenValue(), negocio_id: negocioId }]);
     if (catInsertError) throw catInsertError;
   }
 
@@ -345,6 +352,7 @@ export async function crearCombo({ nombre, categoria, subgrupo, precio, items })
     activo: true,
     visible_publico: true,
     orden: safeOrdenValue(),
+    negocio_id: negocioId,
   };
 
   const { data: insertedProducto, error: prodError } = await supabase

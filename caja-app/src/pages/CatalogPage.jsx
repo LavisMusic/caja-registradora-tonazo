@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList } from "lucide-react";
+import { useParams, Link } from "react-router-dom";
+import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CreditCard, CalendarClock, Store } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCatalog } from "../hooks/useCatalog";
 import { usePedidosBadge } from "../hooks/usePedidosBadge";
 import { supabase } from "../supabaseClient";
 import LoginModal from "../components/LoginModal";
+import AnimacionNeonBienvenida from "../components/AnimacionNeonBienvenida";
+import { useBienvenidaNeon } from "../hooks/useBienvenidaNeon";
 import ClienteFiadoView from "./ClienteFiadoView";
 import Styles from "../components/Styles";
 import CardDetail from "../components/CardDetail";
@@ -14,9 +17,15 @@ import LogoEasterEgg from "../components/LogoEasterEgg";
 import ScrollSpySidebar from "../components/ScrollSpySidebar";
 import PedidoCheckoutModal from "../components/PedidoCheckoutModal";
 import MisPedidosModal from "../components/MisPedidosModal";
-import { formatSoles } from "../utils/format";
+import { formatSoles, formatDate } from "../utils/format";
 import { safeGetItem, safeSetItem } from "../utils/safeStorage";
-import logo from "../assets/logo.png";
+import { distanciaMetros } from "../lib/haversine";
+import logo from "../assets/logo.webp";
+import logoTaxiPe from "../assets/logo-taxipe.webp";
+
+// URL pública de Taxi-PE — botón del filtro abre en pestaña nueva, no
+// toca la sesión de Caja para nada (login ya unificado del otro lado).
+const TAXI_PE_URL = import.meta.env.VITE_TAXI_PE_URL || "https://taxi-pe-app.vercel.app";
 
 // Copiado tal cual de App.jsx: mismo cálculo, mismo criterio de
 // "disponible" — el catálogo público necesita saber si algo está
@@ -75,7 +84,98 @@ function formatDescuentoBadge(product) {
 // de venta. Los productos se ven, no se seleccionan: sin onClick, sin
 // checkbox, sin selector de cantidad (ver .tz-card-readonly abajo).
 export default function CatalogPage() {
-  const { session, loading: authLoading, signOut, isCliente } = useAuth();
+  const { session, loading: authLoading, signOut, isCliente, tieneFiado, nombre, saldoTaxi } = useAuth();
+
+  /* ---- Fase 2: esta misma pantalla ahora sirve la tienda de
+     CUALQUIER negocio, resuelto por slug (/directorio/:slug, ver
+     main.jsx) — antes era Tonazo hardcodeado. Se resuelve UNA vez al
+     entrar; todo lo que sigue (localidades, sucursales, useCatalog)
+     queda scopeado por negocio.id apenas está disponible. Un slug que
+     no existe (o un negocio desactivado por el super-admin) no debe
+     mostrar el catálogo de OTRO negocio por error — termina en un
+     estado de error explícito, nunca en una lista vacía silenciosa. */
+  const { slug } = useParams();
+  const [negocio, setNegocio] = useState(null);
+  const [negocioLoading, setNegocioLoading] = useState(true);
+  const [negocioError, setNegocioError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setNegocioLoading(true);
+    setNegocioError("");
+    supabase
+      .from("negocios")
+      .select("id, nombre, slug, logo_url")
+      .eq("slug", slug)
+      .eq("activo", true)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error || !data) {
+          setNegocioError("No encontramos esta tienda.");
+        } else {
+          setNegocio(data);
+        }
+        setNegocioLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [slug]);
+  const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
+    session?.user?.id,
+    isCliente
+  );
+
+  // Animación del botón "Fiados": 'hidden' (no renderizado) -> 'in'
+  // (recién asignado, pop de entrada) -> al QUITAR el fiado, primero
+  // 'out' (reproduce la animación en reversa) y RECIÉN AHÍ 'hidden' —
+  // sin este estado intermedio, tieneFiado pasando a false desmontaría
+  // el botón de golpe, sin poder verse ninguna salida animada.
+  const [fiadosAnim, setFiadosAnim] = useState(isCliente && tieneFiado ? "in" : "hidden");
+  useEffect(() => {
+    const mostrar = isCliente && tieneFiado;
+    setFiadosAnim((prev) => {
+      if (mostrar) return "in";
+      return prev === "hidden" ? "hidden" : "out";
+    });
+  }, [isCliente, tieneFiado]);
+  useEffect(() => {
+    if (fiadosAnim !== "out") return undefined;
+    const t = setTimeout(() => setFiadosAnim("hidden"), 600);
+    return () => clearTimeout(t);
+  }, [fiadosAnim]);
+
+  // Saldo de Taxi-PE (unificación pasajero/cliente) — ya viene de
+  // useAuth() (copia local en clientes_fiado, mantenida al día por
+  // Realtime nativo de este proyecto — ver AuthContext.jsx). Acá solo
+  // se deriva si la membresía sigue vigente.
+  const membresiaTaxiVigente =
+    !!saldoTaxi?.membresia_vencimiento && new Date(saldoTaxi.membresia_vencimiento) > new Date();
+
+  // Contenido del badge de saldo, calculado UNA vez y renderizado en
+  // DOS lugares del DOM (header en desktop/tablet, junto al botón
+  // Taxi-PE en mobile) — mismo tz-stat-chip que usa el conductor en
+  // Taxi-PE, se muestra UNO SOLO (membresía si está vigente, si no
+  // créditos si tiene, si no nada). Cuál copia se ve la decide el CSS
+  // (display:none por breakpoint), no JS — así nunca se desincroniza
+  // una de la otra.
+  const saldoChipContenido =
+    isCliente && session && saldoTaxi && membresiaTaxiVigente ? (
+      <div className="tz-stat-chip tz-stat-chip-green">
+        <span className="tz-stat-label">
+          <CalendarClock size={13} /> Vigencia
+        </span>
+        <span className="tz-stat-value tz-green">{formatDate(saldoTaxi.membresia_vencimiento)}</span>
+      </div>
+    ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente && Number(saldoTaxi.creditos_disponibles) > 0 ? (
+      <div className="tz-stat-chip">
+        <span className="tz-stat-label">
+          <CreditCard size={13} /> Créditos
+        </span>
+        <span className="tz-stat-value tz-cyan">{saldoTaxi.creditos_disponibles}</span>
+      </div>
+    ) : null;
 
   /* ---- Fase 1 "Pedidos Delivery": carrito del cliente logueado.
      Mismo shape que 'selection' en App.jsx ({ productId: qty }) — un
@@ -113,18 +213,25 @@ export default function CatalogPage() {
   );
 
   useEffect(() => {
+    if (!negocio) return undefined;
     let active = true;
     async function loadLocales() {
-      const [{ data: locRows, error: locErr }, { data: sucRows, error: sucErr }] = await Promise.all([
-        supabase.from("localidades").select("id, nombre").eq("activo", true).order("nombre"),
-        supabase
-          .from("sucursales")
-          .select("id, nombre, localidad_id")
-          .eq("activo", true)
-          .order("nombre"),
-      ]);
+      const { data: locRows, error: locErr } = await supabase
+        .from("localidades")
+        .select("id, nombre")
+        .eq("activo", true)
+        .eq("negocio_id", negocio.id)
+        .order("orden");
       if (!active) return;
       if (locErr) console.error("[CatalogPage] Error cargando localidades:", locErr);
+      const localidadIds = (locRows || []).map((r) => r.id);
+      const { data: sucRows, error: sucErr } = await supabase
+        .from("sucursales")
+        .select("id, nombre, localidad_id, lat, lng")
+        .eq("activo", true)
+        .in("localidad_id", localidadIds.length ? localidadIds : ["00000000-0000-0000-0000-000000000000"])
+        .order("orden");
+      if (!active) return;
       if (sucErr) console.error("[CatalogPage] Error cargando sucursales:", sucErr);
       setPublicLocalidades(locRows || []);
       setPublicSucursales(sucRows || []);
@@ -134,7 +241,7 @@ export default function CatalogPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [negocio]);
 
   useEffect(() => {
     if (publicLocalesLoading) return;
@@ -149,6 +256,41 @@ export default function CatalogPage() {
     setPublicLocalidadId(preferida.localidad_id);
   }, [publicLocalesLoading, publicSucursales, publicSucursalId]);
 
+  // Sucursal automática por geolocalización — se recalcula CADA VEZ que
+  // se abre la tienda (nunca se guarda "la última detectada": si el
+  // cliente viaja, tiene que reflejar dónde está ahora). Mismo patrón
+  // getCurrentPosition que ya usa RadarGlobal.jsx en Taxi-PE —
+  // denegado/sin soporte no toca nada, se queda con lo que ya haya
+  // (localStorage restaurado, o el default "Santa Rosa 6.50" del efecto
+  // de arriba). Corre DESPUÉS de ese efecto a propósito: el default es
+  // un placeholder seguro mientras se resuelve el GPS, y si el GPS
+  // contesta, lo pisa con la sucursal real más cercana.
+  const geolocalizacionIntentada = useRef(false);
+  useEffect(() => {
+    if (geolocalizacionIntentada.current) return;
+    if (publicLocalesLoading) return;
+    const conCoordenadas = publicSucursales.filter((s) => s.lat != null && s.lng != null);
+    if (conCoordenadas.length === 0) return;
+    if (!navigator.geolocation) return;
+    geolocalizacionIntentada.current = true;
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        const masCercana = conCoordenadas.reduce((mejor, s) => {
+          const d = distanciaMetros(latitude, longitude, s.lat, s.lng);
+          return d < mejor.distancia ? { fila: s, distancia: d } : mejor;
+        }, { fila: conCoordenadas[0], distancia: distanciaMetros(latitude, longitude, conCoordenadas[0].lat, conCoordenadas[0].lng) }).fila;
+        setPublicSucursalId(masCercana.id);
+        setPublicLocalidadId(masCercana.localidad_id);
+      },
+      () => {
+        // Denegado o falló — se queda con el default/lo restaurado de localStorage.
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  }, [publicLocalesLoading, publicSucursales]);
+
   useEffect(() => {
     safeSetItem("tz_public_localidad_id", publicLocalidadId || "");
     safeSetItem("tz_public_sucursal_id", publicSucursalId || "");
@@ -158,13 +300,55 @@ export default function CatalogPage() {
     (s) => s.localidad_id === publicLocalidadId
   );
 
+  // Etiqueta "En línea" — si hay AL MENOS una caja abierta ahora mismo
+  // en la sucursal elegida (mismo criterio "estado === 'abierta'" que
+  // ya usa App.jsx para el panel del cajero). null mientras carga, para
+  // no mostrar "Cerrado" un instante antes de saber la respuesta real.
+  const [sucursalEnLinea, setSucursalEnLinea] = useState(null);
+  useEffect(() => {
+    if (!publicSucursalId) {
+      setSucursalEnLinea(null);
+      return undefined;
+    }
+    let active = true;
+    setSucursalEnLinea(null);
+
+    const cargarEstado = () =>
+      supabase
+        .from("cajas")
+        .select("estado")
+        .eq("sucursal_id", publicSucursalId)
+        .then(({ data, error }) => {
+          if (!active || error) return;
+          setSucursalEnLinea((data || []).some((c) => c.estado === "abierta"));
+        });
+
+    cargarEstado();
+
+    // Realtime: un cajero puede abrir/cerrar su caja MIENTRAS el
+    // cliente ya tiene la tienda abierta mirando esta misma sucursal.
+    const channel = supabase
+      .channel(`cajas-en-linea-${publicSucursalId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "cajas", filter: `sucursal_id=eq.${publicSucursalId}` },
+        cargarEstado
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [publicSucursalId]);
+
   const {
     sections,
     productsById,
     stock,
     loading: catalogLoading,
     error,
-  } = useCatalog(publicSucursalId);
+  } = useCatalog(publicSucursalId, negocio?.id);
   const [activeTab, setActiveTab] = useState("");
   const [loginOpen, setLoginOpen] = useState(false);
   const [fiadoOpen, setFiadoOpen] = useState(false);
@@ -248,13 +432,31 @@ export default function CatalogPage() {
     .map((g, gi) => ({ id: gi, label: g.title }))
     .filter((it) => it.label);
 
-  const handleFiadosClick = () => {
-    if (session) {
-      setFiadoOpen(true);
-    } else {
-      setLoginOpen(true);
-    }
-  };
+  // El botón que llama a esto solo se muestra con isCliente && tieneFiado
+  // (o sea, ya con sesión) — sin rama "sin sesión" que abra el login.
+  const handleFiadosClick = () => setFiadoOpen(true);
+
+  if (negocioLoading) {
+    return (
+      <div className="tz-root tz-loading">
+        <Styles />
+        <Loader2 className="tz-spin" size={34} />
+      </div>
+    );
+  }
+
+  if (negocioError || !negocio) {
+    return (
+      <div className="tz-root tz-loading">
+        <Styles />
+        <Store size={34} />
+        <p>{negocioError || "No encontramos esta tienda."}</p>
+        <Link to="/directorio" className="tz-header-btn">
+          Ir al directorio
+        </Link>
+      </div>
+    );
+  }
 
   if (catalogLoading) {
     return (
@@ -269,17 +471,31 @@ export default function CatalogPage() {
   return (
     <div className="tz-root">
       <Styles />
+      {mostrarBienvenida && (
+        <AnimacionNeonBienvenida
+          eyebrow={`✦ Bienvenido a ${negocio.nombre} ✦`}
+          titulo={nombre}
+          descripcion="Ya puedes comprar en la tienda — ¡Qué disfrutes! 😉"
+          onTerminar={marcarBienvenidaVista}
+        />
+      )}
       <header className="tz-header">
         <div className="tz-header-row">
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              className="tz-header-btn"
-              onClick={handleFiadosClick}
-              aria-label="Fiados"
-            >
-              <BookOpen size={19} />
-              <span className="tz-header-btn-label">Fiados</span>
-            </button>
+          <div className="tz-header-side tz-header-side-left">
+            {fiadosAnim !== "hidden" && (
+              <span
+                className={`tz-fiados-pop-wrap ${fiadosAnim === "out" ? "tz-fiados-pop-wrap-out" : ""}`}
+              >
+                <button
+                  className="tz-header-btn"
+                  onClick={handleFiadosClick}
+                  aria-label="Fiados"
+                >
+                  <BookOpen size={19} />
+                  <span className="tz-header-btn-label">Fiados</span>
+                </button>
+              </span>
+            )}
             {puedeComprar && (
               <button
                 className="tz-header-btn"
@@ -297,78 +513,124 @@ export default function CatalogPage() {
           </div>
 
           <div className="tz-header-center">
-            <LogoEasterEgg src={logo} alt="TONAZO!" className="tz-logo" />
-            <p className="tz-subtitle">Compra Ya</p>
+            <LogoEasterEgg
+              src={negocio.logo_url || logo}
+              alt={negocio.nombre}
+              className="tz-logo"
+            />
+            <p className="tz-subtitle">{negocio.nombre}</p>
           </div>
 
-          {authLoading ? (
-            <span className="tz-header-btn" style={{ visibility: "hidden" }} />
-          ) : session ? (
-            <button
-              className="tz-header-btn"
-              onClick={signOut}
-              aria-label="Cerrar sesión"
-              title="Cerrar sesión"
-            >
-              <LogOut size={19} />
-              <span className="tz-header-btn-label">Salir</span>
-            </button>
-          ) : (
-            <button
-              className="tz-header-btn"
-              onClick={() => setLoginOpen(true)}
-              aria-label="Ingresar"
-            >
-              <LogIn size={19} />
-              <span className="tz-header-btn-label">Login</span>
-            </button>
-          )}
+          <div className="tz-header-side tz-header-side-right">
+            {authLoading ? (
+              <span className="tz-header-btn" style={{ visibility: "hidden" }} />
+            ) : session ? (
+              <button
+                className="tz-header-btn"
+                onClick={signOut}
+                aria-label="Cerrar sesión"
+                title="Cerrar sesión"
+              >
+                <LogOut size={19} />
+                <span className="tz-header-btn-label">Salir</span>
+              </button>
+            ) : (
+              <button
+                className="tz-header-btn"
+                onClick={() => setLoginOpen(true)}
+                aria-label="Ingresar"
+              >
+                <LogIn size={19} />
+                <span className="tz-header-btn-label">Login</span>
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
-      {/* ---------------- Filtro Público de Sucursales ---------------- */}
+      {/* ---------------- Filtro Público de Sucursales ----------------
+         Grid de 3 columnas (tz-filtrobar-grid, ver Styles.jsx): Taxi-PE
+         a la izquierda, filtros centrados, saldo a la derecha — posición
+         fija en la propia barra, no un valor a mano por breakpoint. */}
       {!publicLocalesLoading && publicLocalidades.length > 0 && (
         <div className="tz-admin-filterbar">
-          <div className="tz-admin-filter-group">
-            <label className="tz-admin-filter-label">Localidad</label>
-            <select
-              className="tz-admin-filter-select"
-              value={publicLocalidadId}
-              onChange={(e) => {
-                const locId = e.target.value;
-                setPublicLocalidadId(locId);
-                // La sucursal elegida puede no pertenecer a la nueva
-                // localidad — se limpia para forzar a elegir una de
-                // verdad, en vez de dejar el catálogo mostrando el
-                // stock de una sucursal que ya no coincide con lo
-                // elegido arriba.
-                const sigueValiendo = publicSucursales.some(
-                  (s) => s.id === publicSucursalId && s.localidad_id === locId
-                );
-                if (!sigueValiendo) setPublicSucursalId("");
-              }}
-            >
-              {publicLocalidades.map((loc) => (
-                <option key={loc.id} value={loc.id}>
-                  {loc.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="tz-admin-filter-group">
-            <label className="tz-admin-filter-label">Sucursal</label>
-            <select
-              className="tz-admin-filter-select"
-              value={publicSucursalId}
-              onChange={(e) => setPublicSucursalId(e.target.value)}
-            >
-              <option value="">Elige una sucursal…</option>
-              {publicSucursalesDeLocalidad.map((suc) => (
-                <option key={suc.id} value={suc.id}>
-                  {suc.nombre}
-                </option>
-              ))}
-            </select>
+          <div className="tz-filtrobar-grid">
+            <div className="tz-filtrobar-side tz-filtrobar-side-left">
+              {TAXI_PE_URL && (
+                <a
+                  href={TAXI_PE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="tz-admin-filter-taxipe-btn"
+                  aria-label="Ir a Taxi-PE"
+                  title="Ir a Taxi-PE"
+                >
+                  <img src={logoTaxiPe} alt="Taxi-PE" />
+                </a>
+              )}
+            </div>
+
+            <div className="tz-admin-filter-pareja">
+              <div className="tz-admin-filter-group tz-filtro-localidad-group">
+                <label className="tz-admin-filter-label tz-filtro-localidad-label">Localidad</label>
+                <select
+                  className="tz-admin-filter-select"
+                  value={publicLocalidadId}
+                  onChange={(e) => {
+                    const locId = e.target.value;
+                    setPublicLocalidadId(locId);
+                    // La sucursal elegida puede no pertenecer a la nueva
+                    // localidad — se limpia para forzar a elegir una de
+                    // verdad, en vez de dejar el catálogo mostrando el
+                    // stock de una sucursal que ya no coincide con lo
+                    // elegido arriba.
+                    const sigueValiendo = publicSucursales.some(
+                      (s) => s.id === publicSucursalId && s.localidad_id === locId
+                    );
+                    if (!sigueValiendo) setPublicSucursalId("");
+                  }}
+                >
+                  {publicLocalidades.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="tz-admin-filter-group tz-filtro-sucursal-group">
+                <label className="tz-admin-filter-label tz-filtro-sucursal-label">Sucursal</label>
+                {/* tz-admin-filter-row: select + etiqueta EN LA MISMA
+                   LÍNEA (a la derecha del select) — antes la etiqueta
+                   quedaba apilada debajo, lo que hacía a este grupo más
+                   alto que el de Localidad y, con align-items:flex-end en
+                   la pareja, los dos labels terminaban a alturas
+                   distintas. */}
+                <div className="tz-admin-filter-row">
+                  <select
+                    className="tz-admin-filter-select"
+                    value={publicSucursalId}
+                    onChange={(e) => setPublicSucursalId(e.target.value)}
+                  >
+                    <option value="">Elige una sucursal…</option>
+                    {publicSucursalesDeLocalidad.map((suc) => (
+                      <option key={suc.id} value={suc.id}>
+                        {suc.nombre}
+                      </option>
+                    ))}
+                  </select>
+                  {publicSucursalId && sucursalEnLinea !== null && (
+                    <span className={`tz-admin-filter-tag tz-filtro-estado-tag ${sucursalEnLinea ? "is-abierta" : "is-cerrada"}`}>
+                      <span className="tz-admin-filter-tag-dot" />
+                      {sucursalEnLinea ? "En línea" : "Cerrado"}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="tz-filtrobar-side tz-filtrobar-side-right">
+              {saldoChipContenido && <div className="tz-filtrobar-saldo">{saldoChipContenido}</div>}
+            </div>
           </div>
         </div>
       )}
@@ -545,21 +807,23 @@ export default function CatalogPage() {
           onClick={() => setCheckoutOpen(true)}
         >
           <span className="tz-cart-floating-bar-count">{carritoTotalItems}</span>
-          <ShoppingCart size={18} />
+          {/* Color explícito (no heredado): en algunos navegadores/SO en
+             modo claro, el ícono terminaba heredando el negro del
+             index.css base de Vite (:root { color } cambia con
+             prefers-color-scheme) en vez del blanco de la app — mismo
+             problema que ya se documentó y resolvió para h1/h2 más
+             arriba en Styles.jsx. */}
+          <ShoppingCart size={18} color="#f4f2ff" />
           <span className="tz-cart-floating-bar-total">{formatSoles(carritoTotalPrecio)}</span>
         </button>
       )}
 
       {loginOpen && (
-        <LoginModal
-          onClose={() => setLoginOpen(false)}
-          onSuccess={() => {
-            setLoginOpen(false);
-            setFiadoOpen(true);
-          }}
-        />
+        <LoginModal onClose={() => setLoginOpen(false)} onSuccess={() => setLoginOpen(false)} />
       )}
-      {fiadoOpen && <ClienteFiadoView onClose={() => setFiadoOpen(false)} />}
+      {fiadoOpen && (
+        <ClienteFiadoView negocioId={negocio.id} onClose={() => setFiadoOpen(false)} />
+      )}
       {checkoutOpen && (
         <PedidoCheckoutModal
           carrito={carritoIds.map((id) => ({

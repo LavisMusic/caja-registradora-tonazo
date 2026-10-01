@@ -31,7 +31,7 @@ function Recenter({ pos }) {
   return null;
 }
 
-export default function MapPicker({ value, onChange }) {
+export default function MapPicker({ value, onChange, centroInicial }) {
   const [pos, setPos] = useState(value?.lat != null ? { lat: value.lat, lng: value.lng } : null);
   const [dir, setDir] = useState(value?.direccion || "");
   const [buscando, setBuscando] = useState(false);
@@ -62,7 +62,11 @@ export default function MapPicker({ value, onChange }) {
     );
   };
 
-  const centro = pos || DEFAULT;
+  // Fase 3 (multi-negocio): sin una marca propia todavía, centrar en la
+  // sucursal elegida (su lat/lng real) en vez de siempre Lima — DEFAULT
+  // queda solo como último recurso para una sucursal sin coordenadas
+  // fijadas (ver "Fijar coordenadas" en el Gestor de Cajas).
+  const centro = pos || centroInicial || DEFAULT;
 
   return (
     <div className="tz-mp">

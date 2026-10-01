@@ -5,6 +5,7 @@ import { supabaseTaxi } from "../lib/supabaseTaxi";
 import { usePedidos } from "../hooks/usePedidos";
 import { usePedidosNoLeidos } from "../hooks/usePedidosNoLeidos";
 import ChatPedidoModal from "./ChatPedidoModal";
+import AnimacionExitoNeon from "./AnimacionExitoNeon";
 import EntregaCajaModal from "./delivery/EntregaCajaModal";
 import TicketBoleta from "./TicketBoleta";
 import { formatSoles, formatDate, formatTime } from "../utils/format";
@@ -18,6 +19,15 @@ const ESTADO_LABELS = {
   confirmado: "Entregado",
   cancelado: "Cancelado",
 };
+
+// Agrupa el 'estado' del pedido en los 3 baldes del filtro secundario
+// del Gestor — "en carrera" (activo, todavía sin cerrar) junta 'nuevo'
+// y 'en_atencion' porque para el admin ambos son "esto sigue en curso".
+function estadoGrupo(pedido) {
+  if (pedido.estado === "confirmado") return "entregado";
+  if (pedido.estado === "cancelado") return "cancelado";
+  return "en_carrera";
+}
 
 const METODO_LABELS = {
   YAPE: "Yape",
@@ -50,7 +60,35 @@ export default function GestorPedidosModal({
   const [entregaModal, setEntregaModal] = useState(null); // { sessionToken, telefono }
   const [asignandoId, setAsignandoId] = useState(null);
   const [filtro, setFiltro] = useState("retirar"); // 'retirar' | 'repartir'
+  // Filtro secundario, debajo de Para retirar/Para repartir — por
+  // estado, para no tener que scrollear toda la lista buscando un
+  // pedido puntual. null = sin filtrar (todos).
+  const [filtroEstado, setFiltroEstado] = useState(null); // 'en_carrera' | 'entregado' | 'cancelado' | null
   const [comprobanteVer, setComprobanteVer] = useState(null); // url
+  const [animacionExito, setAnimacionExito] = useState(null); // texto del título, o null
+  // Sucursal que el cliente eligió al hacer el pedido — es la misma
+  // 'sucursalId' operativa del cajero (los pedidos ya vienen filtrados
+  // por ella), pero se muestra igual en cada tarjeta a pedido explícito
+  // (contexto rápido sin tener que mirar la cabecera).
+  const [sucursalNombre, setSucursalNombre] = useState("");
+  useEffect(() => {
+    if (!sucursalId) {
+      setSucursalNombre("");
+      return;
+    }
+    let active = true;
+    supabase
+      .from("sucursales")
+      .select("nombre")
+      .eq("id", sucursalId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (active) setSucursalNombre(data?.nombre || "");
+      });
+    return () => {
+      active = false;
+    };
+  }, [sucursalId]);
   const { counts: noLeidos, refrescar: refrescarNoLeidos } = usePedidosNoLeidos(
     pedidos.map((p) => p.id),
     "cajero"
@@ -65,6 +103,16 @@ export default function GestorPedidosModal({
   const [boletaPedido, setBoletaPedido] = useState(null);
   const [boletaExtra, setBoletaExtra] = useState(null); // { sede, entrega }
   const boletaRef = useRef(null);
+  // Ventana de WhatsApp: se ABRE EN BLANCO acá, de forma SÍNCRONA dentro
+  // del click (ver el botón "Copiar boleta y WhatsApp" más abajo) — es
+  // lo único que hace que el navegador la trate como resultado directo
+  // de un toque del usuario. Recién más tarde, cuando termina el
+  // trabajo async (copiar la imagen, etc.), se la redirige con
+  // `.location.href`. Si se llamara a `window.open(link)` DESPUÉS de un
+  // `await`, el celular (sobre todo mobile Chrome) lo bloquea como
+  // popup — funcionaba en desktop por pura tolerancia del navegador,
+  // nunca en mobile.
+  const whatsappWinRef = useRef(null);
 
   // La reversión de la venta de un pedido cancelado (repone stock + borra
   // 'historial') vive en App.jsx — corre mientras el admin tenga la app
@@ -220,6 +268,7 @@ export default function GestorPedidosModal({
         },
       ]);
 
+      setAnimacionExito("¡Entrega confirmada!");
       refetch();
     } catch (err) {
       console.error("[GestorPedidosModal] Error confirmando entrega:", err);
@@ -387,6 +436,7 @@ export default function GestorPedidosModal({
             extra.entrega = {
               repartidor: e.conductor_nombre || "",
               direccion: e.direccion_entrega || boletaPedido.direccionEntrega || "",
+              tarifa: e.tarifa != null ? Number(e.tarifa) : null,
             };
             if (e.caja_sucursal && !extra.sede) extra.sede = e.caja_sucursal;
           }
@@ -409,15 +459,20 @@ export default function GestorPedidosModal({
           cliente?.whatsapp,
           "Atento tu pedido está en camino! Aquí está tu boleta"
         );
+        const win = whatsappWinRef.current;
         if (link) {
-          window.open(link, "_blank");
-        } else if (!res?.descargado) {
-          setAccionError("Este cliente no tiene un WhatsApp válido registrado.");
+          if (win && !win.closed) win.location.href = link;
+          else window.open(link, "_blank");
+        } else {
+          if (win && !win.closed) win.close();
+          if (!res?.descargado) setAccionError("Este cliente no tiene un WhatsApp válido registrado.");
         }
       } catch (err) {
         console.error("[GestorPedidosModal] Error copiando boleta:", err);
         setAccionError(err?.message || "No se pudo generar la boleta.");
+        if (whatsappWinRef.current && !whatsappWinRef.current.closed) whatsappWinRef.current.close();
       } finally {
+        whatsappWinRef.current = null;
         if (alive) {
           setBoletaPedido(null);
           setBoletaExtra(null);
@@ -428,6 +483,10 @@ export default function GestorPedidosModal({
       alive = false;
     };
   }, [boletaPedido, clientesInfo]);
+
+  const pedidosVisibles = pedidos
+    .filter((p) => (filtro === "repartir" ? p.requiereDelivery : !p.requiereDelivery))
+    .filter((p) => !filtroEstado || estadoGrupo(p) === filtroEstado);
 
   return (
     <div className="tz-modal-backdrop">
@@ -459,20 +518,42 @@ export default function GestorPedidosModal({
           ))}
         </div>
 
+        <div className="tz-gasto-tipo-buttons" style={{ margin: "0 0 12px", gap: 6 }}>
+          {[
+            ["en_carrera", "En carrera"],
+            ["entregado", "Entregado"],
+            ["cancelado", "Cancelado"],
+          ].map(([k, txt]) => (
+            <button
+              key={k}
+              type="button"
+              className={`tz-filtro-estado-chip tz-filtro-estado-chip-${k} ${
+                filtroEstado === k ? "tz-filtro-estado-chip-activo" : ""
+              }`}
+              onClick={() => setFiltroEstado((prev) => (prev === k ? null : k))}
+            >
+              {txt}
+            </button>
+          ))}
+        </div>
+
         {loading ? (
           <p className="tz-stock-editor-sub">
             <Loader2 className="tz-spin" size={16} /> Cargando pedidos...
           </p>
         ) : error ? (
           <p className="tz-error">{error}</p>
-        ) : pedidos.filter((p) => (filtro === "repartir" ? p.requiereDelivery : !p.requiereDelivery)).length === 0 ? (
+        ) : pedidosVisibles.length === 0 ? (
           <p className="tz-stock-editor-sub">
-            {filtro === "repartir" ? "No hay pedidos para repartir." : "No hay pedidos para retirar en tienda."}
+            {filtroEstado
+              ? "Ningún pedido coincide con ese filtro."
+              : filtro === "repartir"
+              ? "No hay pedidos para repartir."
+              : "No hay pedidos para retirar en tienda."}
           </p>
         ) : (
           <div className="tz-pedidos-list">
-            {pedidos
-              .filter((p) => (filtro === "repartir" ? p.requiereDelivery : !p.requiereDelivery))
+            {pedidosVisibles
               .map((pedido) => {
               const cliente = clientesInfo[pedido.clienteId];
               const procesando = procesandoId === pedido.id;
@@ -530,12 +611,21 @@ export default function GestorPedidosModal({
                 <div key={pedido.id} className="tz-pedido-card">
                   <div className="tz-pedido-card-head">
                     <span className={`tz-chat-dot ${activo ? "tz-chat-dot-activo" : ""}`} />
-                    <span className="tz-pedido-cliente-nombre">
+                    <span className="tz-pedido-cliente-nombre tz-pedido-cliente-nombre-fijo">
                       {cliente?.nombre || "Cliente"}
                     </span>
-                    <span className={`tz-pedido-estado tz-pedido-estado-${pedido.estado}`}>
-                      {ESTADO_LABELS[pedido.estado] || pedido.estado}
-                    </span>
+                    <div className="tz-pedido-card-tags">
+                      {sucursalNombre && (
+                        <span className="tz-pedido-sucursal-tag">{sucursalNombre}</span>
+                      )}
+                      <span className={`tz-pedido-modo-tag ${pedido.requiereDelivery ? "tz-pedido-modo-delivery" : "tz-pedido-modo-tienda"}`}>
+                        {pedido.requiereDelivery ? <Bike size={12} /> : <Store size={12} />}
+                        {pedido.requiereDelivery ? "Delivery" : "Retiro en tienda"}
+                      </span>
+                      <span className={`tz-pedido-estado tz-pedido-estado-${pedido.estado}`}>
+                        {ESTADO_LABELS[pedido.estado] || pedido.estado}
+                      </span>
+                    </div>
                   </div>
                   <div className="tz-pedido-card-meta">
                     {formatDate(pedido.createdAt)} {formatTime(pedido.createdAt)} ·{" "}
@@ -570,7 +660,10 @@ export default function GestorPedidosModal({
                     <button
                       type="button"
                       className="tz-pedido-action-btn"
-                      onClick={() => setBoletaPedido(pedido)}
+                      onClick={() => {
+                        whatsappWinRef.current = window.open("", "_blank");
+                        setBoletaPedido(pedido);
+                      }}
                       disabled={boletaPedido?.id === pedido.id}
                     >
                       <Copy size={14} /> Copiar boleta y WhatsApp
@@ -673,7 +766,20 @@ export default function GestorPedidosModal({
             setEntregaModal(null);
             refetch();
           }}
+          onEntregado={() => {
+            // Cierra el modal de seguimiento de la entrega ANTES de
+            // festejar — pedido explícito: la animación de éxito debe
+            // ser lo único en pantalla, no algo flotando encima de una
+            // ventana que sigue abierta detrás.
+            setEntregaModal(null);
+            refetch();
+            setAnimacionExito("¡Entrega confirmada!");
+          }}
         />
+      )}
+
+      {animacionExito && (
+        <AnimacionExitoNeon titulo={animacionExito} onTerminar={() => setAnimacionExito(null)} />
       )}
 
       {boletaPedido && (

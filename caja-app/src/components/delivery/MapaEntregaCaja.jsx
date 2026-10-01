@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, Maximize2 } from "lucide-react";
 import { supabaseTaxi } from "../../lib/supabaseTaxi";
 import { canalEntrega } from "../../hooks/useEntregaCaja";
 import { MAPBOX_TILE_URL, MAPBOX_ATTRIBUTION } from "../../lib/mapboxConfig";
@@ -10,7 +10,11 @@ import { MAPBOX_TILE_URL, MAPBOX_ATTRIBUTION } from "../../lib/mapboxConfig";
 // Mapa en vivo de una entrega, para la app de Caja (cliente / cajero).
 // Mismo canal Broadcast `entrega-<id>` contra el Supabase de Taxi-PE que
 // usa el repartidor. Pin del repartidor con el ícono de su categoría
-// (rpc_conductor_marcador) + etiqueta LIBRE / EN CARRERA, sin asientos.
+// (rpc_conductor_marcador), sin asientos NI el badge LIBRE/EN CARRERA
+// que tenía antes: mostraba el switch de disponibilidad para VIAJES del
+// conductor (conductores.estado) — nada que ver con esta entrega, y
+// parecía cambiar solo al aceptar/entregar el pedido sin ninguna
+// relación real de causa.
 
 const NIVEL_COLOR = {
   economico: "#39ffac",
@@ -32,28 +36,53 @@ const ICONO_ORIGEN = L.divIcon({
   iconAnchor: [12, 12],
 });
 
-function iconoRepartidor(color, iconoUrl, libre) {
+function iconoRepartidor(color, iconoUrl) {
   const veh = iconoUrl
     ? `<img class="tz-dlv-veh-img" src="${iconoUrl}" alt="" />`
     : `<span class="tz-dlv-veh" style="--c:${color}">🚖</span>`;
-  const badge = `<span class="tz-dlv-estado ${libre ? "tz-dlv-libre" : "tz-dlv-carrera"}">${
-    libre ? "LIBRE" : "EN CARRERA"
-  }</span>`;
   return L.divIcon({
     className: "tz-dlv-marker-wrap",
-    html: `<div class="tz-dlv-veh-group" style="--c:${color}">${veh}${badge}</div>`,
-    iconSize: [120, 26],
+    html: `<div class="tz-dlv-veh-group" style="--c:${color}">${veh}</div>`,
+    iconSize: [26, 26],
     iconAnchor: [13, 13],
   });
 }
 
-function AjustarVista({ puntos }) {
+function encuadrar(map, puntos) {
+  // Leaflet mide su contenedor UNA vez al crearse — este mapa vive
+  // dentro de un modal (a veces dos, anidado con Mis Pedidos), y si el
+  // tamaño final del contenedor no estaba listo todavía en ese momento
+  // (transición del modal, layout todavía asentándose), fitBounds
+  // encuadra mal (a veces ni error tira, solo centra en cualquier
+  // lado) — invalidateSize() le hace releer el tamaño real ANTES de
+  // calcular el encuadre.
+  map.invalidateSize();
+  const v = puntos.filter(Boolean);
+  if (v.length >= 2) map.fitBounds(v.map((p) => [p.lat, p.lng]), { padding: [40, 40], maxZoom: 16 });
+  else if (v.length === 1) map.setView([v[0].lat, v[0].lng], 15, { animate: true });
+}
+
+// Auto-encuadra SOLO la primera vez que hay suficientes puntos —
+// después de eso, cajero/cliente pueden mover y hacer zoom en el mapa
+// libremente sin que cada tick de GPS nuevo se lo pise. El botón
+// "Centrar" (recentrarTick) es la única forma de volver a encuadrar.
+function AjustarVista({ puntos, recentrarTick }) {
   const map = useMap();
+  const yaAjustado = useRef(false);
+
   useEffect(() => {
-    const v = puntos.filter(Boolean);
-    if (v.length >= 2) map.fitBounds(v.map((p) => [p.lat, p.lng]), { padding: [40, 40], maxZoom: 16 });
-    else if (v.length === 1) map.setView([v[0].lat, v[0].lng], 15, { animate: true });
+    if (yaAjustado.current) return;
+    if (puntos.filter(Boolean).length === 0) return;
+    encuadrar(map, puntos);
+    yaAjustado.current = true;
   }, [puntos, map]);
+
+  useEffect(() => {
+    if (recentrarTick === 0) return;
+    encuadrar(map, puntos);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentrarTick]);
+
   return null;
 }
 
@@ -72,6 +101,7 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
   const [mk, setMk] = useState({ iconoUrl: null, nivel: "economico", estado: null });
   const [oculto, setOculto] = useState(false);
   const [posAt, setPosAt] = useState(posInicial?.at ? new Date(posInicial.at).getTime() : 0);
+  const [recentrarTick, setRecentrarTick] = useState(0);
   const ultimo = useRef(0);
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -113,7 +143,6 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
   }, [entregaId]);
 
   const color = NIVEL_COLOR[mk.nivel] || NIVEL_COLOR.economico;
-  const libre = mk.estado === "activo";
   const centro = repartidor || destino || origen || { lat: -12.0464, lng: -77.0428 };
 
   const fr = frescura(posAt);
@@ -130,17 +159,30 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
       </div>
       {!oculto && (
         <div style={{ position: "relative" }}>
-          {!repartidor && (
+          {/* Vista previa del trayecto (todavía sin repartidor asignado,
+             ej. el radar de "Asignar repartidor"): solo sucursal +
+             destino, sin este aviso — "ubicando al repartidor" no tiene
+             sentido cuando todavía no hay NINGÚN repartidor elegido. */}
+          {conductorId && !repartidor && (
             <div className="tz-dlv-mapa-loading">
               <Loader2 size={14} className="tz-spin" /> <span>Ubicando al repartidor…</span>
             </div>
           )}
-          <MapContainer center={[centro.lat, centro.lng]} zoom={15} className="tz-dlv-mapa" zoomControl={false} scrollWheelZoom={false}>
-            <AjustarVista puntos={[repartidor, destino, origen]} />
+          <button
+            type="button"
+            className="tz-dlv-mapa-recentrar"
+            onClick={() => setRecentrarTick((n) => n + 1)}
+            aria-label="Volver a vista amplia"
+            title="Volver a vista amplia"
+          >
+            <Maximize2 size={15} />
+          </button>
+          <MapContainer center={[centro.lat, centro.lng]} zoom={15} className="tz-dlv-mapa" zoomControl={false} scrollWheelZoom>
+            <AjustarVista puntos={[repartidor, destino, origen]} recentrarTick={recentrarTick} />
             <TileLayer attribution={MAPBOX_ATTRIBUTION} url={MAPBOX_TILE_URL} />
             {origen && <Marker position={[origen.lat, origen.lng]} icon={ICONO_ORIGEN} />}
             {destino && <Marker position={[destino.lat, destino.lng]} icon={ICONO_DESTINO} />}
-            {repartidor && <Marker position={[repartidor.lat, repartidor.lng]} icon={iconoRepartidor(color, mk.iconoUrl, libre)} />}
+            {repartidor && <Marker position={[repartidor.lat, repartidor.lng]} icon={iconoRepartidor(color, mk.iconoUrl)} />}
           </MapContainer>
         </div>
       )}
@@ -160,7 +202,7 @@ function StyleOnce() {
       .tz-dlv-mapa-wrap > div { width: 100%; }
       .tz-dlv-mapa { height: 220px; width: 100%; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.12); }
       .tz-dlv-mapa .leaflet-container { background: #10141c; }
-      .tz-dlv-mapa-bar { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 6px; }
+      .tz-dlv-mapa-bar { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
       .tz-dlv-mapa-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px;
         border-radius: 999px; background: rgba(0,224,255,0.12); border: 1px solid rgba(0,224,255,0.4); color: #00e0ff;
         font-size: 12px; font-weight: 600; cursor: pointer; }
@@ -172,6 +214,11 @@ function StyleOnce() {
       .tz-dlv-mapa-loading { position: absolute; z-index: 500; top: 8px; left: 50%; transform: translateX(-50%);
         display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px;
         background: rgba(0,0,0,0.6); color: #fff; }
+      .tz-dlv-mapa-recentrar { position: absolute; z-index: 500; top: 8px; right: 8px;
+        display: flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+        border-radius: 999px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.15);
+        color: #00e0ff; cursor: pointer; }
+      .tz-dlv-mapa-recentrar:active { transform: scale(0.92); }
       .tz-dlv-marker-wrap { background: none; border: 0; }
       .tz-dlv-veh-group { position: relative; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; }
       .tz-dlv-veh, .tz-dlv-veh-img {

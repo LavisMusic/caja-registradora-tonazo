@@ -4,6 +4,7 @@ import {
   Pencil,
   X,
   Plus,
+  UserCheck,
   Minus,
   ShoppingCart,
   Check,
@@ -37,6 +38,7 @@ import {
   WifiOff,
   MapPin,
   Landmark,
+  Printer,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
@@ -46,6 +48,9 @@ import * as XLSX from "xlsx";
 import { formatSoles, formatDate, formatQty, formatTime } from "./utils/format";
 import CartRow from "./components/CartRow";
 import GestorPedidosModal from "./components/GestorPedidosModal";
+import AsignarFiadoModal from "./components/AsignarFiadoModal";
+import AnimacionNeonBienvenida from "./components/AnimacionNeonBienvenida";
+import { useBienvenidaNeon } from "./hooks/useBienvenidaNeon";
 import { safeGetItem, safeSetItem } from "./utils/safeStorage";
 import { useCatalog } from "./hooks/useCatalog";
 import { usePedidosBadge } from "./hooks/usePedidosBadge";
@@ -75,8 +80,10 @@ import TicketBoleta from "./components/TicketBoleta";
 import ImageManager from "./components/ImageManager";
 import PesoModal from "./components/PesoModal";
 import Combobox from "./components/Combobox";
+import GestorLocalidadesModal from "./components/GestorLocalidadesModal";
+import { imprimirBoleta } from "./lib/boleta";
 
-import logo from "./assets/logo.png";
+import logo from "./assets/logo.webp";
 
 /* ------------------------------------------------------------------ */
 /* CATALOGO DINAMICO: la carga (categorias/productos/stock desde       */
@@ -297,15 +304,6 @@ function toPeruWhatsappNumber(whatsapp) {
   const cleaned = (whatsapp || "").replace(/[^\d]/g, "");
   if (!cleaned) return null;
   return cleaned.length === 9 && cleaned.startsWith("9") ? `51${cleaned}` : cleaned;
-}
-
-/* Medianoche (hora local) del día que contiene el timestamp dado.
-   Se usa como respaldo del corte de turno cuando todavía no se ha
-   hecho ningún Cierre de Caja. */
-function startOfDay(ts) {
-  const d = new Date(ts);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
 }
 
 // Stock "virtual" de un Combo: NO lee 'product.consumes' (ese aplanado
@@ -556,11 +554,25 @@ export default function App() {
     nombre: cajeroNombre,
     sucursalId: authSucursalId,
     cajaId: authCajaId,
+    negocioId,
+    negocioLogoUrl,
   } = useAuth();
+  // Logo real de ESTE negocio (el mismo que ya usa la boleta) — cae al
+  // de Tonazo solo si el negocio todavía no subió uno.
+  const logoNegocio = negocioLogoUrl || logo;
   // Nombre a mostrar para "quién está operando" (p.ej. Cierre de Caja):
   // el nombre real del perfil autenticado si existe, y solo si no hay
   // uno cargado cae al rol genérico.
   const currentUserLabel = cajeroNombre || (isAdmin ? "Admin" : "Cajero");
+
+  // Bienvenida neon para admin/cajero (el cliente ya la tiene en
+  // CatalogPage.jsx) — mismo mecanismo "una vez por cuenta", pero con
+  // un mensaje de arranque de turno en vez de "ya podés comprar" (no
+  // tiene sentido para quien maneja la caja).
+  const { mostrar: mostrarBienvenidaStaff, marcarVista: marcarBienvenidaStaffVista } = useBienvenidaNeon(
+    session?.user?.id,
+    isAdmin || isCajero
+  );
 
   /* ---- Parte 3 "Filtros Superiores" (barra de navegación del admin):
      'localidadFiltroId' es solo un filtro DE UI (angosta las opciones
@@ -632,7 +644,7 @@ export default function App() {
     setProductVisibility,
     reorderCategorias,
     refetch: refetchCatalog,
-  } = useCatalog(sucursalOperativaId);
+  } = useCatalog(sucursalOperativaId, negocioId);
   const [restLoading, setRestLoading] = useState(true);
   const loading = catalogLoading || restLoading;
   const loadError = catalogError;
@@ -881,6 +893,7 @@ export default function App() {
   const [pagosPendientesError, setPagosPendientesError] = useState("");
 
   const [addClienteOpen, setAddClienteOpen] = useState(false);
+  const [asignarFiadoOpen, setAsignarFiadoOpen] = useState(false);
   const [newClienteName, setNewClienteName] = useState("");
   const [newClienteWhatsapp, setNewClienteWhatsapp] = useState("");
   const [clienteSaving, setClienteSaving] = useState(false);
@@ -947,9 +960,16 @@ export default function App() {
      al nombre de la variable (viene del panel original "Cajeros",
      ampliado después a "Usuarios" sin renombrar todo el estado) — cada
      fila trae { id, nombre, role }. ---- */
+  const [gestorLocalidadesOpen, setGestorLocalidadesOpen] = useState(false);
   const [cajerosOpen, setCajerosOpen] = useState(false);
   const [cajeros, setCajeros] = useState([]);
   const [cajerosLoading, setCajerosLoading] = useState(false);
+  // Filtros del Gestor de Usuarios: por rol (todos/cajero/cliente), y
+  // dentro de cada rol un sub-filtro propio — clientes por si pueden
+  // fiar o no, cajeros por sucursal.
+  const [filtroRolUsuarios, setFiltroRolUsuarios] = useState("cajero"); // 'cajero' | 'cliente'
+  const [filtroFiadoUsuarios, setFiltroFiadoUsuarios] = useState("con"); // 'con' | 'sin'
+  const [filtroSucursalUsuarios, setFiltroSucursalUsuarios] = useState("todas");
   const [addCajeroOpen, setAddCajeroOpen] = useState(false);
   const [newCajeroNombre, setNewCajeroNombre] = useState("");
   const [newCajeroUsuario, setNewCajeroUsuario] = useState("");
@@ -987,34 +1007,55 @@ export default function App() {
   const [jerarquiaError, setJerarquiaError] = useState("");
 
   const refetchJerarquia = useCallback(async () => {
-    const [
-      { data: localidadesRows, error: localidadesErr },
-      { data: sucursalesRows, error: sucursalesErr },
-      { data: cajasRows, error: cajasErr },
-    ] = await Promise.all([
-      supabase.from("localidades").select("*").eq("activo", true).order("nombre"),
-      supabase.from("sucursales").select("*").eq("activo", true).order("nombre"),
-      supabase.from("cajas").select("*").order("nombre"),
-    ]);
+    // negocio_id vive solo en 'localidades' (cabeza de la jerarquía,
+    // ver migración 0073) — sucursales/cajas no lo tienen directo, así
+    // que se filtran en cascada por los ids de localidades/sucursales
+    // YA acotados a este negocio. Sin esto, el admin de un negocio
+    // nuevo veía TODAS las localidades/sucursales/cajas de Tonazo.
+    let localidadesQuery = supabase.from("localidades").select("*").eq("activo", true).order("orden");
+    if (negocioId) localidadesQuery = localidadesQuery.eq("negocio_id", negocioId);
+    const { data: localidadesRows, error: localidadesErr } = await localidadesQuery;
 
-    if (localidadesErr || sucursalesErr || cajasErr) {
-      console.error("Error cargando la jerarquía multi-sucursal:", {
-        localidadesErr,
-        sucursalesErr,
-        cajasErr,
-      });
+    if (localidadesErr) {
+      console.error("Error cargando la jerarquía multi-sucursal:", { localidadesErr });
+      setJerarquiaError("No se pudo cargar localidades/sucursales/cajas.");
+      return;
+    }
+
+    const localidadIds = (localidadesRows || []).map((r) => r.id);
+
+    let sucursalesQuery = supabase.from("sucursales").select("*").eq("activo", true).order("orden");
+    if (negocioId) sucursalesQuery = sucursalesQuery.in("localidad_id", localidadIds);
+    const { data: sucursalesRows, error: sucursalesErr } = await sucursalesQuery;
+
+    if (sucursalesErr) {
+      console.error("Error cargando la jerarquía multi-sucursal:", { sucursalesErr });
+      setJerarquiaError("No se pudo cargar localidades/sucursales/cajas.");
+      return;
+    }
+
+    let cajasQuery = supabase.from("cajas").select("*").order("nombre");
+    if (negocioId) {
+      const sucursalIds = (sucursalesRows || []).map((r) => r.id);
+      cajasQuery = cajasQuery.in("sucursal_id", sucursalIds.length ? sucursalIds : ["00000000-0000-0000-0000-000000000000"]);
+    }
+    const { data: cajasRows, error: cajasErr } = await cajasQuery;
+
+    if (cajasErr) {
+      console.error("Error cargando la jerarquía multi-sucursal:", { cajasErr });
       setJerarquiaError("No se pudo cargar localidades/sucursales/cajas.");
       return;
     }
 
     setLocalidades(
-      (localidadesRows || []).map((r) => ({ id: r.id, nombre: r.nombre }))
+      (localidadesRows || []).map((r) => ({ id: r.id, nombre: r.nombre, orden: r.orden }))
     );
     setSucursales(
       (sucursalesRows || []).map((r) => ({
         id: r.id,
         localidadId: r.localidad_id,
         nombre: r.nombre,
+        orden: r.orden,
         lat: r.lat != null ? Number(r.lat) : null,
         lng: r.lng != null ? Number(r.lng) : null,
       }))
@@ -1032,7 +1073,7 @@ export default function App() {
       }))
     );
     setJerarquiaError("");
-  }, []);
+  }, [negocioId]);
 
   // Antes solo el admin cargaba la jerarquía (la usaba para los
   // formularios de Cajeros). Ahora el CAJERO también la necesita: su
@@ -1099,9 +1140,10 @@ export default function App() {
     const nombre = (window.prompt("Nombre de la nueva localidad:") || "").trim();
     if (!nombre) return null;
 
+    const orden = localidades.length;
     const { data, error } = await supabase
       .from("localidades")
-      .insert([{ nombre, activo: true }])
+      .insert([{ nombre, activo: true, negocio_id: negocioId, orden }])
       .select()
       .single();
 
@@ -1122,9 +1164,10 @@ export default function App() {
     const nombre = (window.prompt("Nombre de la nueva sucursal:") || "").trim();
     if (!nombre) return null;
 
+    const orden = sucursalesPorLocalidad(localidadId).length;
     const { data: sucursalData, error } = await supabase
       .from("sucursales")
-      .insert([{ localidad_id: localidadId, nombre, activo: true }])
+      .insert([{ localidad_id: localidadId, nombre, activo: true, orden }])
       .select()
       .single();
 
@@ -1201,6 +1244,44 @@ export default function App() {
 
     setSucursales((prev) => prev.map((s) => (s.id === sucursal.id ? { ...s, nombre } : s)));
     cancelRenombrarSucursal();
+  };
+
+  /* ---- Eliminar sucursal (Gestor de Cajas, junto al botón de
+     coordenadas). No se intenta un borrado en cascada acá — si la
+     sucursal todavía tiene cajas, ventas, pedidos o cajeros asociados,
+     la propia base de datos rechaza el DELETE por la restricción de
+     llave foránea, y ese es el mensaje que se muestra: la forma segura
+     de evitar borrar historial real por accidente es dejar que el
+     admin primero vacíe/reasigne lo que la esté usando. ---- */
+  const [eliminandoSucursalId, setEliminandoSucursalId] = useState(null);
+
+  const eliminarSucursal = async (sucursal) => {
+    if (
+      !window.confirm(
+        `¿Eliminar la sucursal "${sucursal.nombre}"? Esta acción no se puede deshacer.`
+      )
+    ) {
+      return;
+    }
+
+    setEliminandoSucursalId(sucursal.id);
+    setGestorCajaError("");
+
+    const { error } = await supabase.from("sucursales").delete().eq("id", sucursal.id);
+
+    setEliminandoSucursalId(null);
+
+    if (error) {
+      console.error("Error al eliminar sucursal:", error);
+      setGestorCajaError(
+        /foreign key|violat/i.test(error.message || "")
+          ? `No se pudo eliminar "${sucursal.nombre}": todavía tiene cajas, ventas, pedidos o cajeros asociados. Primero hay que vaciarla o reasignar eso.`
+          : `No se pudo eliminar "${sucursal.nombre}": ${error.message || "error desconocido"}`
+      );
+      return;
+    }
+
+    setSucursales((prev) => prev.filter((s) => s.id !== sucursal.id));
   };
 
   /* ---- Coordenadas de la sucursal (punto A del delivery). Se pega el
@@ -1522,6 +1603,15 @@ export default function App() {
   const [checkoutRuc, setCheckoutRuc] = useState("");
   const [lastSale, setLastSale] = useState(null); // resumen de la última venta enviada
 
+  // "Crear cuenta" opcional para el WhatsApp general del checkout (no
+  // FIADO): el nombre/número de acá son SOLO para mandar la boleta —
+  // nunca se guardan solos. Si lo que se está tipeando no matchea
+  // ningún cliente ya registrado de este negocio, aparece un botón
+  // para, recién ahí y a propósito, darle una cuenta de verdad.
+  const [creandoCuentaCheckout, setCreandoCuentaCheckout] = useState(false);
+  const [checkoutCuentaError, setCheckoutCuentaError] = useState("");
+  const [checkoutCuentaCreada, setCheckoutCuentaCreada] = useState(false);
+
   /* ---- boleta digital por WhatsApp: "Copiar Boleta" captura
      (html2canvas) el TicketBoleta oculto -> imagen -> portapapeles;
      "Enviar Boleta por WhatsApp" solo abre el chat correcto (wa.me)
@@ -1583,7 +1673,17 @@ export default function App() {
     [cierres, cajaOperativaId, tieneVistaActiva]
   );
   const clientesVisibles = useMemo(
-    () => (tieneVistaActiva ? clientes.filter((c) => c.sucursalId === sucursalOperativaId) : []),
+    () =>
+      tieneVistaActiva
+        ? clientes.filter(
+            // sucursalId == null (auto-registro público, o un fiado
+            // viejo de antes del fix de create-cliente que 0085 no pudo
+            // inferir por falta de historial): sin sucursal "dueña"
+            // conocida, se muestra en TODAS las del negocio en vez de
+            // quedar invisible para siempre por esa columna vacía.
+            (c) => (c.sucursalId === sucursalOperativaId || c.sucursalId == null) && c.fiadoHabilitado
+          )
+        : [],
     [clientes, sucursalOperativaId, tieneVistaActiva]
   );
   const fiadoItemsVisibles = useMemo(
@@ -1627,6 +1727,23 @@ export default function App() {
   const streamRef = useRef(null);
   const fileInputRef = useRef(null);
   const submitBarRef = useRef(null);
+  const pageFooterRef = useRef(null);
+
+  /* ---- botón flotante "ir al pie de página": aparece recién cuando
+     ya hay algo scrolleado (en la parte de arriba no tiene sentido, el
+     footer con Gastos/Stock/Productos ya se ve o está cerca) — la
+     entrada/salida con slide-up la hace el CSS (.tz-scrolltop-fab-
+     visible), acá solo se decide el booleano. ---- */
+  const [scrollFabVisible, setScrollFabVisible] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrollFabVisible(window.scrollY > 260);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  const scrollToFooter = () => {
+    pageFooterRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  };
 
   /* ---- cierra el menú "Métodos de Pago" del header al hacer clic afuera ---- */
   useEffect(() => {
@@ -1801,11 +1918,26 @@ export default function App() {
      directo en la DB y no tocan este estado. ---- */
   const recargarDatos = useCallback(async () => {
     async function load() {
+      // negocio_id (Fase 1 del super-admin): historial/comprobantes/
+      // fiado_items/movimientos_fiado no tienen negocio_id propio (solo
+      // sucursal_id/caja_id, ver migración 0073) — se acotan filtrando
+      // por las sucursales YA acotadas a este negocio (refetchJerarquia,
+      // estado 'sucursales'). Sin esto, cualquier negocio nuevo veía el
+      // historial de ventas/fiados de Tonazo mezclado con el suyo
+      // (confirmado en vivo). Con negocioId pero sucursales todavía
+      // vacío (primer render, antes de que refetchJerarquia resuelva),
+      // el filtro resulta en 0 filas — se corrige solo apenas
+      // 'sucursales' llega (ver dependencia del useCallback, abajo).
+      const sucursalIdsDelNegocio = negocioId ? sucursales.map((s) => s.id) : null;
+      const scopeSucursal = (query) =>
+        sucursalIdsDelNegocio
+          ? query.in("sucursal_id", sucursalIdsDelNegocio.length ? sucursalIdsDelNegocio : ["00000000-0000-0000-0000-000000000000"])
+          : query;
+
       // 3) HISTORIAL
-      const { data: historialRows, error: historialError } = await supabase
-        .from("historial")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const { data: historialRows, error: historialError } = await scopeSucursal(
+        supabase.from("historial").select("*").order("fecha", { ascending: false })
+      );
 
       if (historialError) {
         console.error("Error cargando historial desde Supabase:", historialError);
@@ -1842,10 +1974,9 @@ export default function App() {
       }));
 
       // 3) COMPROBANTES (ingresos manuales / detectados por OCR)
-      const { data: comprobRows, error: comprobError } = await supabase
-        .from("comprobantes")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const { data: comprobRows, error: comprobError } = await scopeSucursal(
+        supabase.from("comprobantes").select("*").order("fecha", { ascending: false })
+      );
 
       if (comprobError) {
         console.error("Error cargando comprobantes desde Supabase:", comprobError);
@@ -1866,10 +1997,12 @@ export default function App() {
       }));
 
       // 4) LIBRETA: clientes fiado + fiado_items (deuda por producto) + movimientos (cobros)
-      const { data: clienteRows, error: clienteLoadError } = await supabase
-        .from("clientes_fiado")
-        .select("*")
-        .order("fecha", { ascending: false });
+      // clientes_fiado SÍ tiene negocio_id propio (decidido con el
+      // usuario: identidad de login compartida, pero el fiado se lleva
+      // por separado en cada negocio).
+      let clienteQuery = supabase.from("clientes_fiado").select("*").order("fecha", { ascending: false });
+      if (negocioId) clienteQuery = clienteQuery.eq("negocio_id", negocioId);
+      const { data: clienteRows, error: clienteLoadError } = await clienteQuery;
 
       if (clienteLoadError) {
         console.error("Error cargando clientes_fiado desde Supabase:", clienteLoadError);
@@ -1886,13 +2019,18 @@ export default function App() {
         authUserId: row.auth_user_id || null,
         sucursalId: row.sucursal_id || null,
         cajaId: row.caja_id || null,
+        // Fiados restringido a usuarios asignados (migración 0068) — el
+        // Gestor de Usuarios/Libreta lo usa para mostrar solo cuentas
+        // con Fiados de verdad habilitado, no cualquier cliente
+        // registrado.
+        fiadoHabilitado: row.fiado_habilitado === true,
+        dni: row.dni || null,
         timestamp: Number(row.fecha),
       }));
 
-      const { data: fiadoItemRows, error: fiadoItemLoadError } = await supabase
-        .from("fiado_items")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const { data: fiadoItemRows, error: fiadoItemLoadError } = await scopeSucursal(
+        supabase.from("fiado_items").select("*").order("fecha", { ascending: false })
+      );
 
       if (fiadoItemLoadError) {
         console.error("Error cargando fiado_items desde Supabase:", fiadoItemLoadError);
@@ -1913,10 +2051,9 @@ export default function App() {
         timestamp: Number(row.fecha),
       }));
 
-      const { data: movRows, error: movLoadError } = await supabase
-        .from("movimientos_fiado")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const { data: movRows, error: movLoadError } = await scopeSucursal(
+        supabase.from("movimientos_fiado").select("*").order("fecha", { ascending: false })
+      );
 
       if (movLoadError) {
         console.error("Error cargando movimientos_fiado desde Supabase:", movLoadError);
@@ -1936,9 +2073,11 @@ export default function App() {
       }));
 
       // 5) GASTOS + PROVEEDORES
-      const { data: proveedorRows, error: proveedorLoadError } = await supabase
-        .from("proveedores")
-        .select("*");
+      // negocio_id (deuda técnica de la Fase 1): proveedores quedó
+      // afuera cuando se acotó 'gastos' por negocio.
+      let proveedorQuery = supabase.from("proveedores").select("*");
+      if (negocioId) proveedorQuery = proveedorQuery.eq("negocio_id", negocioId);
+      const { data: proveedorRows, error: proveedorLoadError } = await proveedorQuery;
 
       if (proveedorLoadError) {
         console.error("Error cargando proveedores desde Supabase:", proveedorLoadError);
@@ -1952,10 +2091,15 @@ export default function App() {
 
       // Se piden los items de cada gasto en la misma consulta (embedding
       // de Supabase vía la FK gasto_items.gasto_id -> gastos.id).
-      const { data: gastoRows, error: gastoLoadError } = await supabase
+      // negocio_id (Fase 1 del super-admin): 'gastos' no tenía ningún
+      // scoping antes (ver migración 0073) — sin este filtro, un admin
+      // de un negocio nuevo vería los gastos operativos de Tonazo.
+      let gastoQuery = supabase
         .from("gastos")
         .select("*, gasto_items(*)")
         .order("fecha", { ascending: false });
+      if (negocioId) gastoQuery = gastoQuery.eq("negocio_id", negocioId);
+      const { data: gastoRows, error: gastoLoadError } = await gastoQuery;
 
       if (gastoLoadError) {
         console.error("Error cargando gastos desde Supabase:", gastoLoadError);
@@ -1982,10 +2126,9 @@ export default function App() {
       }));
 
       // 6) CIERRES DE CAJA (snapshots de cada corte de turno)
-      const { data: cierreRows, error: cierreLoadError } = await supabase
-        .from("cierres_caja")
-        .select("*")
-        .order("fecha", { ascending: false });
+      const { data: cierreRows, error: cierreLoadError } = await scopeSucursal(
+        supabase.from("cierres_caja").select("*").order("fecha", { ascending: false })
+      );
 
       if (cierreLoadError) {
         console.error("Error cargando cierres_caja desde Supabase:", cierreLoadError);
@@ -2033,7 +2176,13 @@ export default function App() {
     }
 
     await load();
-  }, []);
+    // negocioId/sucursales: sin estas dependencias, esta función quedaba
+    // "congelada" con los valores de la primerísima vez que se creó (el
+    // mismo tipo de bug ya encontrado en productStats) — nunca se
+    // volvía a ejecutar cuando 'sucursales' pasaba de [] a su valor
+    // real, dejando el filtro de historial/libreta corriendo para
+    // siempre contra una lista vacía.
+  }, [negocioId, sucursales]);
 
   useEffect(() => {
     recargarDatos();
@@ -2815,6 +2964,8 @@ export default function App() {
     });
     setCheckoutNombre("");
     setCheckoutWhatsapp("");
+    setCheckoutCuentaCreada(false);
+    setCheckoutCuentaError("");
     setCheckoutRucEnabled(false);
     setCheckoutRuc("");
     setCheckoutMetodo(null);
@@ -2903,6 +3054,7 @@ export default function App() {
       celular,
       sucursalId: sucursalOperativaId,
       cajaId: cajaOperativaId,
+      negocioId,
     };
     console.log("create-cliente (checkout FIADO) → payload enviado:", payload);
     const { data, error } = await supabase.functions.invoke("create-cliente", {
@@ -2939,20 +3091,89 @@ export default function App() {
      vincula ambos campos entre sí — elegir una sugerencia por nombre
      también completa su WhatsApp (si lo tiene), y viceversa. Puramente
      un atajo de tipeo: no obliga a que el cliente exista, el checkout
-     normal (no-Fiado) sigue aceptando cualquier nombre/número nuevo. ---- */
+     normal (no-Fiado) sigue aceptando cualquier nombre/número nuevo.
+     A propósito busca en 'clientes' (TODOS los clientes de este
+     negocio) y NO en 'clientesVisibles' — esa otra lista además exige
+     fiado_habilitado Y la sucursal activa (pensada para la Libreta),
+     así que un cliente sin fiado, o de otra sucursal del mismo
+     negocio, jamás aparecía acá aunque estuviera registrado. ---- */
+  // Además de 'clientes' (este negocio), se busca en la base GLOBAL de
+  // clientes de la plataforma — alguien registrado desde el directorio
+  // u otro negocio también tiene que aparecer acá. Eso no se puede leer
+  // desde esta sesión (RLS por negocio), así que va por manage-usuario
+  // (acción 'buscar-cliente'), con debounce para no pegarle en cada tecla.
+  const [globalNombreSug, setGlobalNombreSug] = useState([]);
+  const [globalWhatsappSug, setGlobalWhatsappSug] = useState([]);
+  const buscarClientesGlobal = useCallback(async (q) => {
+    const { data, error } = await supabase.functions.invoke("manage-usuario", {
+      body: { action: "buscar-cliente", query: q },
+    });
+    if (error) return [];
+    return (data?.resultados || []).map((r) => ({
+      id: r.auth_user_id,
+      nombre: r.nombre || "",
+      whatsapp: r.whatsapp || "",
+    }));
+  }, []);
+  useEffect(() => {
+    const q = checkoutNombre.trim();
+    if (q.length < 3) {
+      setGlobalNombreSug([]);
+      return undefined;
+    }
+    let vigente = true;
+    const t = setTimeout(async () => {
+      const r = await buscarClientesGlobal(q);
+      if (vigente) setGlobalNombreSug(r);
+    }, 300);
+    return () => {
+      vigente = false;
+      clearTimeout(t);
+    };
+  }, [checkoutNombre, buscarClientesGlobal]);
+  useEffect(() => {
+    const q = checkoutWhatsapp.replace(/[^\d]/g, "");
+    if (q.length < 3) {
+      setGlobalWhatsappSug([]);
+      return undefined;
+    }
+    let vigente = true;
+    const t = setTimeout(async () => {
+      const r = await buscarClientesGlobal(q);
+      if (vigente) setGlobalWhatsappSug(r);
+    }, 300);
+    return () => {
+      vigente = false;
+      clearTimeout(t);
+    };
+  }, [checkoutWhatsapp, buscarClientesGlobal]);
+
+  // Locales primero; una misma persona (mismo celular) no se repite.
+  const mezclarSugerencias = (locales, globales) => {
+    const vistos = new Set();
+    const salida = [];
+    for (const c of [...locales, ...globales]) {
+      const clave = (c.whatsapp || "").replace(/[^\d]/g, "") || `n:${(c.nombre || "").toLowerCase()}`;
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      salida.push(c);
+    }
+    return salida.slice(0, 6);
+  };
+
   const checkoutNombreSuggestions = useMemo(() => {
     const q = checkoutNombre.trim().toLowerCase();
     if (!q) return [];
-    return clientesVisibles.filter((c) => c.nombre?.toLowerCase().includes(q)).slice(0, 6);
-  }, [checkoutNombre, clientesVisibles]);
+    const locales = clientes.filter((c) => c.nombre?.toLowerCase().includes(q));
+    return mezclarSugerencias(locales, globalNombreSug);
+  }, [checkoutNombre, clientes, globalNombreSug]);
 
   const checkoutWhatsappSuggestions = useMemo(() => {
     const q = checkoutWhatsapp.replace(/[^\d]/g, "");
     if (!q) return [];
-    return clientesVisibles
-      .filter((c) => c.whatsapp && c.whatsapp.replace(/[^\d]/g, "").includes(q))
-      .slice(0, 6);
-  }, [checkoutWhatsapp, clientesVisibles]);
+    const locales = clientes.filter((c) => c.whatsapp && c.whatsapp.replace(/[^\d]/g, "").includes(q));
+    return mezclarSugerencias(locales, globalWhatsappSug);
+  }, [checkoutWhatsapp, clientes, globalWhatsappSug]);
 
   const selectCheckoutClienteByNombre = (c) => {
     setCheckoutNombre(c.nombre || "");
@@ -2964,6 +3185,73 @@ export default function App() {
     setCheckoutWhatsapp(c.whatsapp || "");
     if (c.nombre) setCheckoutNombre(c.nombre);
     setCheckoutWhatsappSuggestOpen(false);
+  };
+
+  // ¿El número que se está tipeando ya es cliente de este negocio? A
+  // diferencia de checkoutWhatsappSuggestions (matchea por "contiene",
+  // para el autocompletado), esto exige coincidencia EXACTA de
+  // dígitos — es lo que decide si mostrar el botón de "Crear cuenta".
+  const checkoutWhatsappDigits = checkoutWhatsapp.replace(/[^\d]/g, "");
+  const checkoutWhatsappTieneCuenta = [...clientes, ...globalWhatsappSug].some(
+    (c) => c.whatsapp && c.whatsapp.replace(/[^\d]/g, "") === checkoutWhatsappDigits
+  );
+
+  /* ---- "Crear cuenta" opcional desde el WhatsApp general del
+     checkout: a diferencia del alta de Fiado (que YA es un alta a
+     propósito), acá el nombre/número existen solo para mandar la
+     boleta — nada se guarda hasta que el cajero toca este botón EN
+     SERIO. Reusa create-cliente (tipo 'cliente', sin pin), mismo
+     camino que el resto de altas de cliente. ---- */
+  const crearCuentaDesdeCheckout = async () => {
+    const nombre = checkoutNombre.trim();
+    // Mismo formato que el resto de las altas (9 dígitos, sin el 51 de
+    // WhatsApp): el celular es también el usuario de login y la clave
+    // con la que Taxi-PE espeja el saldo — con el 51 adelante esta
+    // cuenta no matcheaba ni una ni otra cosa.
+    const digitos = checkoutWhatsapp.replace(/[^\d]/g, "");
+    const celular = digitos.length === 11 && digitos.startsWith("51") ? digitos.slice(2) : digitos;
+    if (!nombre) {
+      setCheckoutCuentaError("Ingresa el nombre del cliente.");
+      return;
+    }
+    if (!celular || !/^\d{6,15}$/.test(celular)) {
+      setCheckoutCuentaError("Ingresa un WhatsApp válido.");
+      return;
+    }
+    setCreandoCuentaCheckout(true);
+    setCheckoutCuentaError("");
+    const { data, error } = await supabase.functions.invoke("create-cliente", {
+      body: {
+        tipo: "cliente",
+        nombre,
+        celular,
+        negocioId,
+        sucursalId: sucursalOperativaId,
+        cajaId: cajaOperativaId,
+      },
+    });
+    setCreandoCuentaCheckout(false);
+    if (error) {
+      const body = await error.context?.json?.().catch(() => null);
+      setCheckoutCuentaError(body?.error || "No se pudo crear la cuenta.");
+      return;
+    }
+    // La respuesta no trae la fila completa de clientes_fiado — se
+    // arma localmente con lo que ya se sabe, para que quede
+    // disponible de una en el buscador de esta misma sesión sin
+    // esperar a recargarDatos().
+    setClientes((prev) => [
+      {
+        id: data?.id,
+        nombre,
+        whatsapp: celular,
+        fiadoHabilitado: false,
+        sucursalId: sucursalOperativaId || null,
+        cajaId: cajaOperativaId || null,
+      },
+      ...prev,
+    ]);
+    setCheckoutCuentaCreada(true);
   };
 
   /* ---- checkout: ¿ya se puede mostrar "Enviar Venta"? ---- */
@@ -2986,8 +3274,8 @@ export default function App() {
     return amountOk && !!scanDetected.photoUrl;
   })();
 
-  /* ---- edición de stock: ya no pide contraseña propia, /admin (vía
-     RequireAdmin) exige sesión de admin real para llegar hasta acá ---- */
+  /* ---- edición de stock: ya no pide contraseña propia, /:slug (vía
+     NegocioAccessPage) exige sesión de admin real para llegar hasta acá ---- */
   const resetNewProductoForm = () => {
     setNewProductoOpen(false);
     setNewProductoCodigo("");
@@ -3183,6 +3471,7 @@ export default function App() {
         costoTotalInicial: costoTotalNum,
         ventaPorPeso: newProductoVentaPorPeso,
         sucursalId: sucursalOperativaId,
+        negocioId,
       });
 
       const nombreCreado = composeProductoNombre({
@@ -3451,26 +3740,33 @@ export default function App() {
         .from("categorias")
         .select("activo, orden")
         .eq("nombre", categoriaActual)
+        .eq("negocio_id", negocioId)
         .maybeSingle();
       if (lookupError) return { error: lookupError };
 
       // Paso 1: crear el padre nuevo (mismo activo/orden que el viejo,
       // para que no "salte" de posición en las pestañas del catálogo
-      // por el simple hecho de haberse renombrado).
+      // por el simple hecho de haberse renombrado). negocio_id: sin
+      // esto el nuevo padre no aparecería en el catálogo de ESTE
+      // negocio (useCatalog ya filtra categorias por negocio_id).
       const { error: insertError } = await supabase.from("categorias").insert([
         {
           nombre: nombreNuevo,
           activo: catViejaRow?.activo ?? true,
           orden: catViejaRow?.orden ?? Date.now(),
+          negocio_id: negocioId,
         },
       ]);
       if (insertError) return { error: insertError };
 
-      // Paso 2: migrar los productos hijos al nombre nuevo.
+      // Paso 2: migrar los productos hijos al nombre nuevo — acotado a
+      // ESTE negocio, para no arrastrar (o pisar) productos de otro
+      // negocio que coincida en el nombre de categoría.
       const { error: updateError } = await supabase
         .from("productos")
         .update({ categoria: nombreNuevo })
-        .eq("categoria", categoriaActual);
+        .eq("categoria", categoriaActual)
+        .eq("negocio_id", negocioId);
       if (updateError) {
         // Deshace el paso 1 — no dejar un padre nuevo sin productos
         // por una migración que no se completó.
@@ -3759,7 +4055,7 @@ export default function App() {
     try {
       const { error } = await supabase
         .from("categorias")
-        .insert([{ nombre, activo: true, orden: safeOrdenValue() }]);
+        .insert([{ nombre, activo: true, orden: safeOrdenValue(), negocio_id: negocioId }]);
       if (error) return { error };
       await refetchCatalog();
       return { error: null };
@@ -3797,6 +4093,7 @@ export default function App() {
         subgrupo: subgrupoRaw,
         stockExistente: stock,
         sucursalId: sucursalOperativaId,
+        negocioId,
       });
       await refetchCatalog();
       return { error: null };
@@ -3921,7 +4218,7 @@ export default function App() {
         qty: Number(it.qty),
         consumes: productsById[it.productId]?.consumes || [],
       }));
-      await crearCombo({ nombre, categoria, subgrupo: comboSubgrupo, precio, items });
+      await crearCombo({ nombre, categoria, subgrupo: comboSubgrupo, precio, items, negocioId });
       await refetchCatalog();
       setComboModalOpen(false);
       resetComboForm();
@@ -4368,65 +4665,6 @@ export default function App() {
     resetCobroForm();
   };
 
-  /* ---- eliminar cliente + su historial de fiado (Libreta): borra
-     primero las tablas hijas (fiado_items, movimientos_fiado) — que
-     tienen FK a clientes_fiado.id — y recién al final la fila del
-     cliente, en ese orden, para no chocar con la FK. Nota: esto NO
-     borra su cuenta de Supabase Auth (auth_user_id) — un cliente
-     eliminado acá simplemente deja de poder loguearse a ver un fiado
-     que ya no existe, pero su acceso no queda revocado explícitamente;
-     revocarlo requeriría otra Edge Function con service_role. ---- */
-  const eliminarClienteFiado = async (cliente) => {
-    if (
-      !window.confirm(
-        `¿Estás seguro de eliminar el registro de "${cliente.nombre}"? Esto borra también todo su historial de fiados y pagos.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      const { error: itemsError } = await supabase
-        .from("fiado_items")
-        .delete()
-        .eq("cliente_id", cliente.id);
-      if (itemsError) {
-        console.error("Error eliminando fiado_items del cliente:", itemsError);
-        alert("No se pudo eliminar el historial de deuda de este cliente.");
-        return;
-      }
-
-      const { error: movError } = await supabase
-        .from("movimientos_fiado")
-        .delete()
-        .eq("cliente_id", cliente.id);
-      if (movError) {
-        console.error("Error eliminando movimientos_fiado del cliente:", movError);
-        alert("No se pudo eliminar el historial de pagos de este cliente.");
-        return;
-      }
-
-      const { error: clienteError } = await supabase
-        .from("clientes_fiado")
-        .delete()
-        .eq("id", cliente.id);
-      if (clienteError) {
-        console.error("Error eliminando cliente:", clienteError);
-        alert("No se pudo eliminar el cliente.");
-        return;
-      }
-
-      setClientes((prev) => prev.filter((c) => c.id !== cliente.id));
-      setFiadoItems((prev) => prev.filter((it) => it.clienteId !== cliente.id));
-      setMovimientos((prev) => prev.filter((m) => m.clienteId !== cliente.id));
-      if (selectedClienteId === cliente.id) setSelectedClienteId(null);
-      if (checkoutFiadoClienteId === cliente.id) setCheckoutFiadoClienteId(null);
-    } catch (err) {
-      console.error("Error eliminando cliente:", err);
-      alert("No se pudo eliminar el cliente. Intenta de nuevo.");
-    }
-  };
-
   const handleCobroMontoChange = (value) => {
     if (value === "" || /^\d*\.?\d{0,2}$/.test(value)) {
       setCobroMonto(value);
@@ -4477,6 +4715,7 @@ export default function App() {
       celular,
       sucursalId: sucursalOperativaId,
       cajaId: cajaOperativaId,
+      negocioId,
     };
     console.log("create-cliente (Libreta) → payload enviado:", payload);
     const { data, error } = await supabase.functions.invoke("create-cliente", {
@@ -4788,9 +5027,15 @@ export default function App() {
     if (!nodeRef.current) {
       throw new Error("No se pudo preparar la boleta. Intenta de nuevo.");
     }
-    if (!navigator.clipboard?.write || typeof window.ClipboardItem !== "function") {
-      throw new Error("Este navegador no permite copiar imágenes al portapapeles.");
-    }
+    // navigator.clipboard.write (imágenes) exige "contexto seguro":
+    // https, o http://localhost — abrir la app por la IP de la red
+    // local (ej. http://192.168.x.x:5174, como en el celu/otra PC de
+    // prueba) NO califica, así que acá SIEMPRE va a faltar. En vez de
+    // dejar al cajero sin ninguna boleta, se degrada a descargar la
+    // imagen (el navegador la deja adjuntar a mano en WhatsApp Web/app
+    // desde la carpeta de descargas).
+    const puedeCopiarAlPortapapeles =
+      !!navigator.clipboard?.write && typeof window.ClipboardItem === "function";
     try {
       const isMobile = window.innerWidth < 768;
       const canvasPromise = html2canvas(nodeRef.current, {
@@ -4805,7 +5050,21 @@ export default function App() {
       const canvas = await Promise.race([canvasPromise, timeoutPromise]);
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
       if (!blob) throw new Error("No se pudo generar la imagen de la boleta.");
-      await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
+
+      if (puedeCopiarAlPortapapeles) {
+        await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
+        return { downloaded: false };
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `boleta-${Date.now()}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      return { downloaded: true };
     } catch (err) {
       if (err?.message === "TIMEOUT_RENDER") {
         throw new Error(
@@ -4825,8 +5084,12 @@ export default function App() {
     setBoletaError("");
     setCopiandoBoleta(true);
     try {
-      await copiarBoletaAlPortapapeles(ticketRef);
-      alert("¡Boleta copiada! Ve a WhatsApp y pégala en el chat");
+      const { downloaded } = await copiarBoletaAlPortapapeles(ticketRef);
+      alert(
+        downloaded
+          ? "Este navegador no permite copiar imágenes — se descargó la boleta. Adjúntala a mano en WhatsApp."
+          : "¡Boleta copiada! Ve a WhatsApp y pégala en el chat"
+      );
     } catch (err) {
       console.error("Error copiando la boleta al portapapeles:", err);
       setBoletaError(err?.message || "No se pudo copiar la boleta. Intenta de nuevo.");
@@ -4873,8 +5136,12 @@ export default function App() {
       // podría capturar el estado anterior por la carrera entre el
       // re-render de React y la lectura del DOM.
       flushSync(() => setHistorialBoletaData(datos));
-      await copiarBoletaAlPortapapeles(historialBoletaRef);
-      alert("¡Boleta copiada! Ve a WhatsApp y pégala en el chat");
+      const { downloaded } = await copiarBoletaAlPortapapeles(historialBoletaRef);
+      alert(
+        downloaded
+          ? "Este navegador no permite copiar imágenes — se descargó la boleta. Adjúntala a mano en WhatsApp."
+          : "¡Boleta copiada! Ve a WhatsApp y pégala en el chat"
+      );
     } catch (err) {
       console.error("Error generando la boleta desde el historial:", err);
       setHistorialBoletaError(err?.message || "No se pudo copiar la boleta. Intenta de nuevo.");
@@ -5205,7 +5472,7 @@ export default function App() {
         } else if (razonSocial) {
           const { data: insertedProv, error: provError } = await supabase
             .from("proveedores")
-            .insert([{ ruc, razon_social: razonSocial }])
+            .insert([{ ruc, razon_social: razonSocial, negocio_id: negocioId }])
             .select();
           if (provError) throw provError;
           const provRow = insertedProv && insertedProv[0];
@@ -5238,6 +5505,7 @@ export default function App() {
             monto_digital: montoDigital,
             total,
             fecha: timestamp,
+            negocio_id: negocioId,
           },
         ])
         .select();
@@ -5411,20 +5679,39 @@ export default function App() {
     }
   };
 
-  /* ---- corte del "turno actual": desde el último Cierre de Caja, o
-     desde la medianoche de hoy si todavía no se ha cerrado ningún
-     turno. Todos los medidores de "Hoy" (Recaudado, Ganancia Neta,
-     Ticket General, etc.) usan este corte en vez de la medianoche
-     fija, para que un turno que cruza la medianoche (ej. cierra a las
-     2am) siga sumando correctamente hasta que se presione "Cerrar
-     Caja". */
+  /* ---- corte del "turno actual": arranca en el último Cierre de Caja
+     — o, si todavía no se ha cerrado NINGUNO, desde siempre (no
+     resetea solo porque cambió el día). Todos los medidores de "Hoy"
+     (Recaudado, Ganancia Neta, Ticket General, etc.) usan este corte.
+
+     Antes el fallback sin cierre era "medianoche de hoy" — pensado
+     para que un turno que cruza la medianoche (ej. cierra a las 2am)
+     siguiera sumando hasta presionar "Cerrar Caja". Pero si un
+     cajero/admin directamente NUNCA presiona "Cerrar Caja" (nada
+     inusual — hay negocios que no usan esa función), ese fallback
+     igual reseteaba los medidores en cada medianoche aunque el turno
+     jamás se hubiera cerrado — el dato no se borraba de la base, pero
+     el dashboard mostraba "Hoy" en cero apenas pasaba la hora, aunque
+     el turno siguiera activo. Pedido explícito: los datos deben vivir
+     hasta que se cierre caja A MANO, sin importar cuántas medianoches
+     pasen mientras tanto. */
   /* ---- Multi-Sucursal: 'cierresVisibles' (ya filtrado por la caja
      operativa) en vez de 'cierres' — sin esto, el último cierre de
      CUALQUIER sucursal adelantaba el corte de turno de todas las
      demás. ---- */
   const turnoCutoff = useMemo(() => {
-    if (cierresVisibles.length === 0) return startOfDay(Date.now());
-    return Math.max(...cierresVisibles.map((c) => c.timestamp));
+    // Blindaje: si CUALQUIER cierre histórico de esta caja tiene un
+    // 'fecha' nulo/corrupto en la base, 'timestamp' sale NaN — y
+    // Math.max con un solo NaN en la mezcla devuelve NaN para SIEMPRE,
+    // sin importar qué tan viejo sea ese cierre. Con NaN, "venta.timestamp
+    // > turnoCutoff" es false para TODAS las ventas, así que todos los
+    // medidores de "Hoy" (menos Producto Estrella, que no usa este
+    // corte) se van a cero de golpe. Filtrar los timestamps inválidos
+    // antes del Math.max evita que un solo registro corrupto rompa el
+    // corte de turno de toda la caja.
+    const validos = cierresVisibles.map((c) => c.timestamp).filter((t) => Number.isFinite(t));
+    if (validos.length === 0) return 0;
+    return Math.max(...validos);
   }, [cierresVisibles]);
 
   /* ---- Mis Ventas (Hoy): agrupa 'salesVisibles' (ya filtrado por la
@@ -5639,39 +5926,152 @@ export default function App() {
      algo que haga falta tener listo apenas carga el POS. Trae cajeros
      Y clientes en una sola consulta (profiles ya tiene 'nombre' para
      ambos — ver create-cliente/migración 0033), ordenados por rol para
-     que la lista salga agrupada visualmente. ---- */
+     que la lista salga agrupada visualmente, más 'fiado_habilitado' de
+     clientes_fiado (una segunda consulta — vive en otra tabla) para el
+     filtro/etiqueta de Fiado.
+     Realtime: 'fiado_habilitado' se asigna desde OTRO modal
+     (AsignarFiadoModal) que puede estar abierto AL MISMO TIEMPO que
+     este panel — sin este canal, el admin tenía que cerrar y reabrir
+     Usuarios para ver reflejado un cambio recién hecho. ---- */
   useEffect(() => {
     if (!cajerosOpen) return;
     let active = true;
     setCajerosLoading(true);
 
-    supabase
-      .from("profiles")
-      .select("id, nombre, role, sucursal_id, caja_id")
-      .in("role", ["cajero", "cliente"])
-      .order("role", { ascending: true })
-      .then(({ data, error }) => {
-        if (!active) return;
-        if (error) {
-          console.error("Error cargando usuarios:", error);
-        } else {
-          setCajeros(
-            (data || []).map((row) => ({
-              id: row.id,
-              nombre: row.nombre,
-              role: row.role,
-              sucursalId: row.sucursal_id || null,
-              cajaId: row.caja_id || null,
-            }))
+    const cargarUsuarios = async () => {
+      // Decisión con el usuario: el LOGIN de un cliente sigue siendo
+      // compartido entre negocios (misma cuenta, no hace falta
+      // registrarse de nuevo en cada uno), pero el panel de Usuarios de
+      // CADA negocio solo debe LISTAR a los clientes que de verdad
+      // compraron/tienen fiado ACÁ — no a todos los clientes de la
+      // plataforma. La fuente de verdad de "le pertenece a este
+      // negocio" es clientes_fiado.negocio_id, así que se arranca por
+      // ahí (además ya hace falta para el estado de Fiado habilitado).
+      let fiadoQuery = supabase.from("clientes_fiado").select("auth_user_id, fiado_habilitado");
+      if (negocioId) fiadoQuery = fiadoQuery.eq("negocio_id", negocioId);
+      const { data: fiadoRows, error: fiadoErr } = await fiadoQuery;
+
+      if (!active) return;
+      if (fiadoErr) {
+        console.error("Error cargando clientes_fiado de este negocio:", fiadoErr);
+        setCajerosLoading(false);
+        return;
+      }
+
+      const fiadoPorUserId = Object.fromEntries(
+        (fiadoRows || []).filter((r) => r.auth_user_id).map((r) => [r.auth_user_id, r.fiado_habilitado === true])
+      );
+      const clienteIdsDeEsteNegocio = Object.keys(fiadoPorUserId);
+
+      // Cajeros: solo los de ESTE negocio. Clientes: solo los que
+      // aparecieron arriba (tienen una fila de clientes_fiado acá).
+      const filtrosOr = [
+        negocioId ? `and(role.eq.cajero,negocio_id.eq.${negocioId})` : "role.eq.cajero",
+      ];
+      if (clienteIdsDeEsteNegocio.length > 0) {
+        filtrosOr.push(`and(role.eq.cliente,id.in.(${clienteIdsDeEsteNegocio.join(",")}))`);
+      }
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, nombre, role, sucursal_id, caja_id")
+        .or(filtrosOr.join(","))
+        .order("role", { ascending: true });
+
+      if (!active) return;
+      if (error) {
+        console.error("Error cargando usuarios:", error);
+        setCajerosLoading(false);
+        return;
+      }
+
+      setCajeros(
+        (data || []).map((row) => ({
+          id: row.id,
+          nombre: row.nombre,
+          role: row.role,
+          sucursalId: row.sucursal_id || null,
+          cajaId: row.caja_id || null,
+          fiadoHabilitado: row.role === "cliente" ? !!fiadoPorUserId[row.id] : false,
+        }))
+      );
+      setCajerosLoading(false);
+    };
+
+    cargarUsuarios();
+
+    const channel = supabase
+      .channel(`usuarios-fiado-realtime-${Math.random().toString(36).slice(2)}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "clientes_fiado" },
+        (payload) => {
+          const row = payload.new;
+          if (!row?.auth_user_id) return;
+          setCajeros((prev) =>
+            prev.map((c) =>
+              c.id === row.auth_user_id ? { ...c, fiadoHabilitado: row.fiado_habilitado === true } : c
+            )
           );
         }
-        setCajerosLoading(false);
-      });
+      )
+      // Altas nuevas (auto-registro del cliente, "Añadir Cliente"/
+      // "Añadir cajero" de este mismo panel desde OTRA sesión de admin,
+      // o el propio create-cliente de acá) — sin esto había que cerrar
+      // y volver a abrir Usuarios para verlas. Nace con fiado_habilitado
+      // en false SIEMPRE (default real de la columna, migración 0068),
+      // así que no hace falta una consulta aparte para saberlo.
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "profiles" },
+        (payload) => {
+          const row = payload.new;
+          if (!row || !["cajero", "cliente"].includes(row.role)) return;
+          setCajeros((prev) =>
+            prev.some((c) => c.id === row.id)
+              ? prev
+              : [
+                  ...prev,
+                  {
+                    id: row.id,
+                    nombre: row.nombre,
+                    role: row.role,
+                    sucursalId: row.sucursal_id || null,
+                    cajaId: row.caja_id || null,
+                    fiadoHabilitado: false,
+                  },
+                ]
+          );
+        }
+      )
+      // Bajas (eliminado desde este mismo panel, desde OTRA sesión de
+      // admin, o directo desde el Table Editor) — mismo motivo.
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "profiles" },
+        (payload) => {
+          const oldId = payload.old?.id;
+          if (!oldId) return;
+          setCajeros((prev) => prev.filter((c) => c.id !== oldId));
+        }
+      )
+      .subscribe();
 
     return () => {
       active = false;
+      supabase.removeChannel(channel);
     };
   }, [cajerosOpen]);
+
+  const cajerosVisibles = useMemo(() => {
+    return cajeros.filter((c) => {
+      if (c.role !== filtroRolUsuarios) return false;
+      if (c.role === "cliente" && c.fiadoHabilitado !== (filtroFiadoUsuarios === "con")) return false;
+      if (c.role === "cajero" && filtroSucursalUsuarios !== "todas") {
+        if (c.sucursalId !== filtroSucursalUsuarios) return false;
+      }
+      return true;
+    });
+  }, [cajeros, filtroRolUsuarios, filtroFiadoUsuarios, filtroSucursalUsuarios]);
 
   const openPinModal = (usuario) => {
     setPinModalUser(usuario);
@@ -5688,8 +6088,8 @@ export default function App() {
   const savePinModal = async () => {
     if (!pinModalUser) return;
     const pin = pinModalValue.trim();
-    if (!/^\d{4,10}$/.test(pin)) {
-      setPinModalError("La clave debe tener entre 4 y 10 dígitos.");
+    if (!/^\d{6,10}$/.test(pin)) {
+      setPinModalError("La clave debe tener entre 6 y 10 dígitos.");
       return;
     }
     setPinModalSaving(true);
@@ -5734,6 +6134,34 @@ export default function App() {
     setCajeros((prev) => prev.filter((c) => c.id !== usuario.id));
   };
 
+  /* ---- Asignar/Quitar Fiados de un cliente (fila por fila, Gestor de
+     Usuarios) — mismo destino que "Asignar a usuario existente"
+     (AsignarFiadoModal, buscador), pero directo desde acá cuando el
+     admin ya está mirando la fila del cliente puntual. El Realtime que
+     ya escucha AuthContext/este mismo panel (ver migraciones
+     0068/0069) también refleja este cambio del lado del cliente, con
+     la animación de entrada/salida del botón Fiados. ---- */
+  const [cambiandoFiadoId, setCambiandoFiadoId] = useState(null);
+  const cambiarFiado = async (usuario, habilitado) => {
+    setUsuarioActionError("");
+    setCambiandoFiadoId(usuario.id);
+
+    const { error } = await supabase.functions.invoke("manage-usuario", {
+      body: { action: "set-fiado", userId: usuario.id, habilitado },
+    });
+
+    setCambiandoFiadoId(null);
+
+    if (error) {
+      console.error(`Error al ${habilitado ? "asignar" : "quitar"} Fiados vía Edge Function:`, error);
+      const body = await error.context?.json?.().catch(() => null);
+      setUsuarioActionError(body?.error || `No se pudo ${habilitado ? "asignar" : "quitar"} Fiados. Intenta de nuevo.`);
+      return;
+    }
+
+    setCajeros((prev) => prev.map((c) => (c.id === usuario.id ? { ...c, fiadoHabilitado: habilitado } : c)));
+  };
+
   const resetCajeroForm = () => {
     setAddCajeroOpen(false);
     setNewCajeroNombre("");
@@ -5757,8 +6185,8 @@ export default function App() {
       setCajeroError("El usuario debe tener 3 a 20 caracteres (letras, números, . _ -).");
       return;
     }
-    if (!/^\d{4,10}$/.test(pin)) {
-      setCajeroError("La clave debe tener entre 4 y 10 dígitos.");
+    if (!/^\d{6,10}$/.test(pin)) {
+      setCajeroError("La clave debe tener entre 6 y 10 dígitos.");
       return;
     }
     if (!newCajeroLocalidadId || !newCajeroSucursalId) {
@@ -6676,7 +7104,12 @@ export default function App() {
     });
 
     return stats;
-  }, [salesVisibles]);
+    // 'productsById' faltaba acá: sin esto, este memo no se recalculaba
+    // al cambiar el catálogo (ej. al filtrarlo por negocio, Fase 1),
+    // dejando 'stats' con ids de una versión VIEJA de productsById —
+    // bestSellerId podía terminar apuntando a un producto que ya no
+    // existe en el productsById ACTUAL, reventando el .name de abajo.
+  }, [salesVisibles, productsById]);
 
   const bestSellerId = useMemo(() => {
     let best = null;
@@ -6830,11 +7263,33 @@ export default function App() {
   // mostrarle "Caja Cerrada, esperando apertura" (nunca podría abrir
   // nada sin una fila de 'cajas' que le pertenezca): se le avisa
   // explícitamente en vez de dejarlo atascado sin explicación.
+  // Bienvenida neon de admin/cajero — se renderiza SUPERPUESTA sobre el
+  // resto de la pantalla (ver el final de este return), no en lugar de
+  // ella: antes esto era un "return" temprano que reemplazaba TODO —
+  // la interfaz de atrás recién empezaba a cargar/montarse DESPUÉS de
+  // cerrar la bienvenida, lo que se sentía como una pantalla negra de
+  // más antes de ver el POS de verdad. 'position:fixed' + z-index
+  // altísimo (ver AnimacionNeonBienvenida.jsx) ya la hacen flotar por
+  // encima de cualquier otra cosa sin importar dónde vive en el JSX.
+  const bienvenidaStaffOverlay = mostrarBienvenidaStaff ? (
+    <AnimacionNeonBienvenida
+      eyebrow="✦ Bienvenido a Tonazo ✦"
+      titulo={currentUserLabel}
+      descripcion={
+        isAdmin
+          ? "Otro día para hacer crecer el negocio — ¡vamos con todo! 💪"
+          : "Que tengas un excelente turno — ¡vamos con todo! 💪"
+      }
+      onTerminar={marcarBienvenidaStaffVista}
+    />
+  ) : null;
+
   if (isCajero && !authCajaId) {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
-        <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
+        {bienvenidaStaffOverlay}
+        <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <Lock size={44} />
         <h1>Sin Caja Asignada</h1>
         <p>Tu cuenta no tiene una sucursal/caja asignada todavía. Pide al admin que te asigne una.</p>
@@ -6857,7 +7312,8 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
-        <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
+        {bienvenidaStaffOverlay}
+        <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <Lock size={44} />
         <h1>{turnoFinalizado ? "Turno Finalizado" : "Caja Cerrada"}</h1>
         <p>
@@ -6881,7 +7337,8 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
-        <img src={logo} alt="TONAZO!" className="tz-caja-blocked-logo" />
+        {bienvenidaStaffOverlay}
+        <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <DollarSign size={44} />
         <h1>Confirmar Turno</h1>
         <p>Caja abierta por {estadoCaja.abiertaPor || "el admin"}.</p>
@@ -6905,6 +7362,7 @@ export default function App() {
   return (
     <div className="tz-root">
       <Styles />
+      {bienvenidaStaffOverlay}
 
       {/* El viejo modal obligatorio de "Apertura de Caja" para admin
          (bloqueaba TODO detrás de un backdrop) fue retirado: el admin
@@ -6968,7 +7426,7 @@ export default function App() {
           </div>
 
           <div className="tz-header-center">
-            <LogoEasterEgg src={logo} alt="TONAZO!" className="tz-logo" />
+            <LogoEasterEgg src={logoNegocio} alt="Logo del negocio" className="tz-logo" />
             {/* UX Bug 3: subtítulo dinámico — el cajero siempre ve el
                nombre de SU sucursal (fija, de su perfil); el admin ve la
                que tenga activa en los dropdowns de arriba, o
@@ -7077,8 +7535,16 @@ export default function App() {
          segundo dropdown solo aparece con una localidad elegida. */}
       {isAdmin && (
         <div className="tz-admin-filterbar">
-          <div className="tz-admin-filter-group">
-            <label className="tz-admin-filter-label">Localidad</label>
+          {/* tz-admin-filter-pareja: mismo contenedor que ya usa
+             CatalogPage.jsx (tienda pública) para que Localidad y
+             Sucursal/Caja se centren como un solo bloque en vez de
+             quedar cada uno centrado por separado — sin esto, con
+             align-items:flex-end en la fila, un grupo más alto que el
+             otro (ej. cuando aparece la etiqueta de abierta/cerrada)
+             los desalinea. */}
+          <div className="tz-admin-filter-pareja">
+          <div className="tz-admin-filter-group tz-admin-filtro-localidad-group">
+            <label className="tz-admin-filter-label tz-admin-filtro-localidad-label">Localidad</label>
             <div className="tz-admin-filter-row">
               <select
                 className="tz-admin-filter-select"
@@ -7112,8 +7578,8 @@ export default function App() {
           </div>
 
           {localidadFiltroId && (
-            <div className="tz-admin-filter-group">
-              <label className="tz-admin-filter-label">Sucursal / Caja</label>
+            <div className="tz-admin-filter-group tz-admin-filtro-sucursal-group">
+              <label className="tz-admin-filter-label tz-admin-filtro-sucursal-label">Sucursal / Caja</label>
               <div className="tz-admin-filter-row">
                 <select
                   className="tz-admin-filter-select"
@@ -7136,7 +7602,17 @@ export default function App() {
                   aria-label="Nueva sucursal"
                   onClick={async () => {
                     const result = await crearSucursalRapida(localidadFiltroId);
-                    if (result?.cajaId) elegirCajaActiva(result.cajaId);
+                    // No usar elegirCajaActiva() acá: busca la caja en el
+                    // array 'cajas' del closure de este render, que
+                    // todavía no incluye la recién creada aunque
+                    // crearSucursalRapida ya haya esperado el refetch —
+                    // React no actualiza ese closure hasta el próximo
+                    // render. Se setean los dos ids directo con los
+                    // valores que la propia creación ya devolvió.
+                    if (result?.cajaId) {
+                      setCajaActivaId(result.cajaId);
+                      setSucursalActivaId(result.sucursalId);
+                    }
                   }}
                 >
                   <Plus size={14} />
@@ -7152,7 +7628,7 @@ export default function App() {
               if (!cajaSel || !sucSel) return null;
               return (
                 <span
-                  className={`tz-admin-filter-tag ${
+                  className={`tz-admin-filter-tag tz-admin-filtro-estado-tag ${
                     cajaSel.estado === "abierta" ? "is-abierta" : "is-cerrada"
                   }`}
                 >
@@ -7162,6 +7638,7 @@ export default function App() {
                 </span>
               );
             })()}
+          </div>
         </div>
       )}
 
@@ -7222,9 +7699,9 @@ export default function App() {
                 <Star size={13} /> Producto Estrella
               </span>
               <span className="tz-stat-value tz-star-text">
-                {bestSellerId ? productsById[bestSellerId].name : "Aún sin ventas"}
+                {bestSellerId && productsById[bestSellerId] ? productsById[bestSellerId].name : "Aún sin ventas"}
               </span>
-              {bestSellerId && (
+              {bestSellerId && productStats[bestSellerId] && (
                 <span className="tz-stat-sub">
                   {productStats[bestSellerId].unitsSold} unidades vendidas
                 </span>
@@ -7726,6 +8203,23 @@ export default function App() {
                   </p>
                   {lastSale && (
                     <>
+                      {/* Alternativa para cuando el cliente no tiene
+                         teléfono: imprime el MISMO ticket oculto de
+                         abajo (ticketRef), en formato de ticketera de
+                         80 mm (ver imprimirBoleta en lib/boleta.js). */}
+                      <button
+                        type="button"
+                        className="tz-whatsapp-send-btn tz-print-boleta-btn"
+                        onClick={() => {
+                          try {
+                            imprimirBoleta(ticketRef);
+                          } catch (err) {
+                            setBoletaError(err?.message || "No se pudo imprimir la boleta.");
+                          }
+                        }}
+                      >
+                        <Printer size={15} /> Imprimir Boleta
+                      </button>
                       <a
                         href={buildWhatsappLink(
                           lastSale.whatsapp,
@@ -7764,7 +8258,10 @@ export default function App() {
 
                       {/* ---- ticket oculto: fuera de pantalla, solo existe
                          para que html2canvas lo capture como imagen ---- */}
-                      <div ref={ticketRef} style={{ position: "absolute", left: -9999, top: 0 }}>
+                      <div
+                        ref={ticketRef}
+                        style={{ position: "absolute", left: -9999, top: 0 }}
+                      >
                         <TicketBoleta
                           orden={{
                             id: lastSale.purchaseId,
@@ -7897,6 +8394,8 @@ export default function App() {
                           onChange={(e) => {
                             setCheckoutWhatsapp(e.target.value);
                             setCheckoutWhatsappSuggestOpen(true);
+                            setCheckoutCuentaCreada(false);
+                            setCheckoutCuentaError("");
                           }}
                           onFocus={() => setCheckoutWhatsappSuggestOpen(true)}
                         />
@@ -7916,6 +8415,37 @@ export default function App() {
                           </div>
                         )}
                       </div>
+
+                      {/* ---- "Crear cuenta" opcional: el nombre/WhatsApp
+                         de acá son solo para la boleta — nada se guarda
+                         hasta que el cajero toca este botón a propósito.
+                         Solo aparece con un número que todavía no es
+                         cliente de este negocio. ---- */}
+                      {checkoutWhatsappDigits.length >= 6 && !checkoutWhatsappTieneCuenta && (
+                        checkoutCuentaCreada ? (
+                          <p className="tz-checkout-cuenta-ok">
+                            <Check size={13} /> Cuenta creada — ya va a aparecer en el buscador.
+                          </p>
+                        ) : (
+                          <div className="tz-checkout-cuenta-row">
+                            <button
+                              type="button"
+                              className="tz-checkout-cuenta-btn"
+                              onClick={crearCuentaDesdeCheckout}
+                              disabled={creandoCuentaCheckout}
+                            >
+                              {creandoCuentaCheckout ? (
+                                <Loader2 size={13} className="tz-spin" />
+                              ) : (
+                                <Plus size={13} />
+                              )}
+                              Crear cuenta para este cliente (opcional)
+                            </button>
+                            {checkoutCuentaError && <p className="tz-error">{checkoutCuentaError}</p>}
+                          </div>
+                        )
+                      )}
+
                       {checkoutRucEnabled && (
                         <input
                           type="text"
@@ -8324,7 +8854,19 @@ export default function App() {
          campos = más alto). Ahora viven en el flujo normal del
          documento, al final de la página — igual que ya se hizo con
          el header — así es estructuralmente imposible que tapen nada. */}
-      <footer className="tz-page-footer">
+      <button
+        type="button"
+        className={`tz-scrolltop-fab ${scrollFabVisible ? "tz-scrolltop-fab-visible" : ""} ${
+          barVisible ? "tz-scrolltop-fab-raised" : ""
+        }`}
+        onClick={scrollToFooter}
+        aria-label="Ir al pie de página"
+        title="Ir al pie de página"
+      >
+        <ChevronDown size={22} />
+      </button>
+
+      <footer className="tz-page-footer" ref={pageFooterRef}>
         {/* "Cerrar Caja" ahora es exclusivo del cajero: cierra SU
            PROPIA fila en 'cajas' (ver ejecutarCierre). El admin ya no
            tiene una caja global que cerrar desde acá — Parte 3
@@ -8379,7 +8921,27 @@ export default function App() {
           <Package size={18} />
           Productos
         </button>
+        {isAdmin && (
+          <button
+            className="tz-footer-btn tz-footer-btn-localidades"
+            onClick={() => setGestorLocalidadesOpen(true)}
+          >
+            <Landmark size={18} />
+            Localidades
+          </button>
+        )}
       </footer>
+
+      {/* ---------------- MODAL: GESTOR DE LOCALIDADES/SUCURSALES ---------------- */}
+      {gestorLocalidadesOpen && (
+        <GestorLocalidadesModal
+          negocioId={negocioId}
+          onClose={(changed) => {
+            setGestorLocalidadesOpen(false);
+            if (changed) refetchJerarquia();
+          }}
+        />
+      )}
 
       {/* ---------------- MODAL: GESTOR DE PEDIDOS (Fase 1) ---------------- */}
       {gestorPedidosOpen && (
@@ -8408,6 +8970,20 @@ export default function App() {
             };
           }}
           onClose={() => setGestorPedidosOpen(false)}
+        />
+      )}
+
+      {asignarFiadoOpen && (
+        <AsignarFiadoModal
+          onClose={() => setAsignarFiadoOpen(false)}
+          onAsignado={() => {
+            // El cliente asignado puede ser una fila NUEVA para este
+            // negocio (identidad global, nunca había comprado acá) —
+            // no está en el 'clientes' local todavía, así que un patch
+            // puntual no alcanza; se recarga entero, mismo criterio que
+            // el resto de altas.
+            recargarDatos();
+          }}
         />
       )}
 
@@ -8542,6 +9118,22 @@ export default function App() {
                               onClick={() => startCoordsSucursal(suc)}
                             >
                               <MapPin size={12} />
+                            </button>
+                          )}
+                          {coordsSucursalId !== suc.id && (
+                            <button
+                              type="button"
+                              className="tz-gc-sucursal-edit-btn tz-gc-sucursal-delete-btn"
+                              title="Eliminar sucursal"
+                              aria-label="Eliminar sucursal"
+                              disabled={eliminandoSucursalId === suc.id}
+                              onClick={() => eliminarSucursal(suc)}
+                            >
+                              {eliminandoSucursalId === suc.id ? (
+                                <Loader2 size={12} className="tz-spin" />
+                              ) : (
+                                <Trash2 size={12} />
+                              )}
                             </button>
                           )}
                         </h4>
@@ -8860,7 +9452,19 @@ export default function App() {
                           if (!b.numero) return -1;
                           return a.numero.localeCompare(b.numero, undefined, { numeric: true });
                         })
-                        .map((g) => g.title);
+                        // Bug: acá se sugería 'g.title' (el subgrupo ya
+                        // parseado, SIN el número — ej. "RON CARTAVIO"),
+                        // pero el string real que agrupa en la base es
+                        // el subgrupo CRUDO ("01 RON CARTAVIO",
+                        // 'subgrupoRaw' de cualquiera de sus items —
+                        // todos comparten el mismo por construcción, es
+                        // justo la clave de agrupación). Elegir la
+                        // sugerencia guardaba el producto SIN el número,
+                        // un string distinto que buildSectionsFromRows
+                        // (comparación exacta) trataba como un subgrupo
+                        // nuevo en vez de sumarlo al existente.
+                        .map((g) => g.items[0]?.subgrupoRaw || g.title)
+                        .filter(Boolean);
                     })()}
                     onChange={setNewProductoSubgrupo}
                   />
@@ -9635,9 +10239,59 @@ export default function App() {
                 <Users size={17} /> Usuarios
               </h2>
               <p className="tz-stock-editor-sub">
-                Cajeros (acceso operativo sin cifras financieras) y clientes con cuenta de fiado.
+                Cajeros (acceso operativo sin cifras financieras) y clientes registrados.
                 Cambia su PIN de acceso o elimina la cuenta si ya no corresponde.
               </p>
+
+              <div className="tz-gasto-tipo-buttons" style={{ marginBottom: 8 }}>
+                {[
+                  ["cajero", "Cajeros"],
+                  ["cliente", "Clientes"],
+                ].map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    className={`tz-gasto-tipo-btn ${filtroRolUsuarios === val ? "tz-gasto-tipo-active" : ""}`}
+                    onClick={() => setFiltroRolUsuarios(val)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {filtroRolUsuarios === "cliente" && (
+                <div className="tz-gasto-tipo-buttons" style={{ marginBottom: 12 }}>
+                  {[
+                    ["con", "Pueden fiar"],
+                    ["sin", "Sin fiado"],
+                  ].map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      className={`tz-gasto-tipo-btn ${filtroFiadoUsuarios === val ? "tz-gasto-tipo-active" : ""}`}
+                      onClick={() => setFiltroFiadoUsuarios(val)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {filtroRolUsuarios === "cajero" && (
+                <select
+                  className="tz-text-input"
+                  style={{ marginBottom: 12 }}
+                  value={filtroSucursalUsuarios}
+                  onChange={(e) => setFiltroSucursalUsuarios(e.target.value)}
+                >
+                  <option value="todas">Todas las sucursales</option>
+                  {sucursales.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nombre}
+                    </option>
+                  ))}
+                </select>
+              )}
 
               {usuarioActionError && <p className="tz-error">{usuarioActionError}</p>}
 
@@ -9645,9 +10299,11 @@ export default function App() {
                 <p className="tz-method-history-empty">Cargando…</p>
               ) : cajeros.length === 0 ? (
                 <p className="tz-method-history-empty">Todavía no hay cajeros ni clientes registrados.</p>
+              ) : cajerosVisibles.length === 0 ? (
+                <p className="tz-method-history-empty">Ningún usuario coincide con ese filtro.</p>
               ) : (
                 <ul className="tz-history-rows">
-                  {cajeros.map((c) => {
+                  {cajerosVisibles.map((c) => {
                     const cSucursal = sucursales.find((s) => s.id === c.sucursalId);
                     const cCaja = cajas.find((cj) => cj.id === c.cajaId);
                     return (
@@ -9655,13 +10311,17 @@ export default function App() {
                         <div className="tz-history-row-head" style={{ cursor: "default" }}>
                           <Users size={14} />
                           <span>{c.nombre || "(sin nombre)"}</span>
-                          <span
-                            className={`tz-metodo-tag ${
-                              c.role === "cajero" ? "tz-metodo-tag-yape" : "tz-metodo-tag-otros"
-                            }`}
-                            style={{ marginLeft: "auto" }}
-                          >
-                            {c.role === "cajero" ? "Cajero" : "Cliente"}
+                          <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+                            {c.role === "cliente" && c.fiadoHabilitado && (
+                              <span className="tz-metodo-tag tz-metodo-tag-fiado">Fiado</span>
+                            )}
+                            <span
+                              className={`tz-metodo-tag ${
+                                c.role === "cajero" ? "tz-metodo-tag-yape" : "tz-metodo-tag-otros"
+                              }`}
+                            >
+                              {c.role === "cajero" ? "Cajero" : "Cliente"}
+                            </span>
                           </span>
                         </div>
                         {c.role === "cajero" && (
@@ -9767,6 +10427,21 @@ export default function App() {
                           >
                             <Lock size={13} /> Cambiar PIN
                           </button>
+                          {c.role === "cliente" && (
+                            <button
+                              type="button"
+                              className="tz-camera-cancel tz-usuario-action-btn"
+                              onClick={() => cambiarFiado(c, !c.fiadoHabilitado)}
+                              disabled={cambiandoFiadoId === c.id}
+                            >
+                              {cambiandoFiadoId === c.id ? (
+                                <Loader2 size={13} className="tz-spin" />
+                              ) : (
+                                <UserCheck size={13} />
+                              )}
+                              {c.fiadoHabilitado ? "Quitar Fiado" : "Asignar Fiado"}
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="tz-camera-cancel tz-usuario-action-btn tz-usuario-delete-btn"
@@ -9787,14 +10462,14 @@ export default function App() {
                 </ul>
               )}
 
-              {!addCajeroOpen ? (
+              {filtroRolUsuarios === "cajero" && !addCajeroOpen ? (
                 <button
                   className="tz-scan-btn tz-add-entry-toggle"
                   onClick={() => setAddCajeroOpen(true)}
                 >
                   <Plus size={16} /> Añadir cajero
                 </button>
-              ) : (
+              ) : filtroRolUsuarios === "cajero" ? (
                 <div className="tz-add-entry">
                   <label className="tz-field-label">Nombre</label>
                   <input
@@ -9813,7 +10488,7 @@ export default function App() {
                     value={newCajeroUsuario}
                     onChange={(e) => setNewCajeroUsuario(e.target.value)}
                   />
-                  <label className="tz-field-label">Clave (4 a 10 dígitos)</label>
+                  <label className="tz-field-label">Clave (6 a 10 dígitos)</label>
                   <input
                     type="text"
                     inputMode="numeric"
@@ -9904,6 +10579,58 @@ export default function App() {
                     </button>
                   </div>
                 </div>
+              ) : !addClienteOpen ? (
+                <button
+                  className="tz-scan-btn tz-add-entry-toggle"
+                  onClick={() => setAddClienteOpen(true)}
+                >
+                  <Plus size={16} /> Añadir Cliente
+                </button>
+              ) : (
+                <div className="tz-add-entry">
+                  <label className="tz-field-label">Nombre del cliente</label>
+                  <input
+                    type="text"
+                    autoFocus
+                    className="tz-text-input"
+                    placeholder="Ej. Juan Pérez"
+                    value={newClienteName}
+                    onChange={(e) => setNewClienteName(e.target.value)}
+                  />
+                  <label className="tz-field-label">
+                    Celular (será su usuario para iniciar sesión)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="tz-text-input"
+                    placeholder="999999999"
+                    value={newClienteWhatsapp}
+                    onChange={(e) => setNewClienteWhatsapp(e.target.value)}
+                  />
+                  <p className="tz-field-hint">
+                    El cliente crea su propio PIN la primera vez que inicia sesión con este
+                    celular. Nace sin Fiados habilitado — se asigna aparte, fila por fila.
+                  </p>
+                  {clienteError && <p className="tz-error">{clienteError}</p>}
+                  <div className="tz-add-entry-actions">
+                    <button className="tz-camera-cancel" onClick={resetClienteForm}>
+                      Cancelar
+                    </button>
+                    <button
+                      className="tz-pw-submit tz-payment-save"
+                      onClick={saveCliente}
+                      disabled={clienteSaving}
+                    >
+                      {clienteSaving ? (
+                        <Loader2 size={16} className="tz-spin" />
+                      ) : (
+                        <Save size={16} />
+                      )}
+                      Guardar
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -9920,7 +10647,7 @@ export default function App() {
             <div className="tz-add-entry">
               <h2>Cambiar PIN</h2>
               <p className="tz-stock-editor-sub">{pinModalUser.nombre || "(sin nombre)"}</p>
-              <label className="tz-field-label">Nueva clave (4 a 10 dígitos)</label>
+              <label className="tz-field-label">Nueva clave (6 a 10 dígitos)</label>
               <input
                 type="text"
                 inputMode="numeric"
@@ -10146,7 +10873,7 @@ export default function App() {
                 </div>
               )}
 
-              {clientesVisibles.length === 0 && !addClienteOpen ? (
+              {clientesVisibles.length === 0 ? (
                 /* ---- estado vacío ---- */
                 <div className="tz-libreta-empty">
                   <p className="tz-method-history-empty">
@@ -10154,9 +10881,9 @@ export default function App() {
                   </p>
                   <button
                     className="tz-scan-btn tz-add-entry-toggle"
-                    onClick={() => setAddClienteOpen(true)}
+                    onClick={() => setAsignarFiadoOpen(true)}
                   >
-                    <Plus size={16} /> Añadir cuenta
+                    <UserCheck size={16} /> Asignar a usuario existente
                   </button>
                 </div>
               ) : (
@@ -10174,60 +10901,17 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* ---- agregar cliente ---- */}
-                  {!addClienteOpen ? (
+                  {/* ---- agregar cliente: se mudó al Gestor de Usuarios
+                     ("Añadir Cliente", tab Clientes) — acá solo queda
+                     asignar fiado a alguien que YA tiene cuenta. ---- */}
+                  <div className="tz-gasto-tipo-buttons">
                     <button
                       className="tz-scan-btn tz-add-entry-toggle"
-                      onClick={() => setAddClienteOpen(true)}
+                      onClick={() => setAsignarFiadoOpen(true)}
                     >
-                      <Plus size={16} /> Añadir cuenta
+                      <UserCheck size={16} /> Asignar a usuario existente
                     </button>
-                  ) : (
-                    <div className="tz-add-entry">
-                      <label className="tz-field-label">Nombre del cliente</label>
-                      <input
-                        type="text"
-                        autoFocus
-                        className="tz-text-input"
-                        placeholder="Ej. Juan Pérez"
-                        value={newClienteName}
-                        onChange={(e) => setNewClienteName(e.target.value)}
-                      />
-                      <label className="tz-field-label">
-                        Celular (será su usuario para iniciar sesión)
-                      </label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="tz-text-input"
-                        placeholder="999999999"
-                        value={newClienteWhatsapp}
-                        onChange={(e) => setNewClienteWhatsapp(e.target.value)}
-                      />
-                      <p className="tz-field-hint">
-                        El cliente crea su propio PIN la primera vez que inicia sesión con este
-                        celular.
-                      </p>
-                      {clienteError && <p className="tz-error">{clienteError}</p>}
-                      <div className="tz-add-entry-actions">
-                        <button className="tz-camera-cancel" onClick={resetClienteForm}>
-                          Cancelar
-                        </button>
-                        <button
-                          className="tz-pw-submit tz-payment-save"
-                          onClick={saveCliente}
-                          disabled={clienteSaving}
-                        >
-                          {clienteSaving ? (
-                            <Loader2 size={16} className="tz-spin" />
-                          ) : (
-                            <Save size={16} />
-                          )}
-                          Guardar
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  </div>
 
                   {/* ---- lista de clientes ---- */}
                   {clientesVisibles.length > 0 && (
@@ -10331,15 +11015,6 @@ export default function App() {
                                       <MessageCircle size={13} /> Recordar
                                     </button>
                                   )}
-                                  <button
-                                    type="button"
-                                    className="tz-cliente-action-btn tz-cliente-action-delete"
-                                    onClick={() => eliminarClienteFiado(c)}
-                                    aria-label={`Eliminar cliente ${c.nombre}`}
-                                    title="Eliminar cliente"
-                                  >
-                                    <Trash2 size={13} /> Eliminar
-                                  </button>
                                 </div>
 
                                 {formOpen &&
@@ -11466,43 +12141,45 @@ export default function App() {
               </h2>
 
               <div className="tz-admin-filterbar" style={{ padding: 0, background: "none", border: "none" }}>
-                <div className="tz-admin-filter-group">
-                  <label className="tz-admin-filter-label">Localidad</label>
-                  <select
-                    className="tz-admin-filter-select"
-                    value={historialCierresLocalidadId}
-                    onChange={(e) => {
-                      setHistorialCierresLocalidadId(e.target.value);
-                      setHistorialCierresCajaId("");
-                    }}
-                  >
-                    <option value="">Todas</option>
-                    {localidades.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.nombre}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {historialCierresLocalidadId && (
+                <div className="tz-admin-filter-pareja">
                   <div className="tz-admin-filter-group">
-                    <label className="tz-admin-filter-label">Sucursal / Caja</label>
+                    <label className="tz-admin-filter-label">Localidad</label>
                     <select
                       className="tz-admin-filter-select"
-                      value={historialCierresCajaId}
-                      onChange={(e) => setHistorialCierresCajaId(e.target.value)}
+                      value={historialCierresLocalidadId}
+                      onChange={(e) => {
+                        setHistorialCierresLocalidadId(e.target.value);
+                        setHistorialCierresCajaId("");
+                      }}
                     >
                       <option value="">Todas</option>
-                      {sucursalesPorLocalidad(historialCierresLocalidadId).flatMap((suc) =>
-                        cajasPorSucursal(suc.id).map((caja) => (
-                          <option key={caja.id} value={caja.id}>
-                            {suc.nombre} - {caja.nombre}
-                          </option>
-                        ))
-                      )}
+                      {localidades.map((loc) => (
+                        <option key={loc.id} value={loc.id}>
+                          {loc.nombre}
+                        </option>
+                      ))}
                     </select>
                   </div>
-                )}
+                  {historialCierresLocalidadId && (
+                    <div className="tz-admin-filter-group">
+                      <label className="tz-admin-filter-label">Sucursal / Caja</label>
+                      <select
+                        className="tz-admin-filter-select"
+                        value={historialCierresCajaId}
+                        onChange={(e) => setHistorialCierresCajaId(e.target.value)}
+                      >
+                        <option value="">Todas</option>
+                        {sucursalesPorLocalidad(historialCierresLocalidadId).flatMap((suc) =>
+                          cajasPorSucursal(suc.id).map((caja) => (
+                            <option key={caja.id} value={caja.id}>
+                              {suc.nombre} - {caja.nombre}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {cierresFiltradosHistorial.length === 0 ? (

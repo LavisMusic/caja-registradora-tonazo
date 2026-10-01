@@ -1,5 +1,6 @@
 import { formatSoles } from "../utils/format";
-import logo from "../assets/logo.png";
+import { useAuth } from "../contexts/AuthContext";
+import logo from "../assets/logo.webp";
 
 /* Plantilla visual de boleta/ticket para enviar por WhatsApp. Su único
    trabajo es existir en el DOM con un tamaño y estilos fijos para que
@@ -49,7 +50,19 @@ const rowStyle = {
 // cambiar esto alcanza para que aparezca en TODAS las boletas.
 const EMISOR_RUC = "";
 
-export default function TicketBoleta({ orden, cliente, productos, totales, sede, entrega }) {
+export default function TicketBoleta({ orden, cliente, productos, totales, sede, entrega, logoUrl }) {
+  // Logo REAL del negocio: 'logoUrl' (prop explícita) es para cuando
+  // quien genera la boleta es un CLIENTE — su perfil no tiene
+  // negocio_id propio (identidad compartida entre negocios, Fase 1),
+  // así que 'negocioLogoUrl' de useAuth() siempre da null para un
+  // cliente sin importar de qué negocio sea el pedido; PedidoCheckout-
+  // Modal/MisPedidosModal resuelven el logo real del negocio del
+  // PEDIDO puntual y lo pasan acá. 'negocioLogoUrl' sigue siendo la
+  // fuente para admin/cajero (boletas del POS), y el logo estático de
+  // Tonazo es el último fallback si ninguno de los dos resolvió.
+  const { negocioLogoUrl } = useAuth();
+  const logoAMostrar = logoUrl || negocioLogoUrl || logo;
+
   const nombreCliente = cliente?.nombre?.trim() ? cliente.nombre.trim() : "Público General";
   const rucCliente = cliente?.ruc?.trim() || "";
   const items = Array.isArray(productos) ? productos : [];
@@ -70,7 +83,7 @@ export default function TicketBoleta({ orden, cliente, productos, totales, sede,
     >
       {/* ---- Encabezado: mismo logo que el header principal ---- */}
       <div style={{ textAlign: "center" }}>
-        <img src={logo} alt="TONAZO!" style={{ width: 110, height: "auto", margin: "0 auto" }} />
+        <img src={logoAMostrar} alt="Logo del negocio" style={{ width: 110, height: "auto", margin: "0 auto" }} />
         <p style={{ margin: "6px 0 0", fontSize: 11, color: COLORS.dim, letterSpacing: 0.4 }}>
           Caja Registradora
         </p>
@@ -140,6 +153,12 @@ export default function TicketBoleta({ orden, cliente, productos, totales, sede,
               <div style={{ fontSize: 11.5, color: COLORS.dim, marginTop: 2, wordBreak: "break-word" }}>
                 {entrega.direccion.trim()}
               </div>
+            </div>
+          )}
+          {entrega.tarifa != null && (
+            <div style={rowStyle}>
+              <span>Tarifa de envío</span>
+              <span>{formatSoles(entrega.tarifa)}</span>
             </div>
           )}
         </>

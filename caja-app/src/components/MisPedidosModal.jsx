@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X, MessageCircle, Loader2, Ban, Trash2, Bike, Copy } from "lucide-react";
+import { X, MessageCircle, Loader2, Ban, Trash2, Bike, Store, Copy } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { supabaseTaxi } from "../lib/supabaseTaxi";
 import ChatPedidoModal from "./ChatPedidoModal";
 import EntregaCajaModal from "./delivery/EntregaCajaModal";
+import AnimacionExitoNeon from "./AnimacionExitoNeon";
 import TicketBoleta from "./TicketBoleta";
 import { formatSoles, formatDate, formatTime } from "../utils/format";
 import { buildWhatsappLink } from "../lib/whatsapp";
@@ -19,6 +20,14 @@ const ESTADO_LABELS = {
   cancelado: "Cancelado",
 };
 
+// Mismo agrupamiento de 3 baldes que el filtro del Gestor de Pedidos
+// (GestorPedidosModal.jsx) — "en carrera" junta nuevo/en_atencion.
+function estadoGrupo(pedido) {
+  if (pedido.estado === "confirmado") return "entregado";
+  if (pedido.estado === "cancelado") return "cancelado";
+  return "en_carrera";
+}
+
 // "Mis Pedidos" del cliente: sus propios pedidos (RLS ya garantiza que
 // solo vea los suyos), con acceso directo al chat de cada uno — así el
 // cliente puede seguir hablando con la tienda incluso después de haber
@@ -30,11 +39,19 @@ export default function MisPedidosModal({ session, onClose }) {
   const [cancelandoId, setCancelandoId] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
   const [entregaToken, setEntregaToken] = useState(null);
+  const [animacionExito, setAnimacionExito] = useState(null); // texto del título, o null
   const [misDatos, setMisDatos] = useState(null);
   const [boletaPedido, setBoletaPedido] = useState(null);
   const [boletaExtra, setBoletaExtra] = useState(null); // { sede, entrega }
   const [boletaMsg, setBoletaMsg] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState(null); // 'en_carrera' | 'entregado' | 'cancelado' | null
+  const [sucursalesInfo, setSucursalesInfo] = useState({}); // { [sucursalId]: nombre }
   const boletaRef = useRef(null);
+  // Ventana de WhatsApp abierta EN BLANCO de forma síncrona en el click
+  // (ver el botón "Enviar boleta por WhatsApp") y redirigida recién al
+  // terminar el trabajo async — si se llama window.open() después de un
+  // await, mobile Chrome lo bloquea como popup.
+  const whatsappWinRef = useRef(null);
   const { counts: noLeidos, refrescar: refrescarNoLeidos } = usePedidosNoLeidos(
     pedidos.map((p) => p.id),
     "cliente"
@@ -57,15 +74,21 @@ export default function MisPedidosModal({ session, onClose }) {
     if (!boletaPedido) return;
     let alive = true;
     (async () => {
-      const extra = { sede: "", entrega: null };
+      const extra = { sede: "", entrega: null, logoUrl: null };
       try {
         if (boletaPedido.sucursal_id) {
+          // Embed encadenado sucursal -> localidad -> negocio: el
+          // logo real de ESE negocio puntual (un cliente puede tener
+          // pedidos de varios, identidad compartida — nunca alcanza
+          // con negocioLogoUrl de useAuth(), que para un 'cliente'
+          // siempre es null, ver TicketBoleta.jsx).
           const { data: suc } = await supabase
             .from("sucursales")
-            .select("nombre")
+            .select("nombre, localidades(negocios(logo_url))")
             .eq("id", boletaPedido.sucursal_id)
             .maybeSingle();
           if (suc?.nombre) extra.sede = suc.nombre;
+          extra.logoUrl = suc?.localidades?.negocios?.logo_url || null;
         }
         if (boletaPedido.entrega_session_token) {
           const { data: est } = await supabaseTaxi.rpc("rpc_entrega_estado", {
@@ -76,6 +99,7 @@ export default function MisPedidosModal({ session, onClose }) {
             extra.entrega = {
               repartidor: e.conductor_nombre || "",
               direccion: e.direccion_entrega || boletaPedido.direccion_entrega || "",
+              tarifa: e.tarifa != null ? Number(e.tarifa) : null,
             };
             if (e.caja_sucursal && !extra.sede) extra.sede = e.caja_sucursal;
           }
@@ -93,10 +117,18 @@ export default function MisPedidosModal({ session, onClose }) {
         const res = await copiarBoletaAlPortapapeles(boletaRef);
         setBoletaMsg(res?.descargado ? "Se descargó la boleta — adjuntala en tu chat." : "Boleta copiada. Pegala en tu chat.");
         const link = buildWhatsappLink(misDatos?.whatsapp, "Aquí está mi boleta");
-        if (link) window.open(link, "_blank");
+        const win = whatsappWinRef.current;
+        if (link) {
+          if (win && !win.closed) win.location.href = link;
+          else window.open(link, "_blank");
+        } else if (win && !win.closed) {
+          win.close();
+        }
       } catch (err) {
         setBoletaMsg(err?.message || "No se pudo generar la boleta.");
+        if (whatsappWinRef.current && !whatsappWinRef.current.closed) whatsappWinRef.current.close();
       } finally {
+        whatsappWinRef.current = null;
         if (alive) {
           setBoletaPedido(null);
           setBoletaExtra(null);
@@ -127,6 +159,30 @@ export default function MisPedidosModal({ session, onClose }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Nombre de la sucursal de cada pedido (a diferencia del Gestor de
+  // Pedidos del cajero, acá SÍ puede variar de una tarjeta a otra — el
+  // cliente ve su historial completo, no una sola sucursal).
+  useEffect(() => {
+    const ids = [...new Set(pedidos.map((p) => p.sucursal_id).filter(Boolean))];
+    if (ids.length === 0) return;
+    let active = true;
+    supabase
+      .from("sucursales")
+      .select("id, nombre")
+      .in("id", ids)
+      .then(({ data }) => {
+        if (!active || !data) return;
+        const map = {};
+        data.forEach((row) => {
+          map[row.id] = row.nombre;
+        });
+        setSucursalesInfo(map);
+      });
+    return () => {
+      active = false;
+    };
+  }, [pedidos]);
 
   const cancelarPedido = async (pedidoId) => {
     setCancelandoId(pedidoId);
@@ -170,6 +226,8 @@ export default function MisPedidosModal({ session, onClose }) {
     };
   }, [session, load]);
 
+  const pedidosVisibles = filtroEstado ? pedidos.filter((p) => estadoGrupo(p) === filtroEstado) : pedidos;
+
   return (
     <div className="tz-modal-backdrop">
       <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
@@ -178,23 +236,55 @@ export default function MisPedidosModal({ session, onClose }) {
         </button>
         <h2>Mis Pedidos</h2>
 
+        {pedidos.length > 0 && (
+          <div className="tz-gasto-tipo-buttons" style={{ margin: "0 0 12px", gap: 6 }}>
+            {[
+              ["en_carrera", "En carrera"],
+              ["entregado", "Entregado"],
+              ["cancelado", "Cancelado"],
+            ].map(([k, txt]) => (
+              <button
+                key={k}
+                type="button"
+                className={`tz-filtro-estado-chip tz-filtro-estado-chip-${k} ${
+                  filtroEstado === k ? "tz-filtro-estado-chip-activo" : ""
+                }`}
+                onClick={() => setFiltroEstado((prev) => (prev === k ? null : k))}
+              >
+                {txt}
+              </button>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <p className="tz-stock-editor-sub">
             <Loader2 className="tz-spin" size={16} /> Cargando...
           </p>
         ) : pedidos.length === 0 ? (
           <p className="tz-stock-editor-sub">Todavía no has hecho ningún pedido.</p>
+        ) : pedidosVisibles.length === 0 ? (
+          <p className="tz-stock-editor-sub">Ningún pedido coincide con ese filtro.</p>
         ) : (
           <div className="tz-pedidos-list">
-            {pedidos.map((pedido) => (
+            {pedidosVisibles.map((pedido) => (
               <div key={pedido.id} className="tz-pedido-card">
                 <div className="tz-pedido-card-head">
-                  <span className="tz-pedido-cliente-nombre">
+                  <span className="tz-pedido-cliente-nombre tz-pedido-cliente-nombre-fijo">
                     {formatDate(pedido.created_at)} {formatTime(pedido.created_at)}
                   </span>
-                  <span className={`tz-pedido-estado tz-pedido-estado-${pedido.estado}`}>
-                    {ESTADO_LABELS[pedido.estado] || pedido.estado}
-                  </span>
+                  <div className="tz-pedido-card-tags">
+                    {sucursalesInfo[pedido.sucursal_id] && (
+                      <span className="tz-pedido-sucursal-tag">{sucursalesInfo[pedido.sucursal_id]}</span>
+                    )}
+                    <span className={`tz-pedido-modo-tag ${pedido.requiere_delivery ? "tz-pedido-modo-delivery" : "tz-pedido-modo-tienda"}`}>
+                      {pedido.requiere_delivery ? <Bike size={12} /> : <Store size={12} />}
+                      {pedido.requiere_delivery ? "Delivery" : "Retiro en tienda"}
+                    </span>
+                    <span className={`tz-pedido-estado tz-pedido-estado-${pedido.estado}`}>
+                      {ESTADO_LABELS[pedido.estado] || pedido.estado}
+                    </span>
+                  </div>
                 </div>
                 <ul className="tz-pedido-items-list">
                   {(pedido.pedido_items || []).map((it) => (
@@ -231,7 +321,11 @@ export default function MisPedidosModal({ session, onClose }) {
                   <button
                     type="button"
                     className="tz-pedido-action-btn"
-                    onClick={() => { setBoletaMsg(""); setBoletaPedido(pedido); }}
+                    onClick={() => {
+                      whatsappWinRef.current = window.open("", "_blank");
+                      setBoletaMsg("");
+                      setBoletaPedido(pedido);
+                    }}
                     disabled={boletaPedido?.id === pedido.id}
                   >
                     {boletaPedido?.id === pedido.id ? <Loader2 size={14} className="tz-spin" /> : <Copy size={14} />}
@@ -298,6 +392,7 @@ export default function MisPedidosModal({ session, onClose }) {
               cliente={{ nombre: misDatos?.nombre || "" }}
               sede={boletaExtra?.sede || ""}
               entrega={boletaExtra?.entrega || null}
+              logoUrl={boletaExtra?.logoUrl || null}
               productos={(boletaPedido.pedido_items || []).map((it) => ({
                 cantidad: it.cantidad,
                 nombre: it.nombre,
@@ -325,7 +420,18 @@ export default function MisPedidosModal({ session, onClose }) {
             setEntregaToken(null);
             load();
           }}
+          onEntregado={() => {
+            // Cierra el modal de seguimiento ANTES de festejar — la
+            // animación de éxito debe ser lo único en pantalla.
+            setEntregaToken(null);
+            load();
+            setAnimacionExito("¡Entrega confirmada!");
+          }}
         />
+      )}
+
+      {animacionExito && (
+        <AnimacionExitoNeon titulo={animacionExito} onTerminar={() => setAnimacionExito(null)} />
       )}
     </div>
   );
