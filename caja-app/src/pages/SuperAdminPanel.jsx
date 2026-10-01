@@ -23,6 +23,9 @@ import {
   Users,
   UserCog,
   BarChart3,
+  Layers,
+  Phone,
+  CreditCard,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
@@ -30,6 +33,10 @@ import Styles from "../components/Styles";
 import NegocioClientesModal from "./NegocioClientesModal.jsx";
 import CuentasManagerModal from "./CuentasManagerModal.jsx";
 import EstadisticasModal from "./EstadisticasModal.jsx";
+import PlanesModal from "./PlanesModal.jsx";
+import PlanNegocioModal from "./PlanNegocioModal.jsx";
+import ContactoPlataformaModal from "./ContactoPlataformaModal.jsx";
+import { ESTADOS_PLAN, DIAS_AVISO, diasHasta } from "../lib/planes";
 import logo from "../assets/logo.webp";
 
 /* Fase 1 del super-admin: gestor de rubros (columna izquierda, estilo
@@ -217,7 +224,23 @@ function RubroRow({ rubro, selected, onSelect, onRename, onToggleActivo, onDelet
   );
 }
 
-function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete, onCreateAdmin, onVerClientes }) {
+// Fase 4: chip con el estado del plan + nombre del plan + días que le
+// quedan (o hace cuánto venció).
+function PlanResumen({ negocio, plan }) {
+  const estado = ESTADOS_PLAN[negocio.plan_estado] || ESTADOS_PLAN.activo;
+  const dias = negocio.plan_exento ? null : diasHasta(negocio.plan_vence_at);
+  let detalle = "";
+  if (dias != null) detalle = dias >= 0 ? `${dias} d` : `vencido hace ${-dias} d`;
+  return (
+    <p className="tz-plan-resumen">
+      <span className="tz-plan-badge" style={{ "--tz-plan-color": estado.color }}>{estado.label}</span>
+      <span>{plan ? plan.nombre : "Sin plan"}</span>
+      {detalle && <span className="tz-plan-resumen-dias">{detalle}</span>}
+    </p>
+  );
+}
+
+function NegocioCard({ negocio, plan, onRename, onToggleActivo, onLogoChange, onDelete, onCreateAdmin, onVerClientes, onVerPlan }) {
   const drag = useDragItem(`negocio:${negocio.id}`);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(negocio.nombre);
@@ -457,6 +480,19 @@ function NegocioCard({ negocio, onRename, onToggleActivo, onLogoChange, onDelete
         </button>
       )}
 
+      {!confirming && !creatingAdmin && (
+        <>
+          <PlanResumen negocio={negocio} plan={plan} />
+          <button
+            type="button"
+            className="tz-sa-add-btn tz-sa-negocio-plan-btn"
+            onClick={() => onVerPlan(negocio)}
+          >
+            <CreditCard size={14} /> Plan y pagos
+          </button>
+        </>
+      )}
+
       {confirming ? (
         <div className="tz-vis-confirm-delete tz-sa-negocio-confirm">
           <p>¿Eliminar <strong>{negocio.nombre}</strong> definitivamente?</p>
@@ -524,6 +560,12 @@ export default function SuperAdminPanel() {
   const [verClientesNegocio, setVerClientesNegocio] = useState(null);
   const [cuentasOpen, setCuentasOpen] = useState(false);
   const [estadisticasOpen, setEstadisticasOpen] = useState(false);
+  // Fase 4 — planes y contacto.
+  const [planes, setPlanes] = useState([]);
+  const [planesOpen, setPlanesOpen] = useState(false);
+  const [contactoOpen, setContactoOpen] = useState(false);
+  const [planNegocio, setPlanNegocio] = useState(null);
+  const [filtroPlan, setFiltroPlan] = useState("todos");
 
   const [creatingRubro, setCreatingRubro] = useState(false);
   const [nuevoRubro, setNuevoRubro] = useState("");
@@ -542,9 +584,10 @@ export default function SuperAdminPanel() {
   const cargar = async () => {
     setLoading(true);
     setLoadError("");
-    const [{ data: rubrosData, error: rubrosErr }, { data: negociosData, error: negociosErr }] = await Promise.all([
+    const [{ data: rubrosData, error: rubrosErr }, { data: negociosData, error: negociosErr }, { data: planesData }] = await Promise.all([
       supabase.from("rubros").select("*").order("orden", { ascending: true }),
-      supabase.from("negocios").select("*").order("orden", { ascending: true }),
+      supabase.from("negocios").select("*, plan_estado").order("orden", { ascending: true }),
+      supabase.from("planes").select("*").order("orden", { ascending: true }),
     ]);
     if (rubrosErr || negociosErr) {
       setLoadError((rubrosErr || negociosErr).message || "No se pudo cargar el directorio.");
@@ -553,6 +596,7 @@ export default function SuperAdminPanel() {
     }
     setRubros(rubrosData || []);
     setNegocios(negociosData || []);
+    setPlanes(planesData || []);
     setLoading(false);
   };
 
@@ -561,9 +605,30 @@ export default function SuperAdminPanel() {
   }, []);
 
   const negociosFiltrados = useMemo(() => {
-    if (selectedRubroId === "todos") return negocios;
-    return negocios.filter((n) => n.rubro_id === selectedRubroId);
-  }, [negocios, selectedRubroId]);
+    const porRubro = selectedRubroId === "todos" ? negocios : negocios.filter((n) => n.rubro_id === selectedRubroId);
+    if (filtroPlan === "todos") return porRubro;
+    if (filtroPlan === "por_vencer") {
+      return porRubro.filter((n) => {
+        if (!["prueba", "activo"].includes(n.plan_estado)) return false;
+        const dias = diasHasta(n.plan_vence_at);
+        return dias != null && dias <= DIAS_AVISO;
+      });
+    }
+    return porRubro.filter((n) => n.plan_estado === filtroPlan);
+  }, [negocios, selectedRubroId, filtroPlan]);
+
+  const conteoPlan = useMemo(() => {
+    const c = { por_vencer: 0, gracia: 0, suspendido: 0 };
+    negocios.forEach((n) => {
+      if (n.plan_estado === "gracia") c.gracia += 1;
+      else if (n.plan_estado === "suspendido") c.suspendido += 1;
+      else if (["prueba", "activo"].includes(n.plan_estado)) {
+        const dias = diasHasta(n.plan_vence_at);
+        if (dias != null && dias <= DIAS_AVISO) c.por_vencer += 1;
+      }
+    });
+    return c;
+  }, [negocios]);
 
   /* ---- Rubros ---- */
   const handleCreateRubro = async () => {
@@ -652,7 +717,7 @@ export default function SuperAdminPanel() {
     const { data, error } = await supabase
       .from("negocios")
       .insert({ nombre, slug, rubro_id: rubroId, orden })
-      .select()
+      .select("*, plan_estado")
       .single();
     setNegocioSaving(false);
     if (error) {
@@ -784,6 +849,20 @@ export default function SuperAdminPanel() {
         >
           <UserCog size={15} /> Gestor de Cuentas
         </button>
+        <button
+          type="button"
+          className="tz-header-btn tz-sa-cuentas-btn"
+          onClick={() => setPlanesOpen(true)}
+        >
+          <Layers size={15} /> Planes
+        </button>
+        <button
+          type="button"
+          className="tz-header-btn tz-sa-cuentas-btn"
+          onClick={() => setContactoOpen(true)}
+        >
+          <Phone size={15} /> Contacto
+        </button>
         <button type="button" className="tz-header-btn tz-sa-logout" onClick={signOut}>
           <LogOut size={15} /> Salir
         </button>
@@ -858,6 +937,24 @@ export default function SuperAdminPanel() {
                 : ""}
             </h2>
 
+            <div className="tz-plan-filtros">
+              {[
+                ["todos", "Todos"],
+                ["por_vencer", `Por vencer (${conteoPlan.por_vencer})`],
+                ["gracia", `En gracia (${conteoPlan.gracia})`],
+                ["suspendido", `Suspendidos (${conteoPlan.suspendido})`],
+              ].map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`tz-gasto-tipo-btn ${filtroPlan === id ? "tz-gasto-tipo-active" : ""}`}
+                  onClick={() => setFiltroPlan(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
             <DndContext sensors={sensors} onDragEnd={handleNegocioDragEnd}>
               <SortableContext items={negociosFiltrados.map((n) => `negocio:${n.id}`)} strategy={verticalListSortingStrategy}>
                 <div className="tz-sa-negocios-grid">
@@ -865,6 +962,8 @@ export default function SuperAdminPanel() {
                     <NegocioCard
                       key={n.id}
                       negocio={n}
+                      plan={planes.find((p) => p.id === n.plan_id) || null}
+                      onVerPlan={setPlanNegocio}
                       onRename={handleRenameNegocio}
                       onToggleActivo={handleToggleNegocioActivo}
                       onLogoChange={handleNegocioLogoChange}
@@ -942,6 +1041,21 @@ export default function SuperAdminPanel() {
 
       {estadisticasOpen && (
         <EstadisticasModal negocios={negocios} onClose={() => setEstadisticasOpen(false)} />
+      )}
+
+      {planesOpen && <PlanesModal onClose={() => setPlanesOpen(false)} onCambio={setPlanes} />}
+
+      {contactoOpen && <ContactoPlataformaModal onClose={() => setContactoOpen(false)} />}
+
+      {planNegocio && (
+        <PlanNegocioModal
+          negocio={planNegocio}
+          planes={planes}
+          onClose={() => setPlanNegocio(null)}
+          onActualizado={(actualizado) =>
+            setNegocios((prev) => prev.map((n) => (n.id === actualizado.id ? actualizado : n)))
+          }
+        />
       )}
     </div>
   );

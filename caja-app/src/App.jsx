@@ -82,6 +82,7 @@ import PesoModal from "./components/PesoModal";
 import Combobox from "./components/Combobox";
 import GestorLocalidadesModal from "./components/GestorLocalidadesModal";
 import { imprimirBoleta } from "./lib/boleta";
+import { AvisoPlan, PantallaPlanSuspendido } from "./components/AvisoPlanNegocio";
 
 import logo from "./assets/logo.webp";
 
@@ -556,6 +557,7 @@ export default function App() {
     cajaId: authCajaId,
     negocioId,
     negocioLogoUrl,
+    negocioPlan,
   } = useAuth();
   // Logo real de ESTE negocio (el mismo que ya usa la boleta) — cae al
   // de Tonazo solo si el negocio todavía no subió uno.
@@ -7284,6 +7286,23 @@ export default function App() {
     />
   ) : null;
 
+  // Fase 4: plan suspendido (vencido + 5 días de gracia) — bloquea la
+  // caja entera para admin y cajeros. La base además rechaza cualquier
+  // venta (trigger en historial, migración 0087), esto es la pantalla.
+  if ((isAdmin || isCajero) && negocioPlan?.estado === "suspendido") {
+    return (
+      <div className="tz-root tz-caja-blocked">
+        <Styles />
+        <PantallaPlanSuspendido
+          esAdmin={isAdmin}
+          negocioNombre={negocioPlan.negocioNombre}
+          logo={logoNegocio}
+          onSalir={signOut}
+        />
+      </div>
+    );
+  }
+
   if (isCajero && !authCajaId) {
     return (
       <div className="tz-root tz-caja-blocked">
@@ -7363,6 +7382,7 @@ export default function App() {
     <div className="tz-root">
       <Styles />
       {bienvenidaStaffOverlay}
+      <AvisoPlan plan={negocioPlan} esAdmin={isAdmin} negocioNombre={negocioPlan?.negocioNombre} />
 
       {/* El viejo modal obligatorio de "Apertura de Caja" para admin
          (bloqueaba TODO detrás de un backdrop) fue retirado: el admin

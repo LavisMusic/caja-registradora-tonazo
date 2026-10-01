@@ -22,6 +22,7 @@ import { safeGetItem, safeSetItem } from "../utils/safeStorage";
 import { distanciaMetros } from "../lib/haversine";
 import logo from "../assets/logo.webp";
 import logoTaxiPe from "../assets/logo-taxipe.webp";
+import { planPermiteOnline } from "../lib/planes";
 
 // URL pública de Taxi-PE — botón del filtro abre en pestaña nueva, no
 // toca la sesión de Caja para nada (login ya unificado del otro lado).
@@ -105,7 +106,7 @@ export default function CatalogPage() {
     setNegocioError("");
     supabase
       .from("negocios")
-      .select("id, nombre, slug, logo_url")
+      .select("id, nombre, slug, logo_url, plan_estado")
       .eq("slug", slug)
       .eq("activo", true)
       .maybeSingle()
@@ -186,7 +187,11 @@ export default function CatalogPage() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [misPedidosOpen, setMisPedidosOpen] = useState(false);
   const misPedidosBadge = usePedidosBadge({ clienteId: session?.user?.id || null });
-  const puedeComprar = !!session && isCliente;
+  // Fase 4: con el plan vencido (gracia/suspendido) el negocio no recibe
+  // pedidos online — el catálogo se sigue viendo, pero sin carrito. La
+  // base también lo rechaza (trigger en pedidos, migración 0087).
+  const recibePedidos = planPermiteOnline(negocio?.plan_estado);
+  const puedeComprar = !!session && isCliente && recibePedidos;
 
   /* ---- Filtro Público de Sucursales: el cliente elige en qué
      Localidad/Sucursal quiere comprar — el catálogo (productos Y
@@ -636,6 +641,11 @@ export default function CatalogPage() {
       )}
 
       <main className="tz-main">
+        {negocio && !recibePedidos && (
+          <div className="tz-plan-aviso tz-plan-aviso-gracia tz-catalogo-sin-pedidos" role="status">
+            <span>Este negocio no está recibiendo pedidos online en este momento. Puedes ver sus productos igual.</span>
+          </div>
+        )}
         <ScrollSpySidebar
           items={scrollspyItems}
           getSectionEl={(id) => groupSectionRefs.current[id]}
