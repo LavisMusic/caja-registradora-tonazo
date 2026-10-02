@@ -4,7 +4,7 @@ import { supabase } from "../supabaseClient";
 import { useContactoPlataforma } from "../hooks/useContactoPlataforma";
 import { useMiPeticionPlan } from "../hooks/usePeticionesPlan";
 import { formatSoles } from "../utils/format";
-import { ESTADOS_PLAN, duracionPlan, formatFechaCorta, grupoDuracion, precioPlan } from "../lib/planes";
+import { ESTADOS_PLAN, duracionPlan, formatFechaCorta, grupoDuracion, precioPlan, puedeRenovar, inicioRenovacion } from "../lib/planes";
 
 // "Renovar plan" (pie de página del admin, Fase 4 bloque B): mismo
 // flujo que la autorecarga del recolector en Taxi-PE —
@@ -197,6 +197,17 @@ export default function RenovarPlanModal({ negocioId, planActualId, plan, onClos
 
         {pendiente ? (
           <EstadoPeticion peticion={pendiente} />
+        ) : !puedeRenovar(plan?.venceAt) ? (
+          <div className="tz-renovar-estado">
+            <span className="tz-renovar-estado-icono">
+              <Check size={26} />
+            </span>
+            <h3>Tu plan está vigente</h3>
+            <p className="tz-stock-editor-sub">
+              Vence el {formatFechaCorta(plan.venceAt)}. Podrás renovarlo desde el{" "}
+              <strong>{formatFechaCorta(inicioRenovacion(plan.venceAt))}</strong> (3 días antes de que venza).
+            </p>
+          </div>
         ) : (
           <>
             {rechazada && (

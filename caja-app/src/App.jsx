@@ -85,6 +85,7 @@ import { imprimirBoleta } from "./lib/boleta";
 import { AvisoPlan, PantallaPlanSuspendido } from "./components/AvisoPlanNegocio";
 import RenovarPlanModal from "./components/RenovarPlanModal";
 import { useMiPeticionPlan } from "./hooks/usePeticionesPlan";
+import { puedeRenovar, inicioRenovacion, formatFechaCorta } from "./lib/planes";
 
 import logo from "./assets/logo.webp";
 
@@ -8980,10 +8981,23 @@ export default function App() {
           </button>
         )}
         {isAdmin && negocioPlan && !negocioPlan.exento && (
-          <button className="tz-footer-btn tz-footer-btn-renovar" onClick={() => setRenovarPlanOpen(true)}>
-            <CreditCard size={18} />
-            {pagoPlanEnRevision ? "Pago en revisión" : "Renovar plan"}
-          </button>
+          // Ventana de renovación (0090): con el plan vigente solo se
+          // puede pagar en los últimos 3 días antes de que venza.
+          pagoPlanEnRevision || puedeRenovar(negocioPlan.venceAt) ? (
+            <button className="tz-footer-btn tz-footer-btn-renovar" onClick={() => setRenovarPlanOpen(true)}>
+              <CreditCard size={18} />
+              {pagoPlanEnRevision ? "Pago en revisión" : "Renovar plan"}
+            </button>
+          ) : (
+            <button
+              className="tz-footer-btn tz-footer-btn-renovar tz-footer-btn-bloqueado"
+              disabled
+              title={`Podrás renovar desde el ${formatFechaCorta(inicioRenovacion(negocioPlan.venceAt))}`}
+            >
+              <CreditCard size={18} />
+              Plan activo hasta {formatFechaCorta(negocioPlan.venceAt)}
+            </button>
+          )
         )}
       </footer>
 

@@ -1,5 +1,5 @@
 import { AlertTriangle, Clock, CreditCard, Lock, LogOut } from "lucide-react";
-import { DIAS_AVISO, DIAS_GRACIA, diasHasta, formatFechaCorta } from "../lib/planes";
+import { DIAS_AVISO, DIAS_GRACIA, diasHasta, formatFechaCorta, puedeRenovar, inicioRenovacion } from "../lib/planes";
 
 // Fase 4 — avisos del plan para admin/cajero de un negocio.
 //   * Por vencer (≤ 7 días, prueba o activo): aviso amarillo, solo admin.
@@ -51,9 +51,13 @@ export function AvisoPlan({ plan, esAdmin, onRenovar, enRevision = false }) {
         <AlertTriangle size={18} />
         <span>
           {plan.estado === "prueba" ? "Tu prueba gratis" : "Tu plan"} vence <strong>{cuando}</strong> ({formatFechaCorta(plan.venceAt)}).
-          Renueva para seguir apareciendo en el directorio.
+          {puedeRenovar(plan.venceAt)
+            ? " Renueva ahora para seguir apareciendo en el directorio."
+            : ` Podrás renovarlo desde el ${formatFechaCorta(inicioRenovacion(plan.venceAt))}.`}
         </span>
-        <BotonRenovar onRenovar={onRenovar} enRevision={enRevision} texto="Renovar" />
+        {(enRevision || puedeRenovar(plan.venceAt)) && (
+          <BotonRenovar onRenovar={onRenovar} enRevision={enRevision} texto="Renovar" />
+        )}
       </div>
     );
   }

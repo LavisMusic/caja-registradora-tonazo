@@ -6373,6 +6373,9 @@ export default function Styles() {
         color: #032316;
         box-shadow: 0 0 20px rgba(57,255,176,0.45);
       }
+      .tz-footer-btn-bloqueado { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+      .tz-footer-btn-bloqueado:hover { transform: none; }
+      .tz-plan-ventana-nota { color: var(--yellow); margin: 0 0 10px; }
 
       /* ---- Renovar plan (admin del negocio) ---- */
       .tz-renovar-planes { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }

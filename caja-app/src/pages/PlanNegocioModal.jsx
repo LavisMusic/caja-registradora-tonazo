@@ -3,7 +3,7 @@ import { X, Loader2, Check, CreditCard, CalendarClock } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Styles from "../components/Styles";
 import { formatSoles } from "../utils/format";
-import { ESTADOS_PLAN, DIAS_GRACIA, diasHasta, formatFechaCorta, precioPlan, duracionPlan } from "../lib/planes";
+import { ESTADOS_PLAN, DIAS_GRACIA, diasHasta, formatFechaCorta, precioPlan, duracionPlan, puedeRenovar, inicioRenovacion } from "../lib/planes";
 
 // Plan y pagos de UN negocio (super admin, Fase 4): plan asignado,
 // modo (automático / exento / suspendido a mano), registrar un pago
@@ -182,6 +182,12 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
         {!negocio.plan_exento && (
           <>
             <h3 className="tz-plan-subtitulo">Registrar pago</h3>
+            {!puedeRenovar(negocio.plan_vence_at) && (
+              <p className="tz-stock-editor-sub tz-plan-ventana-nota">
+                Plan vigente: se puede renovar desde el {formatFechaCorta(inicioRenovacion(negocio.plan_vence_at))} (3 días
+                antes de que venza). Si hubo un error en la fecha, usa “Corregir vencimiento”.
+              </p>
+            )}
             <div className="tz-plan-seccion tz-plan-pago-grid">
               <label className="tz-plan-campo tz-plan-campo-ancho">
                 <span>Plan pagado</span>
@@ -220,7 +226,13 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
                 <input className="tz-text-input" placeholder="Ej. N° de operación" value={nota} onChange={(e) => setNota(e.target.value)} />
               </label>
             </div>
-            <button type="button" className="tz-scan-btn tz-payment-save" style={{ width: "100%" }} onClick={registrarPago} disabled={guardando === "pago"}>
+            <button
+              type="button"
+              className="tz-scan-btn tz-payment-save"
+              style={{ width: "100%" }}
+              onClick={registrarPago}
+              disabled={guardando === "pago" || !puedeRenovar(negocio.plan_vence_at)}
+            >
               {guardando === "pago" ? <Loader2 size={15} className="tz-spin" /> : <Check size={15} />} Registrar pago y extender {meses}{" "}
               {meses === 1 ? "mes" : "meses"}
             </button>

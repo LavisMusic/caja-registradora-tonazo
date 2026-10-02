@@ -7,6 +7,11 @@
 export const DIAS_GRACIA = 5;
 // Desde cuántos días antes del vencimiento se avisa al admin.
 export const DIAS_AVISO = 7;
+// Ventana de renovación (migración 0090): con el plan vigente solo se
+// puede pagar en los últimos 3 días antes de que venza — misma regla que
+// el recolector de Taxi-PE (no se vende otra membresía mientras la
+// actual sigue vigente), con margen para que el negocio pague a tiempo.
+export const DIAS_VENTANA_RENOVACION = 3;
 const MS_DIA = 86400000;
 
 export const ESTADOS_PLAN = {
@@ -35,9 +40,22 @@ export function calcularEstadoPlan(n, ahora = Date.now()) {
 export function msHastaProximoCambio(n, ahora = Date.now()) {
   if (!n || n.plan_suspendido_manual || n.plan_exento || !n.plan_vence_at) return null;
   const vence = new Date(n.plan_vence_at).getTime();
-  const hitos = [vence - DIAS_AVISO * MS_DIA, vence, vence + DIAS_GRACIA * MS_DIA];
+  const hitos = [vence - DIAS_AVISO * MS_DIA, vence - DIAS_VENTANA_RENOVACION * MS_DIA, vence, vence + DIAS_GRACIA * MS_DIA];
   const proximo = hitos.find((t) => t > ahora);
   return proximo == null ? null : proximo - ahora + 500;
+}
+
+// ¿Se puede pagar/renovar ya? (sin fecha, ya vencido, o dentro de los
+// últimos DIAS_VENTANA_RENOVACION días). Misma regla que la base.
+export function puedeRenovar(venceAt, ahora = Date.now()) {
+  if (!venceAt) return true;
+  return ahora >= new Date(venceAt).getTime() - DIAS_VENTANA_RENOVACION * MS_DIA;
+}
+
+// Desde qué fecha se habilita la renovación.
+export function inicioRenovacion(venceAt) {
+  if (!venceAt) return null;
+  return new Date(new Date(venceAt).getTime() - DIAS_VENTANA_RENOVACION * MS_DIA);
 }
 
 // Días enteros que faltan para `fecha` (negativo si ya pasó).
