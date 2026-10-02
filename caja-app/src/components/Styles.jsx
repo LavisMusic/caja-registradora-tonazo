@@ -6377,6 +6377,139 @@ export default function Styles() {
       .tz-footer-btn-bloqueado:hover { transform: none; }
       .tz-plan-ventana-nota { color: var(--yellow); margin: 0 0 10px; }
 
+      /* ---- Panel del super admin (diseño del admin de Taxi-PE) ---- */
+      .tz-header-btn-badge {
+        position: absolute;
+        top: -6px;
+        right: -6px;
+        min-width: 16px;
+        height: 16px;
+        padding: 0 4px;
+        border-radius: 999px;
+        background: var(--danger);
+        color: #2b0006;
+        font-size: 10px;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 0 8px rgba(255,84,112,0.6);
+      }
+      .tz-directorio-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+      @media (min-width: 768px) { .tz-directorio-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; } }
+      @media (min-width: 1024px) { .tz-directorio-grid { grid-template-columns: repeat(3, 1fr); gap: 18px; } }
+      .tz-page-footer-admin-grid { display: grid; grid-template-columns: repeat(3, 1fr); flex-wrap: nowrap; }
+      .tz-page-footer-admin-grid .tz-footer-btn { max-width: none; }
+      .tz-page-footer-sa { grid-template-columns: repeat(4, 1fr); }
+      @media (max-width: 640px) {
+        .tz-page-footer-admin-grid,
+        .tz-page-footer-sa { grid-template-columns: repeat(2, 1fr); }
+      }
+      .tz-footer-btn-catalogo {
+        background: var(--pink);
+        color: #240013;
+        box-shadow: 0 0 20px rgba(255,47,158,0.4);
+      }
+      .tz-estado-select {
+        border-radius: 8px;
+        border: 1px solid var(--border-soft);
+        padding: 7px 10px;
+        font-family: 'Rajdhani', sans-serif;
+        font-weight: 700;
+        font-size: 12px;
+        cursor: pointer;
+        background: rgba(255,255,255,0.03);
+        color: var(--text);
+      }
+      .tz-estado-select[data-estado="activo"] { border-color: var(--green); color: var(--green); background: var(--green-bg); }
+      .tz-estado-select[data-estado="prueba"] { border-color: var(--yellow); color: var(--yellow); background: rgba(215,255,59,0.1); }
+      .tz-estado-select[data-estado="gracia"] { border-color: var(--orange); color: var(--orange); background: rgba(255,149,0,0.12); }
+      .tz-estado-select[data-estado="suspendido"] { border-color: var(--danger); color: var(--danger); background: rgba(255,84,112,0.12); }
+      .tz-estado-select[data-estado="exento"] { border-color: var(--cyan); color: var(--cyan); background: rgba(43,232,255,0.1); }
+
+      /* Tarjeta de negocio: borde con el color propio del negocio. */
+      .tz-card.tz-card-negocio {
+        cursor: default;
+        background:
+          linear-gradient(var(--panel-solid), var(--panel-solid)) padding-box,
+          linear-gradient(135deg, var(--tz-negocio-color), color-mix(in srgb, var(--tz-negocio-color) 35%, transparent)) border-box;
+        border-color: transparent;
+        box-shadow: 0 0 0 1.5px var(--tz-negocio-color), 0 0 24px color-mix(in srgb, var(--tz-negocio-color) 35%, transparent);
+      }
+      .tz-card-negocio-logo {
+        position: relative;
+        flex: 0 0 auto;
+        width: 76px;
+        height: 76px;
+        border-radius: 14px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255,255,255,0.05);
+        color: var(--text-dim);
+        cursor: pointer;
+      }
+      .tz-card-negocio-logo img { width: 100%; height: 100%; object-fit: contain; }
+      .tz-card-negocio-logo-overlay {
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0,0,0,0.55);
+        color: #fff;
+        opacity: 0;
+        transition: opacity 0.15s ease;
+      }
+      .tz-card-negocio-logo:hover .tz-card-negocio-logo-overlay { opacity: 1; }
+      .tz-card-negocio-dato { margin: 2px 0; color: var(--text-dim); font-size: 13px; }
+      .tz-card-negocio-colores { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+      .tz-card-negocio-color {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 2px solid rgba(255,255,255,0.15);
+        cursor: pointer;
+        padding: 0;
+      }
+      .tz-card-negocio-color-activo { border-color: #fff; box-shadow: 0 0 10px rgba(255,255,255,0.6); }
+      .tz-card-negocio-colores input[type="color"] { width: 30px; height: 26px; border: none; background: none; padding: 0; cursor: pointer; }
+      .tz-card-negocio-admin { display: flex; flex-direction: column; gap: 6px; }
+
+      /* Gestores del super admin */
+      .tz-sa-rubros-lista,
+      .tz-sa-negocios-lista { display: flex; flex-direction: column; gap: 8px; }
+      .tz-sa-rubro-fila,
+      .tz-sa-negocio-fila {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--border-soft);
+        background: rgba(255,255,255,0.03);
+      }
+      .tz-sa-negocio-fila { border-left: 3px solid var(--tz-negocio-color); }
+      .tz-sa-rubro-fila-nombre { flex: 1 1 auto; font-weight: 700; }
+      .tz-sa-rubro-fila-nombre small { color: var(--text-dim); font-weight: 600; }
+      .tz-sa-rubro-fila-confirmar,
+      .tz-sa-rubro-fila-error { flex-basis: 100%; margin: 0; }
+      .tz-sa-negocio-fila-logo { width: 34px; height: 34px; border-radius: 8px; object-fit: contain; background: rgba(255,255,255,0.06); flex: 0 0 auto; }
+      .tz-sa-negocio-fila-logo-vacio { display: flex; align-items: center; justify-content: center; color: var(--text-dim); }
+      .tz-sa-negocio-fila-info { flex: 1 1 140px; min-width: 0; display: flex; flex-direction: column; font-size: 13px; }
+      .tz-sa-negocio-fila-info span { color: var(--text-dim); font-size: 12px; }
+      .tz-sa-nuevo-negocio { display: grid; grid-template-columns: 1.3fr 1fr 1fr auto; gap: 8px; align-items: center; }
+      @media (max-width: 640px) { .tz-sa-nuevo-negocio { grid-template-columns: 1fr 1fr; } }
+      .tz-sa-buscador { display: flex; align-items: center; gap: 8px; color: var(--text-dim); }
+      .tz-sa-buscador .tz-text-input { flex: 1 1 auto; }
+      .tz-sa-eliminar { border-color: rgba(255,84,112,0.6); }
+      .tz-sa-eliminar-resumen { margin: 10px 0 14px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+      .tz-sa-eliminar-resumen strong { color: var(--danger); }
+      .tz-sa-mes-nav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 4px; }
+
       /* ---- Renovar plan (admin del negocio) ---- */
       .tz-renovar-planes { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
       .tz-renovar-plan {
