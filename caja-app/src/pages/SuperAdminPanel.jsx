@@ -10,6 +10,10 @@ import {
   Building2,
   Receipt,
   LayoutGrid,
+  Wallet,
+  ChevronDown,
+  TrendingDown,
+  Lock,
 } from "lucide-react";
 import AnimacionNeonBienvenida from "../components/AnimacionNeonBienvenida";
 import { useBienvenidaNeon } from "../hooks/useBienvenidaNeon";
@@ -27,6 +31,10 @@ import GestorNegociosModal from "./GestorNegociosModal.jsx";
 import GestorRubrosModal from "./GestorRubrosModal.jsx";
 import HistorialPagosModal from "./HistorialPagosModal.jsx";
 import NegociosDirectorio, { grupoDeNegocio } from "./NegociosDirectorio.jsx";
+import NegocioEstrellaChip from "./NegocioEstrellaChip.jsx";
+import ComprobantesPlataformaModal, { METODOS_PAGO_SA } from "./ComprobantesPlataformaModal.jsx";
+import GastosPlataformaModal from "./GastosPlataformaModal.jsx";
+import CierreCajaPlataformaModal from "./CierreCajaPlataformaModal.jsx";
 import { usePeticionesPlanSuperAdmin } from "../hooks/usePeticionesPlan";
 import { formatSoles } from "../utils/format";
 import logo from "../assets/logo.webp";
@@ -39,8 +47,9 @@ import logo from "../assets/logo.webp";
      * estadísticas: negocios por estado del plan + ingresos del mes;
      * Directorio de Negocios: pestañas = rubros, acordeones = estado del
        plan, tarjetas = negocios (ver NegociosDirectorio.jsx);
-     * pie de página: Planes, Historial de ventas, Rubros, Contacto y
-       pagos.
+     * pie de página: Cerrar caja (Excel), Gastos, Planes, Historial de
+       ventas, Rubros, Contacto y pagos;
+     * menú Pagos: gestor de comprobantes por método (con Efectivo).
    Pantalla aparte de App.jsx — montada desde SuperAdminAccessPage.jsx
    (ruta /superadmin) cuando profile.role === 'super_admin'. */
 export default function SuperAdminPanel() {
@@ -57,7 +66,10 @@ export default function SuperAdminPanel() {
 
   const [verClientesNegocio, setVerClientesNegocio] = useState(null);
   const [planNegocio, setPlanNegocio] = useState(null);
-  const [modal, setModal] = useState(null); // 'peticiones' | 'estadisticas' | 'cuentas' | 'negocios' | 'planes' | 'historial' | 'rubros' | 'contacto'
+  const [modal, setModal] = useState(null); // 'peticiones' | 'estadisticas' | 'cuentas' | 'negocios' | 'planes' | 'historial' | 'rubros' | 'contacto' | 'gastos' | 'cierre'
+  // Menú "Pagos" de la cabecera (gestor de comprobantes por método).
+  const [pagosMenuOpen, setPagosMenuOpen] = useState(false);
+  const [metodoAbierto, setMetodoAbierto] = useState(null);
 
   const { peticiones: peticionesPlan, pendientes: peticionesPendientes, loading: peticionesLoading } =
     usePeticionesPlanSuperAdmin();
@@ -72,7 +84,7 @@ export default function SuperAdminPanel() {
       supabase.from("planes").select("*").order("orden", { ascending: true }),
       supabase.from("localidades").select("id, negocio_id"),
       supabase.from("sucursales").select("id, localidad_id, activo"),
-      supabase.from("pagos_plataforma").select("monto").gte("created_at", inicioMes.toISOString()),
+      supabase.from("pagos_plataforma").select("monto").eq("anulado", false).gte("created_at", inicioMes.toISOString()),
     ]);
     return { r, n, p, l, s, pagos };
   };
@@ -202,6 +214,33 @@ export default function SuperAdminPanel() {
           </div>
 
           <div className="tz-header-side tz-header-side-right">
+            <div className="tz-global-search-wrap" style={{ width: "auto", flex: "0 0 auto" }}>
+              <button className="tz-header-btn" onClick={() => setPagosMenuOpen((v) => !v)} aria-label="Pagos">
+                <Wallet size={19} />
+                <span className="tz-header-btn-label">Pagos</span>
+                <ChevronDown size={14} />
+              </button>
+              {pagosMenuOpen && (
+                <>
+                  <div className="tz-dropdown-backdrop" onClick={() => setPagosMenuOpen(false)} />
+                  <div className="tz-global-search-dropdown" style={{ left: "auto", right: 0 }}>
+                    {METODOS_PAGO_SA.map((m) => (
+                      <button
+                        key={m.key}
+                        type="button"
+                        className="tz-global-search-item"
+                        onClick={() => {
+                          setMetodoAbierto(m.key);
+                          setPagosMenuOpen(false);
+                        }}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
             <button className="tz-header-btn" onClick={signOut} aria-label="Cerrar sesión" title="Cerrar sesión">
               <LogOut size={19} />
               <span className="tz-header-btn-label">Salir</span>
@@ -246,6 +285,7 @@ export default function SuperAdminPanel() {
                   {stats.gracia} / {stats.suspendido}
                 </span>
               </div>
+              <NegocioEstrellaChip negocios={negocios} />
             </section>
 
             <h2 style={{ margin: "22px 0 10px" }}>Directorio de Negocios</h2>
@@ -264,7 +304,15 @@ export default function SuperAdminPanel() {
         )}
       </main>
 
-      <footer className="tz-page-footer tz-page-footer-admin-grid tz-page-footer-sa">
+      <footer className="tz-page-footer tz-page-footer-admin-grid">
+        <button className="tz-footer-btn tz-footer-btn-cierre" onClick={() => setModal("cierre")}>
+          <Lock size={18} />
+          Cerrar Caja
+        </button>
+        <button className="tz-footer-btn tz-footer-btn-gastos" onClick={() => setModal("gastos")}>
+          <TrendingDown size={18} />
+          Gastos
+        </button>
         <button className="tz-footer-btn tz-footer-btn-stock" onClick={() => setModal("planes")}>
           <Layers size={18} />
           Planes
@@ -297,6 +345,11 @@ export default function SuperAdminPanel() {
         <GestorRubrosModal rubros={rubros} setRubros={setRubros} negocios={negocios} onClose={() => setModal(null)} />
       )}
       {modal === "contacto" && <ContactoPlataformaModal onClose={() => setModal(null)} />}
+      {modal === "gastos" && <GastosPlataformaModal onClose={() => setModal(null)} />}
+      {modal === "cierre" && <CierreCajaPlataformaModal negocios={negocios} planes={planes} onClose={() => setModal(null)} />}
+      {metodoAbierto && (
+        <ComprobantesPlataformaModal metodo={metodoAbierto} negocios={negocios} onClose={() => setMetodoAbierto(null)} />
+      )}
 
       {verClientesNegocio && (
         <NegocioClientesModal negocio={verClientesNegocio} onClose={() => setVerClientesNegocio(null)} />

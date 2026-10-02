@@ -784,6 +784,56 @@ export default function Styles() {
         border-color: rgba(215,255,59,0.4);
         background: linear-gradient(180deg, rgba(215,255,59,0.10), var(--panel));
       }
+      /* Negocio Estrella (super admin) — mismo medidor que el Usuario
+         Estrella de Taxi-PE: doble de ancho, selector y carrusel Top 5. */
+      .tz-stats > .tz-stat-chip-star { grid-column: span 2; }
+      .tz-star-roles { flex-wrap: nowrap; justify-content: space-around; }
+      .tz-star-carousel {
+        display: flex;
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        gap: 4px;
+        margin-top: 2px;
+        scrollbar-width: none;
+      }
+      .tz-star-carousel::-webkit-scrollbar { display: none; }
+      .tz-star-carousel-item {
+        flex: 0 0 100%;
+        min-width: 100%;
+        scroll-snap-align: center;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 2px 1px;
+      }
+      .tz-star-carousel-rank {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 22px;
+        font-family: 'Orbitron', sans-serif;
+        font-weight: 700;
+        font-size: 12px;
+        color: var(--yellow);
+      }
+      .tz-star-carousel-info { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+      .tz-star-carousel-name { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tz-vis-reject-btn {
+        width: 30px;
+        height: 30px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        border: 1px solid rgba(255,84,112,0.4);
+        background: rgba(255,84,112,0.1);
+        color: var(--danger);
+        cursor: pointer;
+      }
+      .tz-vis-reject-btn:hover { background: rgba(255,84,112,0.22); }
+      .tz-vis-reject-btn:disabled { opacity: 0.5; cursor: not-allowed; }
       .tz-star-text {
         font-family: 'Orbitron', sans-serif;
         font-size: 15px;
@@ -6400,10 +6450,8 @@ export default function Styles() {
       @media (min-width: 1024px) { .tz-directorio-grid { grid-template-columns: repeat(3, 1fr); gap: 18px; } }
       .tz-page-footer-admin-grid { display: grid; grid-template-columns: repeat(3, 1fr); flex-wrap: nowrap; }
       .tz-page-footer-admin-grid .tz-footer-btn { max-width: none; }
-      .tz-page-footer-sa { grid-template-columns: repeat(4, 1fr); }
       @media (max-width: 640px) {
-        .tz-page-footer-admin-grid,
-        .tz-page-footer-sa { grid-template-columns: repeat(2, 1fr); }
+        .tz-page-footer-admin-grid { grid-template-columns: repeat(2, 1fr); }
       }
       .tz-footer-btn-catalogo {
         background: var(--pink);
@@ -6509,6 +6557,37 @@ export default function Styles() {
       .tz-sa-eliminar-resumen { margin: 10px 0 14px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
       .tz-sa-eliminar-resumen strong { color: var(--danger); }
       .tz-sa-mes-nav { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 4px; }
+
+      .tz-dropdown-backdrop { position: fixed; inset: 0; z-index: 55; background: transparent; }
+      .tz-gastos-sa-form { display: grid; grid-template-columns: 1.6fr 0.8fr 1fr auto; gap: 8px; align-items: center; }
+      @media (max-width: 640px) { .tz-gastos-sa-form { grid-template-columns: 1fr 1fr; } }
+      .tz-cierre-sa-totales { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      @media (max-width: 520px) { .tz-cierre-sa-totales { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+      /* Gestor del plan del negocio (rayo): apartados + recarga rápida */
+      .tz-plan-apartados { margin-bottom: 14px; }
+      .tz-recarga-bloqueada { line-height: 1.3; text-align: center; }
+      .tz-recarga-comprobante-botones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .tz-recarga-vuelto-rapidos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .tz-recarga-vuelto-rapidos .tz-gasto-tipo-btn { flex: 0 0 auto; padding: 6px 10px; font-size: 12px; }
+      .tz-recarga-vuelto-resultado { margin: 8px 0 0; font-family: 'Orbitron', sans-serif; font-size: 18px; color: var(--green); }
+      .tz-recarga-vuelto-falta { color: var(--danger); }
+      .tz-plan-pagos li { align-items: center; }
+      .tz-plan-pago-codigo { font-family: 'Orbitron', sans-serif; font-size: 12px; color: var(--cyan); }
+      .tz-plan-pago-anulado { opacity: 0.55; }
+      .tz-plan-pago-anulado > span:not(.tz-tag) { text-decoration: line-through; }
+      .tz-plan-pago-ver {
+        border: none;
+        background: none;
+        padding: 0;
+        color: var(--cyan);
+        text-decoration: underline;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+      }
+      .tz-plan-pago-confirmar { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--yellow); }
+      .tz-footer-btn-2lineas { display: inline-block; line-height: 1.15; text-align: center; }
 
       /* ---- Renovar plan (admin del negocio) ---- */
       .tz-renovar-planes { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }

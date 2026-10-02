@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { X, Loader2, Camera, Copy, Check, CreditCard, Clock, XCircle, Send } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { subirComprobante } from "../lib/comprobantes";
 import { useContactoPlataforma } from "../hooks/useContactoPlataforma";
 import { formatSoles } from "../utils/format";
 import { ESTADOS_PLAN, duracionPlan, formatFechaCorta, grupoDuracion, precioPlan, puedeRenovar, inicioRenovacion } from "../lib/planes";
@@ -147,16 +148,12 @@ export default function RenovarPlanModal({ negocioId, planActualId, plan, petici
     if (!metodo) return setError("Elige con qué pagaste.");
     if (!archivo) return setError("Adjunta la foto o captura del comprobante.");
     setEnviando(true);
-    const ext = (archivo.name.split(".").pop() || "jpg").toLowerCase();
-    const ruta = `planes/${negocioId}/${Date.now()}.${ext}`;
-    const { data: subida, error: errSubida } = await supabase.storage
-      .from("comprobantes-fotos")
-      .upload(ruta, archivo, { contentType: archivo.type || "image/jpeg", upsert: false });
+    // Foto comprimida antes de subir (lib/comprobantes.js).
+    const { url, error: errSubida } = await subirComprobante(archivo, `planes/${negocioId}`);
     if (errSubida) {
       setEnviando(false);
       return setError("No se pudo subir el comprobante. Intenta de nuevo.");
     }
-    const url = supabase.storage.from("comprobantes-fotos").getPublicUrl(subida.path).data.publicUrl;
     const { error: errInsert } = await supabase.from("peticiones_plan").insert({
       negocio_id: negocioId,
       plan_id: elegido.id,

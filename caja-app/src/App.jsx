@@ -74,7 +74,6 @@ import BarcodeScannerModal from "./components/BarcodeScannerModal";
 import CatalogVisibilityAccordion from "./components/CatalogVisibilityAccordion";
 import ProductManagerModal from "./components/ProductManagerModal";
 import ColorPicker from "./components/ColorPicker";
-import LogoEasterEgg from "./components/LogoEasterEgg";
 import ScrollSpySidebar from "./components/ScrollSpySidebar";
 import TicketBoleta from "./components/TicketBoleta";
 import ImageManager from "./components/ImageManager";
@@ -7480,7 +7479,7 @@ export default function App() {
           </div>
 
           <div className="tz-header-center">
-            <LogoEasterEgg src={logoNegocio} alt="Logo del negocio" className="tz-logo" />
+            <img src={logoNegocio} alt="Logo del negocio" className="tz-logo" />
             {/* UX Bug 3: subtítulo dinámico — el cajero siempre ve el
                nombre de SU sucursal (fija, de su perfil); el admin ve la
                que tenga activa en los dropdowns de arriba, o
@@ -8999,7 +8998,11 @@ export default function App() {
               title={`Podrás renovar desde el ${formatFechaCorta(inicioRenovacion(negocioPlan.venceAt))}`}
             >
               <CreditCard size={18} />
-              Plan activo hasta {formatFechaCorta(negocioPlan.venceAt)}
+              <span className="tz-footer-btn-2lineas">
+                Plan activo
+                <br />
+                hasta {formatFechaCorta(negocioPlan.venceAt)}
+              </span>
             </button>
           )
         )}

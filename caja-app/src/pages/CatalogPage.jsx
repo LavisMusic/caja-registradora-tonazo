@@ -13,7 +13,6 @@ import Styles from "../components/Styles";
 import CardDetail from "../components/CardDetail";
 import ComboIngredients from "../components/ComboIngredients";
 import ProductImage from "../components/ProductImage";
-import LogoEasterEgg from "../components/LogoEasterEgg";
 import ScrollSpySidebar from "../components/ScrollSpySidebar";
 import PedidoCheckoutModal from "../components/PedidoCheckoutModal";
 import MisPedidosModal from "../components/MisPedidosModal";
@@ -542,7 +541,7 @@ export default function CatalogPage() {
           </div>
 
           <div className="tz-header-center">
-            <LogoEasterEgg
+            <img
               src={negocio.logo_url || logo}
               alt={negocio.nombre}
               className="tz-logo"
