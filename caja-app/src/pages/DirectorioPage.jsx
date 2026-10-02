@@ -20,7 +20,7 @@ import MisPedidosModal from "../components/MisPedidosModal";
 import { formatDate } from "../utils/format";
 import logo from "../assets/logo.webp";
 import logoTaxiPe from "../assets/logo-taxipe.webp";
-import { planPermiteOnline } from "../lib/planes";
+import { planPermiteOnline, calcularEstadoPlan } from "../lib/planes";
 import { useContactoPlataforma } from "../hooks/useContactoPlataforma";
 import { buildWhatsappLink } from "../lib/whatsapp";
 
@@ -94,6 +94,20 @@ export default function DirectorioPage() {
   const [rubroActivoId, setRubroActivoId] = useState("todos");
   const [localidadFiltro, setLocalidadFiltro] = useState("todas");
   const [sucursalFiltro, setSucursalFiltro] = useState("todas");
+  // Sube cada vez que cambia algún negocio (Realtime): se vuelve a leer
+  // la vidriera, así un negocio que vence o se renueva sale/entra solo.
+  const [versionNegocios, setVersionNegocios] = useState(0);
+  useEffect(() => {
+    const canal = supabase
+      .channel("directorio-negocios")
+      .on("postgres_changes", { event: "*", schema: "public", table: "negocios" }, () =>
+        setVersionNegocios((v) => v + 1)
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -105,7 +119,7 @@ export default function DirectorioPage() {
         { data: sucursalesData, error: sucursalesErr },
       ] = await Promise.all([
         supabase.from("rubros").select("*").eq("activo", true).order("orden"),
-        supabase.from("negocios").select("*, plan_estado").eq("activo", true).order("orden"),
+        supabase.from("negocios").select("*").eq("activo", true).order("orden"),
         supabase.from("localidades").select("id, nombre, negocio_id").eq("activo", true),
         supabase.from("sucursales").select("id, nombre, localidad_id").eq("activo", true),
       ]);
@@ -120,7 +134,7 @@ export default function DirectorioPage() {
       // sentido mostrarlo en la vidriera pública (el super-admin lo ve
       // igual en su propio panel, con el aviso de "sin slug").
       // Fase 4: con el plan vencido (gracia/suspendido) sale de la vidriera.
-      setNegocios((negociosData || []).filter((n) => n.slug && planPermiteOnline(n.plan_estado)));
+      setNegocios((negociosData || []).filter((n) => n.slug && planPermiteOnline(calcularEstadoPlan(n))));
       setLocalidades(localidadesData || []);
       setSucursales(sucursalesData || []);
       setLoading(false);
@@ -128,7 +142,7 @@ export default function DirectorioPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [versionNegocios]);
 
   // Agrupa localidades de TODOS los negocios por nombre (sin distinguir
   // mayúsculas) — es lo más parecido a "ciudad/zona" que hay, ya que

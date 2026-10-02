@@ -604,6 +604,29 @@ export default function SuperAdminPanel() {
     cargar();
   }, []);
 
+  // Tiempo real: si cambia un negocio (pago aprobado, plan, estado),
+  // un plan o se registra un pago — desde otra pestaña o dispositivo —
+  // el panel se actualiza solo, sin el spinner de carga completa.
+  useEffect(() => {
+    const refrescar = async () => {
+      const [{ data: negociosData }, { data: planesData }] = await Promise.all([
+        supabase.from("negocios").select("*, plan_estado").order("orden", { ascending: true }),
+        supabase.from("planes").select("*").order("orden", { ascending: true }),
+      ]);
+      if (negociosData) setNegocios(negociosData);
+      if (planesData) setPlanes(planesData);
+    };
+    const canal = supabase
+      .channel("super-admin-planes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "negocios" }, refrescar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "planes" }, refrescar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "pagos_plataforma" }, refrescar)
+      .subscribe();
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, []);
+
   const negociosFiltrados = useMemo(() => {
     const porRubro = selectedRubroId === "todos" ? negocios : negocios.filter((n) => n.rubro_id === selectedRubroId);
     if (filtroPlan === "todos") return porRubro;
@@ -1043,7 +1066,7 @@ export default function SuperAdminPanel() {
         <EstadisticasModal negocios={negocios} onClose={() => setEstadisticasOpen(false)} />
       )}
 
-      {planesOpen && <PlanesModal onClose={() => setPlanesOpen(false)} onCambio={setPlanes} />}
+      {planesOpen && <PlanesModal negocios={negocios} onClose={() => setPlanesOpen(false)} onCambio={setPlanes} />}
 
       {contactoOpen && <ContactoPlataformaModal onClose={() => setContactoOpen(false)} />}
 

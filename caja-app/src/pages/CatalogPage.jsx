@@ -22,7 +22,7 @@ import { safeGetItem, safeSetItem } from "../utils/safeStorage";
 import { distanciaMetros } from "../lib/haversine";
 import logo from "../assets/logo.webp";
 import logoTaxiPe from "../assets/logo-taxipe.webp";
-import { planPermiteOnline } from "../lib/planes";
+import { planPermiteOnline, calcularEstadoPlan } from "../lib/planes";
 
 // URL pública de Taxi-PE — botón del filtro abre en pestaña nueva, no
 // toca la sesión de Caja para nada (login ya unificado del otro lado).
@@ -106,7 +106,7 @@ export default function CatalogPage() {
     setNegocioError("");
     supabase
       .from("negocios")
-      .select("id, nombre, slug, logo_url, plan_estado")
+      .select("id, nombre, slug, logo_url, plan_vence_at, plan_exento, plan_en_prueba, plan_suspendido_manual")
       .eq("slug", slug)
       .eq("activo", true)
       .maybeSingle()
@@ -115,7 +115,7 @@ export default function CatalogPage() {
         if (error || !data) {
           setNegocioError("No encontramos esta tienda.");
         } else {
-          setNegocio(data);
+          setNegocio({ ...data, plan_estado: calcularEstadoPlan(data) });
         }
         setNegocioLoading(false);
       });
@@ -123,6 +123,30 @@ export default function CatalogPage() {
       active = false;
     };
   }, [slug]);
+
+  // Tiempo real: si el plan del negocio vence o se renueva mientras el
+  // cliente está mirando el catálogo, el carrito se apaga/prende solo.
+  const negocioIdActual = negocio?.id;
+  useEffect(() => {
+    if (!negocioIdActual) return undefined;
+    const canal = supabase
+      .channel(`catalogo-negocio-${negocioIdActual}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "negocios", filter: `id=eq.${negocioIdActual}` },
+        ({ new: fila }) => {
+          if (!fila) return;
+          setNegocio((prev) => {
+            const next = { ...(prev || {}), ...fila };
+            return { ...next, plan_estado: calcularEstadoPlan(next) };
+          });
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [negocioIdActual]);
   const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
     session?.user?.id,
     isCliente

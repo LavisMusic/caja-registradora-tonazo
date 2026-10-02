@@ -3,16 +3,23 @@ import { X, Loader2, Check, CreditCard, CalendarClock } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Styles from "../components/Styles";
 import { formatSoles } from "../utils/format";
-import { ESTADOS_PLAN, DIAS_GRACIA, diasHasta, formatFechaCorta } from "../lib/planes";
+import { ESTADOS_PLAN, DIAS_GRACIA, diasHasta, formatFechaCorta, precioPlan, duracionPlan } from "../lib/planes";
 
 // Plan y pagos de UN negocio (super admin, Fase 4): plan asignado,
-// exento sí/no, registrar un pago (extiende el vencimiento vía RPC
-// registrar_pago_plan) y corregir el vencimiento a mano si hubo un
-// error. El estado (prueba/activo/gracia/suspendido) lo calcula la base.
+// modo (automático / exento / suspendido a mano), registrar un pago
+// eligiendo QUÉ plan pagó (meses y monto salen del plan; el negocio
+// pasa a ese plan — RPC registrar_pago_plan) y corregir el vencimiento
+// a mano si hubo un error. El estado lo calcula la base.
 const METODOS = ["Yape", "Plin", "Transferencia", "Efectivo", "Otro"];
-const MESES = [1, 2, 3, 6, 12];
+
+function modoDe(n) {
+  if (n.plan_suspendido_manual) return "suspendido";
+  if (n.plan_exento) return "exento";
+  return "automatico";
+}
 
 function textoVencimiento(negocio) {
+  if (negocio.plan_suspendido_manual) return "Suspendido manualmente: no puede vender ni recibir pedidos hasta que cambies el estado.";
   if (negocio.plan_exento) return "Sin vencimiento (exento).";
   const dias = diasHasta(negocio.plan_vence_at);
   if (dias == null) return "Sin fecha de vencimiento.";
@@ -34,8 +41,10 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
   const [guardando, setGuardando] = useState("");
 
   const planActual = planes.find((p) => p.id === negocio.plan_id) || null;
-  const [meses, setMeses] = useState(1);
-  const [monto, setMonto] = useState(String(planActual?.precio_mensual ?? 0));
+  const [planPagoId, setPlanPagoId] = useState(negocio.plan_id || "");
+  const planPago = planes.find((p) => p.id === planPagoId) || null;
+  const meses = planPago?.meses || 1;
+  const [monto, setMonto] = useState(String(precioPlan(planActual)));
   const [metodo, setMetodo] = useState("Yape");
   const [nota, setNota] = useState("");
   const [pagoOk, setPagoOk] = useState("");
@@ -78,10 +87,16 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
   };
 
   const cambiarPlan = (planId) => {
-    const plan = planes.find((p) => p.id === planId);
-    setMonto(String((plan?.precio_mensual ?? 0) * meses));
+    setPlanPagoId(planId);
+    setMonto(String(precioPlan(planes.find((p) => p.id === planId))));
     actualizarCampos({ plan_id: planId || null }, "plan");
   };
+
+  const cambiarModo = (modo) =>
+    actualizarCampos(
+      { plan_exento: modo === "exento", plan_suspendido_manual: modo === "suspendido" },
+      "modo"
+    );
 
   const registrarPago = async () => {
     setError("");
@@ -89,12 +104,14 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
     const m = Number(String(monto).replace(",", "."));
     if (!Number.isFinite(m) || m < 0) return setError("Monto inválido.");
     setGuardando("pago");
+    if (!planPago) return setError("Elige qué plan pagó.");
     const { data, error: err } = await supabase.rpc("registrar_pago_plan", {
       p_negocio_id: negocio.id,
       p_meses: meses,
       p_monto: m,
       p_metodo: metodo,
       p_nota: nota.trim() || null,
+      p_plan_id: planPago.id,
     });
     setGuardando("");
     if (err) return setError(err.message || "No se pudo registrar el pago.");
@@ -113,7 +130,7 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
   const estado = ESTADOS_PLAN[negocio.plan_estado] || ESTADOS_PLAN.activo;
 
   return (
-    <div className="tz-modal-backdrop" onClick={onClose}>
+    <div className="tz-modal-backdrop">
       <Styles />
       <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="tz-modal-close" onClick={onClose} aria-label="Cerrar">
@@ -141,21 +158,24 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
                 .filter((p) => p.activo !== false || p.id === negocio.plan_id)
                 .map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.nombre} — {formatSoles(p.precio_mensual)}/mes ·{" "}
+                    {p.nombre} — {duracionPlan(p.meses)} {formatSoles(precioPlan(p))} ·{" "}
                     {p.max_sucursales == null ? "sucursales sin límite" : `hasta ${p.max_sucursales} sucursal(es)`}
                   </option>
                 ))}
             </select>
           </label>
-          <label className="tz-toggle" title="Exento: sin vencimiento ni límites">
-            <input
-              type="checkbox"
-              checked={!!negocio.plan_exento}
-              disabled={guardando === "exento"}
-              onChange={(e) => actualizarCampos({ plan_exento: e.target.checked }, "exento")}
-            />
-            <span className="tz-toggle-slider" />
-            <span className="tz-sa-negocio-toggle-label">Exento (sin vencimiento ni límites)</span>
+          <label className="tz-plan-campo tz-plan-campo-ancho">
+            <span>Estado</span>
+            <select
+              className="tz-text-input"
+              value={modoDe(negocio)}
+              disabled={guardando === "modo"}
+              onChange={(e) => cambiarModo(e.target.value)}
+            >
+              <option value="automatico">Automático (según la fecha de vencimiento)</option>
+              <option value="exento">Exento (sin vencimiento ni límites)</option>
+              <option value="suspendido">Suspendido manualmente (aunque tenga días pagados)</option>
+            </select>
           </label>
         </div>
 
@@ -163,20 +183,24 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
           <>
             <h3 className="tz-plan-subtitulo">Registrar pago</h3>
             <div className="tz-plan-seccion tz-plan-pago-grid">
-              <label className="tz-plan-campo">
-                <span>Meses</span>
+              <label className="tz-plan-campo tz-plan-campo-ancho">
+                <span>Plan pagado</span>
                 <select
                   className="tz-text-input"
-                  value={meses}
+                  value={planPagoId}
                   onChange={(e) => {
-                    const n = Number(e.target.value);
-                    setMeses(n);
-                    setMonto(String((planActual?.precio_mensual ?? 0) * n));
+                    setPlanPagoId(e.target.value);
+                    setMonto(String(precioPlan(planes.find((p) => p.id === e.target.value))));
                   }}
                 >
-                  {MESES.map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
+                  <option value="">Elegir plan…</option>
+                  {planes
+                    .filter((p) => p.activo !== false || p.id === planPagoId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nombre} — {duracionPlan(p.meses)} · {formatSoles(precioPlan(p))}
+                      </option>
+                    ))}
                 </select>
               </label>
               <label className="tz-plan-campo">

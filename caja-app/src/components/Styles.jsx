@@ -6282,15 +6282,29 @@ export default function Styles() {
 
       .tz-plan-fila {
         display: grid;
-        grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 8px;
         align-items: end;
-        padding: 10px 0;
+        padding: 12px 0;
         border-bottom: 1px solid var(--border-soft);
       }
       .tz-plan-fila > .tz-text-input { grid-column: 1 / -1; }
       .tz-plan-fila .tz-toggle { grid-column: 1 / 3; }
-      .tz-plan-fila-error { grid-column: 1 / -1; margin: 0; }
+      .tz-plan-fila-error,
+      .tz-plan-total,
+      .tz-plan-fila-confirmar { grid-column: 1 / -1; margin: 0; }
+      .tz-plan-fila-acciones { grid-column: 3 / -1; display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+      .tz-plan-total { font-size: 13px; color: var(--text-dim); }
+      .tz-plan-total strong { color: var(--green); font-size: 15px; }
+      .tz-plan-total-desc { color: var(--yellow); }
+      .tz-plan-total-uso { color: var(--cyan); }
+      .tz-plan-fila-confirmar select { margin: 6px 0; }
+      @media (max-width: 520px) {
+        .tz-plan-fila { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .tz-plan-fila .tz-toggle,
+        .tz-plan-fila-acciones { grid-column: 1 / -1; }
+        .tz-plan-fila-acciones { justify-content: flex-start; }
+      }
       .tz-plan-campo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
       .tz-plan-campo > span { font-size: 11px; color: var(--text-dim); letter-spacing: 0.04em; text-transform: uppercase; }
       .tz-plan-campo-ancho { flex: 1 1 100%; }

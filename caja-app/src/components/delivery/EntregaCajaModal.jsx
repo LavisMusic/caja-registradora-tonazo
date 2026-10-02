@@ -32,7 +32,7 @@ function QrVisorModal({ pin, onClose }) {
   // Portal a <body>: así no queda dentro del stacking-context del mapa
   // Leaflet (que se filtraba por encima).
   return createPortal(
-    <div className="tz-modal-backdrop" style={{ zIndex: 3000 }} onClick={onClose}>
+    <div className="tz-modal-backdrop" style={{ zIndex: 3000 }}>
       <div className="tz-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 360, textAlign: "center" }}>
         <button className="tz-modal-close" onClick={onClose} aria-label="Cerrar">
           <X size={18} />
