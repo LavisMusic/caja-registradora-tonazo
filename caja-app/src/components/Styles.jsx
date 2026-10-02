@@ -6366,6 +6366,106 @@ export default function Styles() {
         white-space: nowrap;
       }
       .tz-catalogo-sin-pedidos { justify-content: center; text-align: center; margin-top: 0; }
+      button.tz-plan-aviso-btn { background: transparent; cursor: pointer; font-family: inherit; }
+      .tz-plan-aviso-btn-revision { border-color: var(--yellow); color: var(--yellow); }
+      .tz-footer-btn-renovar {
+        background: var(--green);
+        color: #032316;
+        box-shadow: 0 0 20px rgba(57,255,176,0.45);
+      }
+
+      /* ---- Renovar plan (admin del negocio) ---- */
+      .tz-renovar-planes { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+      .tz-renovar-plan {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1.5px solid var(--border-soft);
+        background: rgba(255,255,255,0.03);
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+        font-family: inherit;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+      }
+      .tz-renovar-plan:hover { transform: translateY(-1px); }
+      .tz-renovar-plan-activo { border-color: var(--green); box-shadow: 0 0 16px rgba(57,255,176,0.35); }
+      .tz-renovar-plan-nombre { font-weight: 700; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+      .tz-renovar-plan-actual {
+        font-size: 10px;
+        padding: 1px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--cyan);
+        color: var(--cyan);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .tz-renovar-plan-precio { font-family: 'Orbitron', sans-serif; font-size: 18px; color: var(--green); }
+      .tz-renovar-plan-detalle { font-size: 12px; color: var(--text-dim); }
+      .tz-renovar-plan-detalle strong { color: var(--yellow); }
+      .tz-renovar-datos { display: flex; flex-direction: column; gap: 8px; }
+      .tz-renovar-copiar {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-areas: "etiqueta accion" "valor accion";
+        align-items: center;
+        gap: 2px 12px;
+        width: 100%;
+        padding: 10px 14px;
+        border-radius: 12px;
+        border: 1.5px dashed rgba(43,232,255,0.55);
+        background: rgba(43,232,255,0.06);
+        color: var(--text);
+        text-align: left;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .tz-renovar-copiar-ok { border-style: solid; border-color: var(--green); background: rgba(57,255,176,0.1); }
+      .tz-renovar-copiar-etiqueta { grid-area: etiqueta; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+      .tz-renovar-copiar-valor { grid-area: valor; font-size: 16px; font-weight: 700; letter-spacing: 0.03em; word-break: break-all; }
+      .tz-renovar-copiar-accion { grid-area: accion; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--cyan); }
+      .tz-renovar-copiar-ok .tz-renovar-copiar-accion { color: var(--green); }
+      .tz-renovar-comprobante { display: block; max-width: 100%; max-height: 260px; margin: 10px auto 0; border-radius: 12px; border: 1px solid var(--border-soft); }
+      .tz-renovar-estado { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 8px; padding: 10px 0; }
+      .tz-renovar-estado h3 { margin: 0; color: var(--yellow); }
+      .tz-renovar-estado-icono {
+        width: 58px;
+        height: 58px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--yellow);
+        background: rgba(215,255,59,0.1);
+        box-shadow: 0 0 22px rgba(215,255,59,0.35);
+      }
+
+      /* ---- Centro de Peticiones (super admin) ---- */
+      .tz-peticiones-plan-lista { display: flex; flex-direction: column; gap: 12px; }
+      .tz-peticion-plan {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 14px;
+        border-radius: 14px;
+        border: 1.5px solid color-mix(in srgb, var(--tz-negocio-color) 55%, transparent);
+        background: color-mix(in srgb, var(--tz-negocio-color) 6%, transparent);
+      }
+      .tz-peticion-plan-cabecera { display: flex; align-items: center; gap: 12px; }
+      .tz-peticion-plan-logo { width: 44px; height: 44px; border-radius: 12px; object-fit: contain; background: rgba(255,255,255,0.06); flex: 0 0 auto; }
+      .tz-peticion-plan-logo-vacio { display: flex; align-items: center; justify-content: center; color: var(--text-dim); }
+      .tz-peticion-plan-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; font-size: 13px; }
+      .tz-peticion-plan-info b { color: var(--green); }
+      .tz-peticion-plan-fecha { font-size: 12px; color: var(--text-dim); }
+      .tz-peticion-plan-estado { flex: 0 0 auto; font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; }
+      .tz-peticion-plan-estado-aprobado { color: var(--green); border: 1px solid var(--green); }
+      .tz-peticion-plan-estado-rechazado { color: var(--danger); border: 1px solid var(--danger); }
+      .tz-peticion-plan-comprobante { padding: 0; border: none; background: none; cursor: zoom-in; align-self: flex-start; }
+      .tz-peticion-plan-comprobante img { max-height: 180px; max-width: 100%; border-radius: 10px; border: 1px solid var(--border-soft); }
+      .tz-peticion-plan-rechazo { display: flex; flex-direction: column; gap: 8px; }
       .tz-plan-suspendido-pagar {
         display: inline-flex;
         align-items: center;

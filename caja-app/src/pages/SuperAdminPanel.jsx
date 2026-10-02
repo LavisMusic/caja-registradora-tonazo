@@ -26,6 +26,7 @@ import {
   Layers,
   Phone,
   CreditCard,
+  Inbox,
 } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
@@ -36,6 +37,8 @@ import EstadisticasModal from "./EstadisticasModal.jsx";
 import PlanesModal from "./PlanesModal.jsx";
 import PlanNegocioModal from "./PlanNegocioModal.jsx";
 import ContactoPlataformaModal from "./ContactoPlataformaModal.jsx";
+import PeticionesPlanModal from "./PeticionesPlanModal.jsx";
+import { usePeticionesPlanSuperAdmin } from "../hooks/usePeticionesPlan";
 import { ESTADOS_PLAN, DIAS_AVISO, diasHasta } from "../lib/planes";
 import logo from "../assets/logo.webp";
 
@@ -566,6 +569,11 @@ export default function SuperAdminPanel() {
   const [contactoOpen, setContactoOpen] = useState(false);
   const [planNegocio, setPlanNegocio] = useState(null);
   const [filtroPlan, setFiltroPlan] = useState("todos");
+  // Centro de Peticiones (pagos de plan con comprobante) — el contador
+  // de la cabecera se actualiza en tiempo real.
+  const [peticionesOpen, setPeticionesOpen] = useState(false);
+  const { peticiones: peticionesPlan, pendientes: peticionesPendientes, loading: peticionesLoading } =
+    usePeticionesPlanSuperAdmin();
 
   const [creatingRubro, setCreatingRubro] = useState(false);
   const [nuevoRubro, setNuevoRubro] = useState("");
@@ -861,6 +869,15 @@ export default function SuperAdminPanel() {
         <button
           type="button"
           className="tz-header-btn tz-sa-cuentas-btn"
+          style={{ position: "relative" }}
+          onClick={() => setPeticionesOpen(true)}
+        >
+          <Inbox size={15} /> Peticiones
+          {peticionesPendientes.length > 0 && <span className="tz-footer-btn-badge">{peticionesPendientes.length}</span>}
+        </button>
+        <button
+          type="button"
+          className="tz-header-btn tz-sa-cuentas-btn"
           onClick={() => setEstadisticasOpen(true)}
         >
           <BarChart3 size={15} /> Estadísticas
@@ -1069,6 +1086,14 @@ export default function SuperAdminPanel() {
       {planesOpen && <PlanesModal negocios={negocios} onClose={() => setPlanesOpen(false)} onCambio={setPlanes} />}
 
       {contactoOpen && <ContactoPlataformaModal onClose={() => setContactoOpen(false)} />}
+
+      {peticionesOpen && (
+        <PeticionesPlanModal
+          peticiones={peticionesPlan}
+          loading={peticionesLoading}
+          onClose={() => setPeticionesOpen(false)}
+        />
+      )}
 
       {planNegocio && (
         <PlanNegocioModal

@@ -83,6 +83,8 @@ import Combobox from "./components/Combobox";
 import GestorLocalidadesModal from "./components/GestorLocalidadesModal";
 import { imprimirBoleta } from "./lib/boleta";
 import { AvisoPlan, PantallaPlanSuspendido } from "./components/AvisoPlanNegocio";
+import RenovarPlanModal from "./components/RenovarPlanModal";
+import { useMiPeticionPlan } from "./hooks/usePeticionesPlan";
 
 import logo from "./assets/logo.webp";
 
@@ -963,6 +965,11 @@ export default function App() {
      ampliado después a "Usuarios" sin renombrar todo el estado) — cada
      fila trae { id, nombre, role }. ---- */
   const [gestorLocalidadesOpen, setGestorLocalidadesOpen] = useState(false);
+  // Fase 4 (bloque B): "Renovar plan" — pago con comprobante que aprueba
+  // el super admin. La petición del negocio se sigue en tiempo real.
+  const [renovarPlanOpen, setRenovarPlanOpen] = useState(false);
+  const { peticion: miPeticionPlan } = useMiPeticionPlan(isAdmin ? negocioId : null);
+  const pagoPlanEnRevision = miPeticionPlan?.estado === "pendiente";
   const [cajerosOpen, setCajerosOpen] = useState(false);
   const [cajeros, setCajeros] = useState([]);
   const [cajerosLoading, setCajerosLoading] = useState(false);
@@ -7295,10 +7302,19 @@ export default function App() {
         <Styles />
         <PantallaPlanSuspendido
           esAdmin={isAdmin}
-          negocioNombre={negocioPlan.negocioNombre}
           logo={logoNegocio}
           onSalir={signOut}
+          onRenovar={() => setRenovarPlanOpen(true)}
+          enRevision={pagoPlanEnRevision}
         />
+        {renovarPlanOpen && (
+          <RenovarPlanModal
+            negocioId={negocioId}
+            planActualId={negocioPlan?.planId}
+            plan={negocioPlan}
+            onClose={() => setRenovarPlanOpen(false)}
+          />
+        )}
       </div>
     );
   }
@@ -7382,7 +7398,20 @@ export default function App() {
     <div className="tz-root">
       <Styles />
       {bienvenidaStaffOverlay}
-      <AvisoPlan plan={negocioPlan} esAdmin={isAdmin} negocioNombre={negocioPlan?.negocioNombre} />
+      <AvisoPlan
+        plan={negocioPlan}
+        esAdmin={isAdmin}
+        onRenovar={() => setRenovarPlanOpen(true)}
+        enRevision={pagoPlanEnRevision}
+      />
+      {renovarPlanOpen && (
+        <RenovarPlanModal
+          negocioId={negocioId}
+          planActualId={negocioPlan?.planId}
+          plan={negocioPlan}
+          onClose={() => setRenovarPlanOpen(false)}
+        />
+      )}
 
       {/* El viejo modal obligatorio de "Apertura de Caja" para admin
          (bloqueaba TODO detrás de un backdrop) fue retirado: el admin
@@ -8948,6 +8977,12 @@ export default function App() {
           >
             <Landmark size={18} />
             Localidades
+          </button>
+        )}
+        {isAdmin && negocioPlan && !negocioPlan.exento && (
+          <button className="tz-footer-btn tz-footer-btn-renovar" onClick={() => setRenovarPlanOpen(true)}>
+            <CreditCard size={18} />
+            {pagoPlanEnRevision ? "Pago en revisión" : "Renovar plan"}
           </button>
         )}
       </footer>
