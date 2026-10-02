@@ -969,7 +969,7 @@ export default function App() {
   // Fase 4 (bloque B): "Renovar plan" — pago con comprobante que aprueba
   // el super admin. La petición del negocio se sigue en tiempo real.
   const [renovarPlanOpen, setRenovarPlanOpen] = useState(false);
-  const { peticion: miPeticionPlan } = useMiPeticionPlan(isAdmin ? negocioId : null);
+  const { peticion: miPeticionPlan, recargar: recargarMiPeticionPlan } = useMiPeticionPlan(isAdmin ? negocioId : null);
   const pagoPlanEnRevision = miPeticionPlan?.estado === "pendiente";
   const [cajerosOpen, setCajerosOpen] = useState(false);
   const [cajeros, setCajeros] = useState([]);
@@ -7313,6 +7313,8 @@ export default function App() {
             negocioId={negocioId}
             planActualId={negocioPlan?.planId}
             plan={negocioPlan}
+            peticion={miPeticionPlan}
+            onPeticionEnviada={recargarMiPeticionPlan}
             onClose={() => setRenovarPlanOpen(false)}
           />
         )}
@@ -7410,6 +7412,8 @@ export default function App() {
           negocioId={negocioId}
           planActualId={negocioPlan?.planId}
           plan={negocioPlan}
+          peticion={miPeticionPlan}
+          onPeticionEnviada={recargarMiPeticionPlan}
           onClose={() => setRenovarPlanOpen(false)}
         />
       )}

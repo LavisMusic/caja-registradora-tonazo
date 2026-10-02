@@ -625,7 +625,7 @@ export default function SuperAdminPanel() {
       if (planesData) setPlanes(planesData);
     };
     const canal = supabase
-      .channel("super-admin-planes")
+      .channel(`super-admin-planes-${Math.random().toString(36).slice(2, 10)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "negocios" }, refrescar)
       .on("postgres_changes", { event: "*", schema: "public", table: "planes" }, refrescar)
       .on("postgres_changes", { event: "*", schema: "public", table: "pagos_plataforma" }, refrescar)

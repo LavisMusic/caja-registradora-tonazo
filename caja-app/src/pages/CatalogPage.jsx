@@ -130,7 +130,7 @@ export default function CatalogPage() {
   useEffect(() => {
     if (!negocioIdActual) return undefined;
     const canal = supabase
-      .channel(`catalogo-negocio-${negocioIdActual}`)
+      .channel(`catalogo-negocio-${negocioIdActual}-${Math.random().toString(36).slice(2, 10)}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "negocios", filter: `id=eq.${negocioIdActual}` },

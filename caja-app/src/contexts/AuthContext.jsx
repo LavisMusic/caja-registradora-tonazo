@@ -267,7 +267,7 @@ export function AuthProvider({ children }) {
         setNegocioFila(data || null);
       });
     const canal = supabase
-      .channel(`negocio-plan-${negocioId}`)
+      .channel(`negocio-plan-${negocioId}-${Math.random().toString(36).slice(2, 10)}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "negocios", filter: `id=eq.${negocioId}` },

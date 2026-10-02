@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 
+// Nombre de canal ÚNICO por instancia: supabase.channel(nombre) devuelve
+// el canal ya existente si otro componente usa el mismo nombre, y
+// agregarle .on() después de subscribe() revienta ("cannot add
+// postgres_changes callbacks ... after subscribe()") — pasaba con la
+// caja y el modal "Renovar plan" escuchando la misma petición.
+const sufijo = () => Math.random().toString(36).slice(2, 10);
+
 // Peticiones de pago del plan (Fase 4, bloque B — migración 0089).
 // Tabla peticiones_plan: el admin de un negocio crea una petición con
 // su comprobante; el super admin la aprueba o rechaza. Ambos lados se
@@ -30,7 +37,7 @@ export function useMiPeticionPlan(negocioId) {
     }
     cargar();
     const canal = supabase
-      .channel(`mi-peticion-plan-${negocioId}`)
+      .channel(`mi-peticion-plan-${negocioId}-${sufijo()}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "peticiones_plan", filter: `negocio_id=eq.${negocioId}` },
@@ -64,7 +71,7 @@ export function usePeticionesPlanSuperAdmin(activo = true) {
     if (!activo) return undefined;
     cargar();
     const canal = supabase
-      .channel("super-admin-peticiones-plan")
+      .channel(`super-admin-peticiones-plan-${sufijo()}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "peticiones_plan" }, cargar)
       .subscribe();
     return () => {

@@ -99,7 +99,7 @@ export default function DirectorioPage() {
   const [versionNegocios, setVersionNegocios] = useState(0);
   useEffect(() => {
     const canal = supabase
-      .channel("directorio-negocios")
+      .channel(`directorio-negocios-${Math.random().toString(36).slice(2, 10)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "negocios" }, () =>
         setVersionNegocios((v) => v + 1)
       )

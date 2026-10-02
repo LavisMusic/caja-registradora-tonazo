@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { X, Loader2, Camera, Copy, Check, CreditCard, Clock, XCircle, Send } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { useContactoPlataforma } from "../hooks/useContactoPlataforma";
-import { useMiPeticionPlan } from "../hooks/usePeticionesPlan";
 import { formatSoles } from "../utils/format";
 import { ESTADOS_PLAN, duracionPlan, formatFechaCorta, grupoDuracion, precioPlan, puedeRenovar, inicioRenovacion } from "../lib/planes";
 
@@ -93,9 +92,8 @@ function EstadoPeticion({ peticion }) {
   );
 }
 
-export default function RenovarPlanModal({ negocioId, planActualId, plan, onClose }) {
+export default function RenovarPlanModal({ negocioId, planActualId, plan, peticion, onPeticionEnviada, onClose }) {
   const contacto = useContactoPlataforma();
-  const { peticion, recargar } = useMiPeticionPlan(negocioId);
   const [planes, setPlanes] = useState([]);
   const [cargandoPlanes, setCargandoPlanes] = useState(true);
   const [pestana, setPestana] = useState("mensual");
@@ -176,7 +174,7 @@ export default function RenovarPlanModal({ negocioId, planActualId, plan, onClos
           : errInsert.message || "No se pudo enviar el pago."
       );
     }
-    recargar();
+    onPeticionEnviada?.();
   };
 
   return (
