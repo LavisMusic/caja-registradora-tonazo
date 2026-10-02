@@ -13,7 +13,14 @@ import { supabase } from "../supabaseClient";
 export async function subirComprobante(archivo, carpeta) {
   let blob = archivo;
   try {
-    blob = await imageCompression(archivo, { maxWidthOrHeight: 1280, initialQuality: 0.8, useWebWorker: true });
+    // Siempre JPEG: así una foto HEIC/PNG del celular no choca con los
+    // tipos de archivo que acepta el bucket.
+    blob = await imageCompression(archivo, {
+      maxWidthOrHeight: 1280,
+      initialQuality: 0.8,
+      fileType: "image/jpeg",
+      useWebWorker: true,
+    });
   } catch (err) {
     console.error("[comprobantes] no se pudo comprimir, se sube el original:", err);
   }

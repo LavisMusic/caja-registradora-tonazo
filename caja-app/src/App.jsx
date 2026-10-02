@@ -39,11 +39,11 @@ import {
   MapPin,
   Landmark,
   Printer,
+  Store,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
 import imageCompression from "browser-image-compression";
-import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import { formatSoles, formatDate, formatQty, formatTime } from "./utils/format";
 import CartRow from "./components/CartRow";
@@ -80,7 +80,7 @@ import ImageManager from "./components/ImageManager";
 import PesoModal from "./components/PesoModal";
 import Combobox from "./components/Combobox";
 import GestorLocalidadesModal from "./components/GestorLocalidadesModal";
-import { imprimirBoleta } from "./lib/boleta";
+import { imprimirBoleta, copiarBoletaAlPortapapeles } from "./lib/boleta";
 import { AvisoPlan, PantallaPlanSuspendido } from "./components/AvisoPlanNegocio";
 import RenovarPlanModal from "./components/RenovarPlanModal";
 import { useMiPeticionPlan } from "./hooks/usePeticionesPlan";
@@ -5024,64 +5024,14 @@ export default function App() {
     );
   };
 
-  /* ---- respaldo: captura un TicketBoleta oculto con html2canvas y lo
-     copia al portapapeles como imagen (navigator.clipboard.write), sin
-     subir nada a Storage — a diferencia de enviarBoletaPorWhatsApp acá
-     no hace falta un link público, el cajero solo tiene que pegarla
-     (Ctrl+V) en el chat de WhatsApp que corresponda. Reutilizada tanto
-     por el botón "Copiar Boleta" del checkout como por "Generar
-     Boleta" en Mis Ventas — mismo hardening (timeout + scale
-     adaptivo) que enviarBoletaPorWhatsApp. ---- */
-  const copiarBoletaAlPortapapeles = async (nodeRef) => {
-    if (!nodeRef.current) {
-      throw new Error("No se pudo preparar la boleta. Intenta de nuevo.");
-    }
-    // navigator.clipboard.write (imágenes) exige "contexto seguro":
-    // https, o http://localhost — abrir la app por la IP de la red
-    // local (ej. http://192.168.x.x:5174, como en el celu/otra PC de
-    // prueba) NO califica, así que acá SIEMPRE va a faltar. En vez de
-    // dejar al cajero sin ninguna boleta, se degrada a descargar la
-    // imagen (el navegador la deja adjuntar a mano en WhatsApp Web/app
-    // desde la carpeta de descargas).
-    const puedeCopiarAlPortapapeles =
-      !!navigator.clipboard?.write && typeof window.ClipboardItem === "function";
-    try {
-      const isMobile = window.innerWidth < 768;
-      const canvasPromise = html2canvas(nodeRef.current, {
-        scale: isMobile ? 1.5 : 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#f8fafc",
-      });
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("TIMEOUT_RENDER")), 12000)
-      );
-      const canvas = await Promise.race([canvasPromise, timeoutPromise]);
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (!blob) throw new Error("No se pudo generar la imagen de la boleta.");
-
-      if (puedeCopiarAlPortapapeles) {
-        await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
-        return { downloaded: false };
-      }
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `boleta-${Date.now()}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      return { downloaded: true };
-    } catch (err) {
-      if (err?.message === "TIMEOUT_RENDER") {
-        throw new Error(
-          "No se pudo generar la imagen en este dispositivo (tardó demasiado). Intenta de nuevo."
-        );
-      }
-      throw err;
-    }
+  /* ---- "Copiar Boleta": captura el TicketBoleta oculto y lo copia al
+     portapapeles como imagen para pegarlo en el chat de WhatsApp (ver
+     copiarBoletaAlPortapapeles en lib/boleta.js: copia aun en iPhone y,
+     si el navegador no deja, ofrece compartir o la descarga). ---- */
+  const avisoBoletaCopiada = (res) => {
+    if (res?.copiado) alert("¡Boleta copiada! Ve a WhatsApp y pégala en el chat");
+    else if (res?.descargado)
+      alert("Este navegador no permite copiar imágenes — se descargó la boleta. Adjúntala a mano en WhatsApp.");
   };
 
   /* ---- botón de respaldo en la pantalla de venta exitosa: copia la
@@ -5093,12 +5043,7 @@ export default function App() {
     setBoletaError("");
     setCopiandoBoleta(true);
     try {
-      const { downloaded } = await copiarBoletaAlPortapapeles(ticketRef);
-      alert(
-        downloaded
-          ? "Este navegador no permite copiar imágenes — se descargó la boleta. Adjúntala a mano en WhatsApp."
-          : "¡Boleta copiada! Ve a WhatsApp y pégala en el chat"
-      );
+      avisoBoletaCopiada(await copiarBoletaAlPortapapeles(ticketRef, { compartir: true }));
     } catch (err) {
       console.error("Error copiando la boleta al portapapeles:", err);
       setBoletaError(err?.message || "No se pudo copiar la boleta. Intenta de nuevo.");
@@ -5145,12 +5090,7 @@ export default function App() {
       // podría capturar el estado anterior por la carrera entre el
       // re-render de React y la lectura del DOM.
       flushSync(() => setHistorialBoletaData(datos));
-      const { downloaded } = await copiarBoletaAlPortapapeles(historialBoletaRef);
-      alert(
-        downloaded
-          ? "Este navegador no permite copiar imágenes — se descargó la boleta. Adjúntala a mano en WhatsApp."
-          : "¡Boleta copiada! Ve a WhatsApp y pégala en el chat"
-      );
+      avisoBoletaCopiada(await copiarBoletaAlPortapapeles(historialBoletaRef, { compartir: true }));
     } catch (err) {
       console.error("Error generando la boleta desde el historial:", err);
       setHistorialBoletaError(err?.message || "No se pudo copiar la boleta. Intenta de nuevo.");
@@ -7577,6 +7517,21 @@ export default function App() {
                 <span className="tz-header-btn-label">Usuarios</span>
               </button>
             )}
+
+            {/* Editar perfil del negocio (logo, nombre, colores…): solo
+               admin. Todavía sin función — se arma en la siguiente fase
+               (el logo se adaptará solo con ImageCropModal). */}
+            {isAdmin && (
+              <button
+                className="tz-header-btn"
+                onClick={() => {}}
+                aria-label="Editar perfil del negocio"
+                title="Editar perfil (próximamente)"
+              >
+                <Store size={19} />
+                <span className="tz-header-btn-label">Perfil</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -8264,11 +8219,9 @@ export default function App() {
                         type="button"
                         className="tz-whatsapp-send-btn tz-print-boleta-btn"
                         onClick={() => {
-                          try {
-                            imprimirBoleta(ticketRef);
-                          } catch (err) {
-                            setBoletaError(err?.message || "No se pudo imprimir la boleta.");
-                          }
+                          imprimirBoleta(ticketRef).catch((err) =>
+                            setBoletaError(err?.message || "No se pudo imprimir la boleta.")
+                          );
                         }}
                       >
                         <Printer size={15} /> Imprimir Boleta

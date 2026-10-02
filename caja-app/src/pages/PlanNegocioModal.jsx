@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
-import { X, Loader2, Check, CreditCard, CalendarClock, Camera, ImagePlus, Ban, Zap } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { X, Loader2, Check, CreditCard, CalendarClock, Camera, ImagePlus, Trash2, Zap, Receipt } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Styles from "../components/Styles";
 import { formatSoles } from "../utils/format";
 import { subirComprobante } from "../lib/comprobantes";
+import PanelVentaRegistrada from "../components/PanelVentaRegistrada";
 import {
   ESTADOS_PLAN,
   DIAS_GRACIA,
@@ -29,8 +30,15 @@ import {
 //     asigna la base (PL-000001…).
 //   * Corregir vencimiento.
 //   * Pagos: los pagos de este negocio (también los aprobados desde el
-//     Centro de Peticiones), con anular — revierte el vencimiento.
-// Todo pago queda en el Historial de ventas del super admin.
+//     Centro de Peticiones) con el diseño de "Mis ventas" de la caja:
+//     Anular (revierte el vencimiento; solo el último) y Boleta.
+// Al registrar una recarga (o tocar Boleta) sube el desplegable de venta
+// registrada: imprimir, resumen/boleta por WhatsApp al número del
+// negocio y copiar la boleta.
+// Todo pago queda en el Historial de ventas del super admin (ahí solo se
+// consulta: anular es solo desde aquí).
+// Regla: un negocio SUSPENDIDO queda "Sin plan" (lo hace la base, ver
+// migración 0093); al renovar vuelve a quedar con el plan que pagó.
 const METODOS = [
   { key: "Efectivo", label: "Efectivo", clase: "efectivo" },
   { key: "Yape", label: "Yape", clase: "yape" },
@@ -70,6 +78,45 @@ function textoVencimiento(negocio) {
     : `Venció el ${fecha}. Suspendido desde el ${formatFechaCorta(suspension)}.`;
 }
 
+// Datos del desplegable de venta registrada para un pago de plan.
+export function ventaDePago(pago, negocio, planes) {
+  const plan = planes.find((p) => p.id === pago.plan_id);
+  const fecha = new Date(pago.created_at || Date.now());
+  const meses = `${pago.meses} ${pago.meses === 1 ? "mes" : "meses"}`;
+  const concepto = plan ? `Plan ${plan.nombre} · ${duracionPlan(pago.meses)}` : `Plan · ${meses}`;
+  const monto = Number(pago.monto) || 0;
+  const resumen = [
+    `Hola ${negocio.nombre}, registramos tu pago ${pago.codigo || ""}`.trim() + ":",
+    `• ${concepto}`,
+    `• Total: ${formatSoles(monto)}${pago.metodo ? ` (${pago.metodo})` : ""}`,
+    pago.vence_nuevo ? `• Tu plan queda activo hasta el ${formatFechaCorta(pago.vence_nuevo)}.` : "",
+    "¡Gracias por confiar en Caja Tonazo!",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return {
+    mensaje: `${pago.codigo ? `Venta ${pago.codigo}` : "Venta"} registrada: ${formatSoles(monto)}`,
+    whatsapp: negocio.whatsapp,
+    resumen,
+    boleta: {
+      orden: {
+        id: pago.codigo || "-",
+        fecha: fecha.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" }),
+        hora: fecha.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }),
+        cajero: "Super Admin",
+      },
+      cliente: { nombre: negocio.nombre, ruc: "" },
+      productos: [{ cantidad: "1", nombre: concepto, precioUnitario: monto, subtotal: monto }],
+      totales: {
+        totalPagar: monto,
+        metodoPago: pago.metodo || "-",
+        efectivoRecibido: pago.monto_recibido,
+        vuelto: pago.vuelto,
+      },
+    },
+  };
+}
+
 function RecargaRapida({ negocio, planes, onPagado }) {
   const activos = planes.filter((p) => p.activo !== false);
   const duracionesConPlanes = DURACIONES.filter((d) => activos.some((p) => grupoDuracion(p.meses) === d.id));
@@ -82,7 +129,6 @@ function RecargaRapida({ negocio, planes, onPagado }) {
   const [recibido, setRecibido] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState("");
-  const [ok, setOk] = useState("");
 
   useEffect(() => () => preview && URL.revokeObjectURL(preview), [preview]);
 
@@ -124,7 +170,6 @@ function RecargaRapida({ negocio, planes, onPagado }) {
 
   const registrar = async () => {
     setError("");
-    setOk("");
     if (!plan) return setError("Elige el plan que compró.");
     if (!metodo) return setError("Elige el método de pago.");
     if (esDigital && !archivo) return setError("Con Yape/Plin/Otros el comprobante es obligatorio: toma la foto o adjúntalo.");
@@ -136,8 +181,9 @@ function RecargaRapida({ negocio, planes, onPagado }) {
     if (esDigital) {
       const { url, error: errSubida } = await subirComprobante(archivo, `plataforma/${negocio.id}`);
       if (errSubida) {
+        console.error("[RecargaRapida] Error subiendo el comprobante:", errSubida);
         setEnviando(false);
-        return setError("No se pudo subir el comprobante. Intenta de nuevo.");
+        return setError(`No se pudo subir el comprobante: ${errSubida.message || errSubida}`);
       }
       comprobanteUrl = url;
     }
@@ -153,11 +199,11 @@ function RecargaRapida({ negocio, planes, onPagado }) {
     });
     setEnviando(false);
     if (err) return setError(err.message || "No se pudo registrar la recarga.");
-    setOk(`Recarga registrada. Nuevo vencimiento: ${formatFechaCorta(data)}.`);
     setArchivo(null);
     setPreview("");
     setRecibido("");
-    onPagado?.();
+    setMetodo("");
+    onPagado?.(data);
   };
 
   return (
@@ -267,7 +313,6 @@ function RecargaRapida({ negocio, planes, onPagado }) {
       )}
 
       {error && <p className="tz-error">{error}</p>}
-      {ok && <p className="tz-sa-negocio-admin-ok">{ok}</p>}
       <button type="button" className="tz-scan-btn tz-payment-save" style={{ width: "100%", marginTop: 14 }} onClick={registrar} disabled={enviando}>
         {enviando ? <Loader2 size={15} className="tz-spin" /> : <Zap size={15} />} Registrar recarga{plan ? ` de ${formatSoles(total)}` : ""}
       </button>
@@ -284,6 +329,7 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
   const [guardando, setGuardando] = useState("");
   const [anulandoId, setAnulandoId] = useState(null);
   const [verComprobante, setVerComprobante] = useState(null);
+  const [ventaPanel, setVentaPanel] = useState(null);
   const [fechaManual, setFechaManual] = useState(
     negocio.plan_vence_at ? new Date(negocio.plan_vence_at).toISOString().slice(0, 10) : ""
   );
@@ -298,6 +344,13 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
       .limit(30);
     setPagos(data || []);
     setCargandoPagos(false);
+    return data || [];
+  };
+
+  // Recarga registrada: el pago nuevo es el más reciente de la lista.
+  const alPagar = async () => {
+    const [, lista] = await Promise.all([refrescarNegocio(), cargarPagos()]);
+    if (lista[0]) setVentaPanel(ventaDePago(lista[0], negocioRef.current, planes));
   };
 
   useEffect(() => {
@@ -305,9 +358,13 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const negocioRef = useRef(negocio);
+  negocioRef.current = negocio;
+
   const refrescarNegocio = async () => {
     const { data } = await supabase.from("negocios").select("*, plan_estado").eq("id", negocio.id).single();
     if (data) {
+      negocioRef.current = data;
       setNegocio(data);
       setFechaManual(data.plan_vence_at ? new Date(data.plan_vence_at).toISOString().slice(0, 10) : "");
       onActualizado?.(data);
@@ -342,7 +399,10 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
     await Promise.all([refrescarNegocio(), cargarPagos()]);
   };
 
-  const estado = ESTADOS_PLAN[calcularEstadoPlan(negocio)] || ESTADOS_PLAN.activo;
+  const estadoKey = calcularEstadoPlan(negocio);
+  const estado = ESTADOS_PLAN[estadoKey] || ESTADOS_PLAN.activo;
+  const suspendido = estadoKey === "suspendido";
+  const nombrePlan = (id) => planes.find((p) => p.id === id)?.nombre;
 
   return (
     <div className="tz-modal-backdrop">
@@ -381,9 +441,9 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
               <span>Plan asignado (sin cobrar)</span>
               <select
                 className="tz-text-input"
-                value={negocio.plan_id || ""}
+                value={suspendido ? "" : negocio.plan_id || ""}
                 onChange={(e) => actualizarCampos({ plan_id: e.target.value || null }, "plan")}
-                disabled={guardando === "plan"}
+                disabled={guardando === "plan" || suspendido}
               >
                 <option value="">Sin plan</option>
                 {planes
@@ -395,6 +455,11 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
                     </option>
                   ))}
               </select>
+              {suspendido && (
+                <small className="tz-stock-editor-sub">
+                  Suspendido: queda sin plan. Al registrar una recarga vuelve a tener el plan que pague.
+                </small>
+              )}
             </label>
             <label className="tz-plan-campo tz-plan-campo-ancho">
               <span>Estado</span>
@@ -404,7 +469,11 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
                 disabled={guardando === "modo"}
                 onChange={(e) =>
                   actualizarCampos(
-                    { plan_exento: e.target.value === "exento", plan_suspendido_manual: e.target.value === "suspendido" },
+                    {
+                      plan_exento: e.target.value === "exento",
+                      plan_suspendido_manual: e.target.value === "suspendido",
+                      ...(e.target.value === "suspendido" ? { plan_id: null } : {}),
+                    },
                     "modo"
                   )
                 }
@@ -424,7 +493,7 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
             <RecargaRapida
               negocio={negocio}
               planes={planes}
-              onPagado={() => Promise.all([refrescarNegocio(), cargarPagos()])}
+              onPagado={alPagar}
             />
           ))}
 
@@ -449,44 +518,83 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
           ) : pagos.length === 0 ? (
             <p className="tz-stock-editor-sub">Todavía no hay pagos registrados.</p>
           ) : (
-            <ul className="tz-plan-pagos">
+            <div className="tz-cierre-list">
               {pagos.map((p) => (
-                <li key={p.id} className={p.anulado ? "tz-plan-pago-anulado" : ""}>
-                  <span className="tz-plan-pago-codigo">{p.codigo || "—"}</span>
-                  <span>{formatFechaCorta(p.created_at)}</span>
-                  <span>
-                    {formatSoles(p.monto)} · {p.meses} {p.meses === 1 ? "mes" : "meses"}
-                    {p.metodo ? ` · ${p.metodo}` : ""}
-                    {p.vuelto != null ? ` · vuelto ${formatSoles(p.vuelto)}` : ""}
-                  </span>
-                  <span className="tz-plan-pagos-hasta">hasta {formatFechaCorta(p.vence_nuevo)}</span>
+                <div key={p.id} className={`tz-receipt tz-receipt-compact ${p.anulado ? "tz-plan-pago-anulado" : ""}`}>
+                  <div className="tz-receipt-header">
+                    <span className="tz-receipt-title">{p.codigo || "—"}</span>
+                    <span className="tz-receipt-date">
+                      {formatFechaCorta(p.created_at)} · {p.metodo || "?"}
+                    </span>
+                  </div>
+                  <div className="tz-receipt-divider" />
+                  <div className="tz-receipt-row">
+                    <span>
+                      {nombrePlan(p.plan_id) ? `Plan ${nombrePlan(p.plan_id)}` : "Plan"} · {p.meses} {p.meses === 1 ? "mes" : "meses"}
+                    </span>
+                    <strong>{formatSoles(p.monto)}</strong>
+                  </div>
+                  <div className="tz-receipt-row tz-plan-pagos-nota">
+                    <span>Vigente hasta</span>
+                    <span>{formatFechaCorta(p.vence_nuevo)}</span>
+                  </div>
+                  {p.vuelto != null && (
+                    <div className="tz-receipt-row tz-plan-pagos-nota">
+                      <span>Recibido · vuelto</span>
+                      <span>
+                        {formatSoles(p.monto_recibido)} · {formatSoles(p.vuelto)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="tz-receipt-divider" />
+                  <div className="tz-receipt-row tz-receipt-total">
+                    <span>Total</span>
+                    <strong>{formatSoles(p.monto)}</strong>
+                  </div>
                   {p.comprobante_url && (
                     <button type="button" className="tz-plan-pago-ver" onClick={() => setVerComprobante(p)}>
                       Ver comprobante
                     </button>
                   )}
                   {p.anulado ? (
-                    <span className="tz-tag tz-tag-danger">Anulado</span>
-                  ) : p.id === ultimoVigenteId ? (
-                    anulandoId === p.id ? (
-                      <span className="tz-plan-pago-confirmar">
-                        ¿Anular? El vencimiento vuelve al {formatFechaCorta(p.vence_anterior) || "anterior"}.
-                        <button type="button" className="tz-cliente-action-btn tz-cliente-action-deuda" onClick={() => anular(p)} disabled={!!guardando}>
-                          {guardando === `anular-${p.id}` ? <Loader2 size={13} className="tz-spin" /> : <Ban size={13} />} Anular
-                        </button>
-                        <button type="button" className="tz-cliente-action-btn" onClick={() => setAnulandoId(null)}>
-                          Cancelar
-                        </button>
-                      </span>
-                    ) : (
-                      <button type="button" className="tz-vis-reject-btn" onClick={() => setAnulandoId(p.id)} title="Anular pago" aria-label="Anular pago">
-                        <Ban size={14} />
+                    <p className="tz-tag tz-tag-danger" style={{ marginTop: 10, textAlign: "center" }}>
+                      Anulado{p.anulado_at ? ` el ${formatFechaCorta(p.anulado_at)}` : ""}
+                    </p>
+                  ) : anulandoId === p.id ? (
+                    <div className="tz-plan-pago-confirmar" style={{ marginTop: 10 }}>
+                      ¿Anular? El vencimiento vuelve al {formatFechaCorta(p.vence_anterior) || "anterior"}.
+                      <button type="button" className="tz-cliente-action-btn tz-cliente-action-deuda" onClick={() => anular(p)} disabled={!!guardando}>
+                        {guardando === `anular-${p.id}` ? <Loader2 size={13} className="tz-spin" /> : <Trash2 size={13} />} Anular
                       </button>
-                    )
-                  ) : null}
-                </li>
+                      <button type="button" className="tz-cliente-action-btn" onClick={() => setAnulandoId(null)}>
+                        Cancelar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="tz-cliente-actions" style={{ marginTop: 10 }}>
+                      <button
+                        type="button"
+                        className="tz-cliente-action-btn tz-cliente-action-deuda"
+                        style={{ flex: 1, justifyContent: "center" }}
+                        disabled={p.id !== ultimoVigenteId}
+                        title={p.id !== ultimoVigenteId ? "Solo se puede anular el último pago" : "Anular venta"}
+                        onClick={() => setAnulandoId(p.id)}
+                      >
+                        <Trash2 size={13} /> Anular Venta
+                      </button>
+                      <button
+                        type="button"
+                        className="tz-cliente-action-btn tz-cliente-action-pago"
+                        style={{ flex: 1, justifyContent: "center" }}
+                        onClick={() => setVentaPanel(ventaDePago(p, negocio, planes))}
+                      >
+                        <Receipt size={13} /> Boleta
+                      </button>
+                    </div>
+                  )}
+                </div>
               ))}
-            </ul>
+            </div>
           ))}
 
         {error && <p className="tz-error">{error}</p>}
@@ -503,6 +611,8 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
           </div>
         </div>
       )}
+
+      <PanelVentaRegistrada venta={ventaPanel} onCerrar={() => setVentaPanel(null)} />
     </div>
   );
 }

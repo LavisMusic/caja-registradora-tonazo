@@ -66,6 +66,7 @@ function TarjetaNegocio({ negocio, rubros, plan, sucursales, onUpdate, onLogoCha
   const [slug, setSlug] = useState(negocio.slug || "");
   const [rubroId, setRubroId] = useState(negocio.rubro_id || "");
   const [color, setColor] = useState(negocio.color || COLORES[0]);
+  const [whatsapp, setWhatsapp] = useState(negocio.whatsapp || "");
   const [guardando, setGuardando] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
   const [cambiandoModo, setCambiandoModo] = useState(false);
@@ -84,6 +85,7 @@ function TarjetaNegocio({ negocio, rubros, plan, sucursales, onUpdate, onLogoCha
     setSlug(negocio.slug || "");
     setRubroId(negocio.rubro_id || "");
     setColor(negocio.color || COLORES[0]);
+    setWhatsapp(negocio.whatsapp || "");
     setError("");
     setEditando(true);
   };
@@ -94,7 +96,15 @@ function TarjetaNegocio({ negocio, rubros, plan, sucursales, onUpdate, onLogoCha
     if (!n || !s) return setError("Nombre y slug no pueden quedar vacíos.");
     setGuardando(true);
     setError("");
-    const { error: err } = await onUpdate(negocio, { nombre: n, slug: s, rubro_id: rubroId || negocio.rubro_id, color });
+    const w = whatsapp.replace(/[^\d+]/g, "");
+    if (w && w.replace(/\D/g, "").length < 9) return setError("El WhatsApp debe tener al menos 9 dígitos.");
+    const { error: err } = await onUpdate(negocio, {
+      nombre: n,
+      slug: s,
+      rubro_id: rubroId || negocio.rubro_id,
+      color,
+      whatsapp: w || null,
+    });
     setGuardando(false);
     if (err) return setError(err.code === "23505" ? `Ya existe un negocio con el slug "${s}".` : err.message || "No se pudo guardar.");
     setEditando(false);
@@ -103,7 +113,12 @@ function TarjetaNegocio({ negocio, rubros, plan, sucursales, onUpdate, onLogoCha
   const cambiarModo = async (e) => {
     const modo = e.target.value;
     setCambiandoModo(true);
-    await onUpdate(negocio, { plan_exento: modo === "exento", plan_suspendido_manual: modo === "suspendido" });
+    // Suspendido => queda "Sin plan" (regla; la base también lo hace).
+    await onUpdate(negocio, {
+      plan_exento: modo === "exento",
+      plan_suspendido_manual: modo === "suspendido",
+      ...(modo === "suspendido" ? { plan_id: null } : {}),
+    });
     setCambiandoModo(false);
   };
 
@@ -151,6 +166,14 @@ function TarjetaNegocio({ negocio, rubros, plan, sucursales, onUpdate, onLogoCha
                 <div className="tz-vis-inline-edit-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 6 }}>
                   <input className="tz-text-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" />
                   <input className="tz-text-input" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="slug (dirección de login)" />
+                  <input
+                    className="tz-text-input"
+                    inputMode="tel"
+                    value={whatsapp}
+                    onChange={(e) => setWhatsapp(e.target.value)}
+                    placeholder="WhatsApp del negocio (ej. 987654321)"
+                    aria-label="WhatsApp del negocio"
+                  />
                   <select className="tz-text-input" value={rubroId} onChange={(e) => setRubroId(e.target.value)}>
                     {rubros.map((r) => (
                       <option key={r.id} value={r.id}>{r.nombre}</option>
@@ -228,6 +251,7 @@ function TarjetaNegocio({ negocio, rubros, plan, sucursales, onUpdate, onLogoCha
                   <p className="tz-card-negocio-dato">
                     /{negocio.slug || "sin-slug"} · {rubro?.nombre || "Sin rubro"}
                   </p>
+                  <p className="tz-card-negocio-dato">WhatsApp: {negocio.whatsapp || "sin registrar"}</p>
                   <p className="tz-card-negocio-dato">
                     {sucursales} sucursal{sucursales === 1 ? "" : "es"}
                     {plan?.max_sucursales != null ? ` de ${plan.max_sucursales}` : ""}
@@ -241,7 +265,7 @@ function TarjetaNegocio({ negocio, rubros, plan, sucursales, onUpdate, onLogoCha
           <div className="tz-card-bottom">
             <div className="tz-card-stockrow">
               <span className="tz-tag tz-tag-ok" title="Membresía (plan)">
-                {plan ? `${plan.nombre} · ${duracionPlan(plan.meses)}` : "Sin plan"}
+                {plan && estado !== "suspendido" ? `${plan.nombre} · ${duracionPlan(plan.meses)}` : "Sin plan"}
               </span>
               {negocio.plan_exento ? (
                 <span className="tz-tag tz-tag-ok">Sin vencimiento</span>

@@ -6587,6 +6587,16 @@ export default function Styles() {
         font-size: 12px;
       }
       .tz-plan-pago-confirmar { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--yellow); }
+      .tz-receipt.tz-plan-pago-anulado .tz-receipt-row { text-decoration: line-through; }
+      .tz-receipt .tz-plan-pago-ver { margin-top: 8px; }
+      /* Desplegable de venta registrada (super admin / Recarga rápida):
+         la misma barra inferior de la caja, encima de los modales. */
+      .tz-submitbar.tz-panel-venta { z-index: 140; }
+      .tz-panel-venta .tz-submitbar-content { max-width: 520px; width: 100%; margin: 0 auto; }
+      .tz-panel-venta .tz-whatsapp-send-btn { width: 100%; justify-content: center; box-sizing: border-box; }
+      /* Historial (solo consulta): filtro + buscador */
+      .tz-historial-filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+      .tz-historial-filtros .tz-gasto-tipo-btn { flex: 0 0 auto; padding: 7px 12px; }
       .tz-footer-btn-2lineas { display: inline-block; line-height: 1.15; text-align: center; }
 
       /* ---- Renovar plan (admin del negocio) ---- */
