@@ -60,7 +60,7 @@ export default function PanelVentaRegistrada({ venta, onCerrar }) {
 
   return createPortal(
     <div
-      className={`tz-submitbar tz-panel-venta ${visible ? "tz-submitbar-visible" : "tz-submitbar-hidden"}`}
+      className={`tz-portal tz-submitbar tz-panel-venta ${visible ? "tz-submitbar-visible" : "tz-submitbar-hidden"}`}
       role="dialog"
       aria-label="Venta registrada"
     >
