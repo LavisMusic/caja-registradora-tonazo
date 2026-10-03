@@ -2,22 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import Cropper from "react-easy-crop";
 import { Check, Crosshair, Loader2, X, ZoomIn, ZoomOut } from "lucide-react";
 
-// Adapta el logo del negocio antes de subirlo (Perfil del negocio):
-//   * Formato: Cuadrado 512×512, Horizontal 900×300 o Vertical 480×640 —
-//     el logo se guarda EXACTAMENTE a ese tamaño, así se ve igual de
-//     nítido en la cabecera, la tienda, el directorio y la boleta.
-//   * Zoom en los dos sentidos: alejar (hasta que el logo entra
-//     completo con aire alrededor) o acercar hasta un 50 % más. El logo
-//     se arrastra libre dentro del marco y lo que sobra queda
-//     TRANSPARENTE. "Centrar" lo deja completo y centrado.
+// Adapta el logo del negocio antes de subirlo (Perfil del negocio).
+// Formato único: CUADRADO 512×512 — se ve parejo en la cabecera, la
+// tienda, las tarjetas del directorio y la boleta.
+// Zoom: 100 % = el logo entra COMPLETO en el cuadrado. La barra aleja
+// hasta 50 % (le queda aire transparente alrededor) y acerca hasta
+// 150 %. El logo se arrastra libre en el marco y lo que sobra queda
+// TRANSPARENTE. "Centrar" lo deja al 100 % y centrado.
 // Solo PNG sin fondo (lo valida PerfilNegocioModal antes de abrir esto).
 // Sale en PNG (conserva la transparencia). onConfirm(blob).
-export const FORMATOS_LOGO = [
-  { id: "cuadrado", label: "Cuadrado", ancho: 512, alto: 512 },
-  { id: "horizontal", label: "Horizontal", ancho: 900, alto: 300 },
-  { id: "vertical", label: "Vertical", ancho: 480, alto: 640 },
-];
-const ZOOM_MAX = 1.5; // acercar: hasta un 50 % más
+const LADO = 512;
+const ZOOM_OUT = 0.5; // alejar: hasta 50 % del tamaño "completo"
+const ZOOM_IN = 1.5; // acercar: hasta 150 %
 
 function cargarImagen(src) {
   return new Promise((resolve, reject) => {
@@ -28,24 +24,23 @@ function cargarImagen(src) {
   });
 }
 
-// Zoom con el que el logo entra COMPLETO en el marco (en react-easy-crop
-// zoom 1 = el marco cubierto por la imagen).
-function zoomCompleto(img, formato) {
+// Zoom con el que el logo entra COMPLETO en el cuadrado (en
+// react-easy-crop zoom 1 = el marco cubierto por la imagen).
+function zoomCompleto(img) {
   if (!img) return 1;
   const ia = img.width / img.height;
-  const ca = formato.ancho / formato.alto;
-  return Math.min(ia, ca) / Math.max(ia, ca);
+  return Math.min(ia, 1) / Math.max(ia, 1);
 }
 
 // Dibuja la imagen donde quedó dentro del marco; lo que el marco tenga
 // fuera de la imagen queda transparente. Se calcula a mano (en vez de
 // drawImage con un recorte que se sale de la imagen) porque Safari
 // maneja mal los recortes fuera de los bordes.
-async function generarLogo(src, formato, area) {
+async function generarLogo(src, area) {
   const img = await cargarImagen(src);
   const canvas = document.createElement("canvas");
-  canvas.width = formato.ancho;
-  canvas.height = formato.alto;
+  canvas.width = LADO;
+  canvas.height = LADO;
   const ctx = canvas.getContext("2d");
   ctx.imageSmoothingQuality = "high";
   const escala = canvas.width / area.width;
@@ -56,7 +51,6 @@ async function generarLogo(src, formato, area) {
 }
 
 export default function LogoAdaptadorModal({ imageSrc, onCancel, onConfirm }) {
-  const [formato, setFormato] = useState(FORMATOS_LOGO[0]);
   const [img, setImg] = useState(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -65,9 +59,9 @@ export default function LogoAdaptadorModal({ imageSrc, onCancel, onConfirm }) {
   const [procesando, setProcesando] = useState(false);
   const [error, setError] = useState("");
 
-  const completo = zoomCompleto(img, formato);
-  // Alejar: hasta un poco menos que "completo", para poder dejarle aire.
-  const zoomMin = Math.min(0.3, completo * 0.6);
+  const completo = zoomCompleto(img);
+  const zoomMin = completo * ZOOM_OUT;
+  const zoomMax = completo * ZOOM_IN;
 
   useEffect(() => {
     cargarImagen(imageSrc).then(setImg).catch(() => setError("No se pudo cargar la imagen."));
@@ -75,13 +69,13 @@ export default function LogoAdaptadorModal({ imageSrc, onCancel, onConfirm }) {
 
   const centrar = useCallback(() => {
     setCrop({ x: 0, y: 0 });
-    setZoom(zoomCompleto(img, formato));
-  }, [img, formato]);
+    setZoom(zoomCompleto(img));
+  }, [img]);
 
-  // Al cargar la imagen o cambiar de formato: logo completo y centrado.
+  // Al cargar la imagen: logo completo y centrado.
   useEffect(() => {
     if (img) centrar();
-  }, [img, formato, centrar]);
+  }, [img, centrar]);
 
   const onCropComplete = useCallback((_a, pixels) => setArea(pixels), []);
 
@@ -92,7 +86,7 @@ export default function LogoAdaptadorModal({ imageSrc, onCancel, onConfirm }) {
     let url = "";
     const t = setTimeout(async () => {
       try {
-        const blob = await generarLogo(imageSrc, formato, area);
+        const blob = await generarLogo(imageSrc, area);
         if (!vivo) return;
         url = URL.createObjectURL(blob);
         setPreview(url);
@@ -105,14 +99,14 @@ export default function LogoAdaptadorModal({ imageSrc, onCancel, onConfirm }) {
       clearTimeout(t);
       if (url) URL.revokeObjectURL(url);
     };
-  }, [imageSrc, formato, area]);
+  }, [imageSrc, area]);
 
   const confirmar = async () => {
     if (!area) return;
     setProcesando(true);
     setError("");
     try {
-      onConfirm(await generarLogo(imageSrc, formato, area));
+      onConfirm(await generarLogo(imageSrc, area));
     } catch (err) {
       setError(err.message || "No se pudo preparar el logo.");
     } finally {
@@ -128,21 +122,8 @@ export default function LogoAdaptadorModal({ imageSrc, onCancel, onConfirm }) {
         </button>
         <h2>Adaptar logo</h2>
         <p className="tz-stock-editor-sub">
-          Elige la forma, aleja o acerca con la barra y arrastra para centrar. Lo que quede vacío se guarda transparente.
+          Aleja o acerca con la barra y arrastra para centrar. Lo que quede vacío se guarda transparente.
         </p>
-
-        <div className="tz-gasto-tipo-buttons" style={{ marginBottom: 10 }}>
-          {FORMATOS_LOGO.map((f) => (
-            <button
-              key={f.id}
-              type="button"
-              className={`tz-gasto-tipo-btn ${formato.id === f.id ? "tz-gasto-tipo-active" : ""}`}
-              onClick={() => setFormato(f)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
 
         <div className="tz-crop-area tz-crop-area-logo">
           {img && (
@@ -151,8 +132,8 @@ export default function LogoAdaptadorModal({ imageSrc, onCancel, onConfirm }) {
               crop={crop}
               zoom={zoom}
               minZoom={zoomMin}
-              maxZoom={ZOOM_MAX}
-              aspect={formato.ancho / formato.alto}
+              maxZoom={zoomMax}
+              aspect={1}
               restrictPosition={false}
               cropShape="rect"
               showGrid
@@ -167,7 +148,7 @@ export default function LogoAdaptadorModal({ imageSrc, onCancel, onConfirm }) {
           <input
             type="range"
             min={zoomMin}
-            max={ZOOM_MAX}
+            max={zoomMax}
             step="0.01"
             value={zoom}
             onChange={(e) => setZoom(Number(e.target.value))}
@@ -175,13 +156,14 @@ export default function LogoAdaptadorModal({ imageSrc, onCancel, onConfirm }) {
             aria-label="Zoom"
           />
           <ZoomIn size={16} />
+          <span className="tz-crop-porcentaje">{Math.round((zoom / completo) * 100)}%</span>
           <button type="button" className="tz-gasto-tipo-btn tz-crop-centrar" onClick={centrar} disabled={!img}>
             <Crosshair size={13} /> Centrar
           </button>
         </div>
 
         <p className="tz-field-label" style={{ marginTop: 10 }}>
-          Así se verá ({formato.ancho}×{formato.alto})
+          Así se verá ({LADO}×{LADO})
         </p>
         <div className="tz-logo-preview">
           {preview ? <img src={preview} alt="Vista previa del logo" /> : <Loader2 size={18} className="tz-spin" />}
