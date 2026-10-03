@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Loader2, Camera, Copy, Check, CreditCard, Clock, XCircle, Send } from "lucide-react";
+import { X, Loader2, Camera, Copy, Check, CreditCard, Clock, XCircle, Send, AlertTriangle, Store } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { subirComprobante } from "../lib/comprobantes";
 import { useContactoPlataforma } from "../hooks/useContactoPlataforma";
@@ -93,7 +93,16 @@ function EstadoPeticion({ peticion }) {
   );
 }
 
-export default function RenovarPlanModal({ negocioId, planActualId, plan, peticion, onPeticionEnviada, onClose }) {
+export default function RenovarPlanModal({
+  negocioId,
+  planActualId,
+  plan,
+  peticion,
+  onPeticionEnviada,
+  sinWhatsapp = false,
+  onAbrirPerfil = null,
+  onClose,
+}) {
   const contacto = useContactoPlataforma();
   const [planes, setPlanes] = useState([]);
   const [cargandoPlanes, setCargandoPlanes] = useState(true);
@@ -192,6 +201,26 @@ export default function RenovarPlanModal({ negocioId, planActualId, plan, petici
 
         {pendiente ? (
           <EstadoPeticion peticion={pendiente} />
+        ) : sinWhatsapp ? (
+          // Regla (migración 0095): sin un WhatsApp registrado en el
+          // perfil no se puede renovar — ahí llegan el resumen y la boleta.
+          <div className="tz-renovar-estado">
+            <span className="tz-renovar-estado-icono">
+              <AlertTriangle size={26} />
+            </span>
+            <h3>Registra el WhatsApp de tu negocio</h3>
+            <p className="tz-stock-editor-sub">
+              Para renovar tu plan necesitas un número de WhatsApp en el perfil de tu negocio: ahí te llegan el resumen
+              y la boleta de cada pago.
+            </p>
+            {onAbrirPerfil ? (
+              <button type="button" className="tz-scan-btn tz-payment-save" onClick={onAbrirPerfil}>
+                <Store size={15} /> Ir a mi perfil
+              </button>
+            ) : (
+              <p className="tz-stock-editor-sub">Pídele al administrador del negocio que lo registre en "Perfil".</p>
+            )}
+          </div>
         ) : !puedeRenovar(plan?.venceAt) ? (
           <div className="tz-renovar-estado">
             <span className="tz-renovar-estado-icono">

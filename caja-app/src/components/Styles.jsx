@@ -6566,6 +6566,73 @@ export default function Styles() {
 
       /* Gestor del plan del negocio (rayo): apartados + recarga rápida */
       .tz-plan-apartados { margin-bottom: 14px; }
+      /* ---- Perfil del negocio ---- */
+      .tz-logo-preview {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 110px;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px dashed var(--border-soft);
+        background:
+          repeating-conic-gradient(rgba(255,255,255,0.05) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
+      }
+      .tz-logo-preview img { max-width: 220px; max-height: 160px; width: auto; height: auto; display: block; }
+      .tz-perfil-logo { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+      @media (max-width: 480px) { .tz-perfil-logo { grid-template-columns: 1fr; } }
+      .tz-perfil-descripcion { display: flex; align-items: center; gap: 8px; }
+      .tz-perfil-descripcion .tz-text-input { flex: 1 1 auto; min-width: 0; }
+      .tz-perfil-contador { font-size: 11px; color: var(--text-dim); min-width: 36px; text-align: right; }
+      .tz-horario-dias { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+      .tz-horario-dia {
+        display: grid;
+        grid-template-columns: 88px auto 1fr;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 10px;
+        border-radius: 10px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-soft);
+      }
+      .tz-horario-dia-cerrado { opacity: 0.65; }
+      .tz-horario-dia-nombre { font-size: 13px; color: var(--text); }
+      .tz-horario-horas { display: flex; align-items: center; gap: 6px; justify-content: flex-end; font-size: 12px; color: var(--text-dim); }
+      .tz-horario-horas .tz-text-input { width: 104px; padding: 6px 8px; }
+      .tz-horario-cerrado-texto { color: var(--danger); }
+      @media (max-width: 420px) {
+        .tz-horario-dia { grid-template-columns: 1fr auto; }
+        .tz-horario-horas { grid-column: 1 / -1; justify-content: flex-start; }
+      }
+
+      /* ---- Texto debajo del logo de la tienda: mensajes en secuencia
+         que se escriben desde el centro y se borran al revés. ---- */
+      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; }
+      .tz-subtitle-cursor {
+        display: inline-block;
+        width: 2px;
+        height: 1em;
+        margin-left: 2px;
+        vertical-align: -0.12em;
+        background: currentColor;
+        animation: tz-subtitle-parpadeo 0.9s steps(1) infinite;
+      }
+      @keyframes tz-subtitle-parpadeo { 50% { opacity: 0; } }
+
+      /* Tarjetas de datos del gestor (igual que el gestor de Taxi-PE). */
+      .tz-gestor-recarga-datos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+      .tz-gestor-recarga-dato {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border-soft);
+        font-size: 13px;
+      }
+      .tz-gestor-recarga-dato strong { color: var(--text); font-size: 14px; }
+      .tz-gestor-recarga-dato span { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
       .tz-recarga-bloqueada { line-height: 1.3; text-align: center; }
       .tz-recarga-comprobante-botones { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
       .tz-recarga-vuelto-rapidos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }

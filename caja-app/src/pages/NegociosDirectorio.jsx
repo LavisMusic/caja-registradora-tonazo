@@ -14,7 +14,7 @@ import { slugify } from "./GestorNegociosModal.jsx";
 //     clientes, edición y el desplegable de estado (Automático / Exento /
 //     Suspendido manual).
 // El borrado de un negocio vive en el Gestor de negocios (cabecera).
-const COLORES = ["#2be8ff", "#ff2f9e", "#d7ff3b", "#39ff8a", "#ff9500", "#b98bff", "#ff5470", "#ffffff"];
+export const COLORES = ["#2be8ff", "#ff2f9e", "#d7ff3b", "#39ff8a", "#ff9500", "#b98bff", "#ff5470", "#ffffff"];
 
 const GRUPOS = [
   { key: "por_vencer", label: "Por vencer", color: "var(--yellow)" },

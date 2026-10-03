@@ -82,6 +82,7 @@ import PesoModal from "./components/PesoModal";
 import Combobox from "./components/Combobox";
 import GestorLocalidadesModal from "./components/GestorLocalidadesModal";
 import { imprimirBoleta, copiarBoletaAlPortapapeles } from "./lib/boleta";
+import PerfilNegocioModal from "./components/PerfilNegocioModal";
 import { AvisoPlan, PantallaPlanSuspendido } from "./components/AvisoPlanNegocio";
 import RenovarPlanModal from "./components/RenovarPlanModal";
 import { useMiPeticionPlan } from "./hooks/usePeticionesPlan";
@@ -960,6 +961,8 @@ export default function App() {
   /* ---- Mis Ventas (Hoy): historial compacto del turno actual, con
      Anular Venta para corregir errores de tipeo inmediatos ---- */
   const [misVentasOpen, setMisVentasOpen] = useState(false);
+  // Perfil del negocio: null (cerrado) o el apartado con que se abre.
+  const [perfilOpen, setPerfilOpen] = useState(null);
   const [anulandoVentaId, setAnulandoVentaId] = useState(null);
   const [anularError, setAnularError] = useState("");
 
@@ -7300,6 +7303,15 @@ export default function App() {
             plan={negocioPlan}
             peticion={miPeticionPlan}
             onPeticionEnviada={recargarMiPeticionPlan}
+            sinWhatsapp={!negocioPlan?.whatsapp}
+            onAbrirPerfil={
+              isAdmin
+                ? () => {
+                    setRenovarPlanOpen(false);
+                    setPerfilOpen("datos");
+                  }
+                : null
+            }
             onClose={() => setRenovarPlanOpen(false)}
           />
         )}
@@ -7399,9 +7411,20 @@ export default function App() {
           plan={negocioPlan}
           peticion={miPeticionPlan}
           onPeticionEnviada={recargarMiPeticionPlan}
+          sinWhatsapp={!negocioPlan?.whatsapp}
+          onAbrirPerfil={
+            isAdmin
+              ? () => {
+                  setRenovarPlanOpen(false);
+                  setPerfilOpen("datos");
+                }
+              : null
+          }
           onClose={() => setRenovarPlanOpen(false)}
         />
       )}
+
+      {perfilOpen && <PerfilNegocioModal apartadoInicial={perfilOpen} onClose={() => setPerfilOpen(null)} />}
 
       {/* El viejo modal obligatorio de "Apertura de Caja" para admin
          (bloqueaba TODO detrás de un backdrop) fue retirado: el admin
@@ -7564,15 +7587,14 @@ export default function App() {
               </button>
             )}
 
-            {/* Editar perfil del negocio (logo, nombre, colores…): solo
-               admin. Todavía sin función — se arma en la siguiente fase
-               (el logo se adaptará solo con ImageCropModal). */}
+            {/* Perfil del negocio (logo adaptable, nombre, color, WhatsApp,
+               descripciones y horarios): solo admin. */}
             {isAdmin && (
               <button
                 className="tz-header-btn"
-                onClick={() => {}}
+                onClick={() => setPerfilOpen("datos")}
                 aria-label="Editar perfil del negocio"
-                title="Editar perfil (próximamente)"
+                title="Editar perfil del negocio"
               >
                 <Store size={19} />
                 <span className="tz-header-btn-label">Perfil</span>

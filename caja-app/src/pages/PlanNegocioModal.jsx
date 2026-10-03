@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X, Loader2, Check, CreditCard, CalendarClock, Camera, ImagePlus, Trash2, Zap, Receipt } from "lucide-react";
+import { X, Loader2, Check, CreditCard, CalendarClock, Camera, ImagePlus, Trash2, Zap, Receipt, AlertTriangle } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Styles from "../components/Styles";
 import { formatSoles } from "../utils/format";
@@ -139,6 +139,25 @@ function RecargaRapida({ negocio, planes, onPagado }) {
   const esDigital = !!metodo && !esEfectivo;
   const recibidoNum = Number(String(recibido).replace(",", "."));
   const vuelto = esEfectivo && Number.isFinite(recibidoNum) && recibido !== "" ? recibidoNum - total : null;
+
+  if (!String(negocio.whatsapp || "").trim()) {
+    return (
+      <div className="tz-renovar-estado">
+        <span className="tz-renovar-estado-icono">
+          <AlertTriangle size={26} />
+        </span>
+        <h3 className="tz-recarga-bloqueada">
+          Sin WhatsApp
+          <br />
+          registrado
+        </h3>
+        <p className="tz-stock-editor-sub">
+          Para recargar, el negocio tiene que tener un número de WhatsApp en su perfil (ahí le llegan el resumen y la
+          boleta). Agrégalo desde el lápiz ✏️ de su tarjeta o pídele que lo registre en "Perfil".
+        </p>
+      </div>
+    );
+  }
 
   if (!puedeRenovar(negocio.plan_vence_at)) {
     return (
@@ -320,7 +339,7 @@ function RecargaRapida({ negocio, planes, onPagado }) {
   );
 }
 
-export default function PlanNegocioModal({ negocio: negocioInicial, planes, onClose, onActualizado }) {
+export default function PlanNegocioModal({ negocio: negocioInicial, planes, sucursales = 0, onClose, onActualizado }) {
   const [negocio, setNegocio] = useState(negocioInicial);
   const [apartado, setApartado] = useState("estado");
   const [pagos, setPagos] = useState([]);
@@ -403,6 +422,7 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
   const estado = ESTADOS_PLAN[estadoKey] || ESTADOS_PLAN.activo;
   const suspendido = estadoKey === "suspendido";
   const nombrePlan = (id) => planes.find((p) => p.id === id)?.nombre;
+  const planDe = (n) => planes.find((p) => p.id === n.plan_id) || null;
 
   return (
     <div className="tz-modal-backdrop">
@@ -436,6 +456,28 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
         </div>
 
         {apartado === "estado" && (
+          <>
+          <div className="tz-gestor-recarga-datos">
+            <div className="tz-gestor-recarga-dato">
+              <span>Plan</span>
+              <strong>{suspendido ? "Sin plan" : nombrePlan(negocio.plan_id) || "Sin plan"}</strong>
+            </div>
+            <div className="tz-gestor-recarga-dato">
+              <span>Vence</span>
+              <strong>{negocio.plan_exento ? "Exento" : negocio.plan_vence_at ? formatFechaCorta(negocio.plan_vence_at) : "—"}</strong>
+            </div>
+            <div className="tz-gestor-recarga-dato">
+              <span>Sucursales</span>
+              <strong>
+                {sucursales}
+                {planDe(negocio)?.max_sucursales != null ? ` de ${planDe(negocio).max_sucursales}` : ""}
+              </strong>
+            </div>
+            <div className="tz-gestor-recarga-dato">
+              <span>WhatsApp</span>
+              <strong>{negocio.whatsapp || "Sin registrar"}</strong>
+            </div>
+          </div>
           <div className="tz-plan-seccion">
             <label className="tz-plan-campo tz-plan-campo-ancho">
               <span>Plan asignado (sin cobrar)</span>
@@ -484,6 +526,7 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
               </select>
             </label>
           </div>
+          </>
         )}
 
         {apartado === "recarga" &&

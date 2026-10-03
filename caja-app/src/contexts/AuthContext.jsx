@@ -258,7 +258,7 @@ export function AuthProvider({ children }) {
     let active = true;
     supabase
       .from("negocios")
-      .select("id, logo_url, nombre, plan_id, plan_vence_at, plan_exento, plan_en_prueba, plan_suspendido_manual")
+      .select("id, logo_url, nombre, whatsapp, plan_id, plan_vence_at, plan_exento, plan_en_prueba, plan_suspendido_manual")
       .eq("id", negocioId)
       .maybeSingle()
       .then(({ data }) => {
@@ -301,6 +301,8 @@ export function AuthProvider({ children }) {
       exento: negocioFila.plan_exento,
       negocioNombre: negocioFila.nombre,
       planId: negocioFila.plan_id,
+      // Sin WhatsApp no se puede renovar (migración 0095).
+      whatsapp: negocioFila.whatsapp || null,
     };
     // relojPlan fuerza el recálculo cuando pasa un hito de tiempo.
     // eslint-disable-next-line react-hooks/exhaustive-deps

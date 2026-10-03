@@ -376,6 +376,7 @@ export default function SuperAdminPanel() {
         <PlanNegocioModal
           negocio={planNegocio}
           planes={planes}
+          sucursales={sucursalesPorNegocio[planNegocio.id] || 0}
           onClose={() => setPlanNegocio(null)}
           onActualizado={(actualizado) => setNegocios((prev) => prev.map((n) => (n.id === actualizado.id ? actualizado : n)))}
         />

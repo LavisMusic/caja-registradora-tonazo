@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CreditCard, CalendarClock, Store } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import TextoMaquina from "../components/TextoMaquina";
+import { textoHorarioHoy } from "../lib/horario";
 import { useCatalog } from "../hooks/useCatalog";
 import { usePedidosBadge } from "../hooks/usePedidosBadge";
 import { supabase } from "../supabaseClient";
@@ -284,6 +286,30 @@ export default function CatalogPage() {
     setPublicLocalidadId(preferida.localidad_id);
   }, [publicLocalesLoading, publicSucursales, publicSucursalId]);
 
+  // Perfil público (migración 0095): descripciones del negocio y horario
+  // de cada sucursal para el texto debajo del logo. Consulta aparte y
+  // tolerante: si algo falla, la tienda carga igual (solo sin esos
+  // mensajes).
+  const [perfilPublico, setPerfilPublico] = useState({ descripciones: [], horarios: {} });
+  useEffect(() => {
+    if (!negocio?.id) return undefined;
+    let vivo = true;
+    const sucIds = publicSucursales.map((suc) => suc.id);
+    Promise.all([
+      supabase.from("negocios").select("descripciones").eq("id", negocio.id).maybeSingle(),
+      sucIds.length ? supabase.from("sucursales").select("id, horario").in("id", sucIds) : Promise.resolve({ data: [] }),
+    ]).then(([{ data: n, error: e1 }, { data: sucs, error: e2 }]) => {
+      if (!vivo) return;
+      setPerfilPublico({
+        descripciones: e1 ? [] : n?.descripciones || [],
+        horarios: e2 ? {} : Object.fromEntries((sucs || []).map((x) => [x.id, x.horario])),
+      });
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [negocio?.id, publicSucursales]);
+
   // Sucursal automática por geolocalización — se recalcula CADA VEZ que
   // se abre la tienda (nunca se guarda "la última detectada": si el
   // cliente viaja, tiene que reflejar dónde está ahora). Mismo patrón
@@ -496,6 +522,13 @@ export default function CatalogPage() {
     );
   }
 
+  const primerNombre = String(nombre || "").trim().split(/\s+/)[0];
+  const mensajesSubtitulo = [
+    session && primerNombre ? `¡Hola ${primerNombre}!` : `¡Bienvenido a ${negocio?.nombre || "la tienda"}!`,
+    ...(perfilPublico.descripciones || []),
+    textoHorarioHoy(perfilPublico.horarios[publicSucursalId]),
+  ];
+
   return (
     <div className="tz-root">
       <Styles />
@@ -546,7 +579,10 @@ export default function CatalogPage() {
               alt={negocio.nombre}
               className="tz-logo"
             />
-            <p className="tz-subtitle">{negocio.nombre}</p>
+            {/* Mensajes en secuencia (se escriben y se borran): saludo al
+               cliente → descripciones del negocio (Perfil) → horario de
+               hoy de la sucursal elegida. */}
+            <TextoMaquina mensajes={mensajesSubtitulo} />
           </div>
 
           <div className="tz-header-side tz-header-side-right">
