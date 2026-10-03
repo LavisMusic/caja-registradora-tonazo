@@ -24,6 +24,29 @@ const APARTADOS = [
   { id: "horarios", label: "Horarios" },
 ];
 const MAX_DESCRIPCIONES = 6;
+
+// ¿La imagen tiene al menos algunos píxeles transparentes? Se revisa en
+// una copia chica (rápido) y se piden unos cuantos para no confundir un
+// borde suelto con un logo "sin fondo".
+function tieneTransparencia(src) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const escala = Math.min(1, 256 / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.width * escala));
+      canvas.height = Math.max(1, Math.round(img.height * escala));
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const datos = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let transparentes = 0;
+      for (let i = 3; i < datos.length; i += 4) if (datos[i] < 200) transparentes += 1;
+      resolve(transparentes >= Math.max(10, (canvas.width * canvas.height) / 200));
+    };
+    img.onerror = () => resolve(false);
+    img.src = src;
+  });
+}
 const MAX_CARACTERES = 20;
 
 export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos" }) {
@@ -43,6 +66,7 @@ export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos" 
   const [horario, setHorario] = useState(horarioVacio());
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
+  const [logoError, setLogoError] = useState("");
   const [ok, setOk] = useState("");
 
   useEffect(() => {
@@ -87,12 +111,24 @@ export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos" 
     setTimeout(() => setOk(""), 3500);
   };
 
-  const elegirLogo = (e) => {
+  // Solo PNG SIN fondo: se rechaza otro formato y también un PNG sin
+  // ningún píxel transparente (casi seguro trae fondo).
+  const elegirLogo = async (e) => {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
+    setLogoError("");
+    if (f.type !== "image/png" && !/\.png$/i.test(f.name || "")) {
+      return setLogoError("El logo tiene que ser un PNG sin fondo.");
+    }
     const lector = new FileReader();
-    lector.onload = () => setLogoFuente(String(lector.result));
+    lector.onload = async () => {
+      const src = String(lector.result);
+      if (!(await tieneTransparencia(src))) {
+        return setLogoError("Este PNG tiene fondo: súbelo sin fondo (transparente).");
+      }
+      setLogoFuente(src);
+    };
     lector.readAsDataURL(f);
   };
 
@@ -203,9 +239,12 @@ export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos" 
                     </div>
                     <label className="tz-scan-btn" style={{ cursor: "pointer" }}>
                       <ImagePlus size={16} /> Cambiar logo
-                      <input type="file" accept="image/*" hidden onChange={elegirLogo} />
+                      <input type="file" accept="image/png,.png" hidden onChange={elegirLogo} />
                     </label>
                   </div>
+
+                  <small className="tz-stock-editor-sub">Solo PNG sin fondo (transparente).</small>
+                  {logoError && <p className="tz-error" style={{ margin: 0 }}>{logoError}</p>}
 
                   <label className="tz-field-label">Nombre del negocio</label>
                   <input className="tz-text-input" value={nombre} onChange={(e) => setNombre(e.target.value)} />

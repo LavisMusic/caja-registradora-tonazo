@@ -6579,6 +6579,13 @@ export default function Styles() {
           repeating-conic-gradient(rgba(255,255,255,0.05) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
       }
       .tz-logo-preview img { max-width: 220px; max-height: 160px; width: auto; height: auto; display: block; }
+      /* Marco del adaptador de logo: cuadriculado para ver lo transparente. */
+      .tz-crop-area.tz-crop-area-logo {
+        background:
+          repeating-conic-gradient(rgba(255,255,255,0.08) 0% 25%, transparent 0% 50%) 0 0 / 18px 18px,
+          #141022;
+      }
+      .tz-crop-centrar { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; font-size: 12px; }
       .tz-perfil-logo { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
       @media (max-width: 480px) { .tz-perfil-logo { grid-template-columns: 1fr; } }
       .tz-perfil-descripcion { display: flex; align-items: center; gap: 8px; }
