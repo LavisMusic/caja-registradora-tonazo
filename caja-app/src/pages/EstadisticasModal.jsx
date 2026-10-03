@@ -35,7 +35,7 @@ export default function EstadisticasModal({ negocios, onClose }) {
       ] = await Promise.all([
         supabase.from("localidades").select("id, negocio_id"),
         supabase.from("sucursales").select("id, localidad_id"),
-        supabase.from("historial").select("purchase_id, total, sucursal_id"),
+        supabase.from("historial").select("purchase_id, total, sucursal_id").eq("anulado", false),
         supabase.from("pedidos").select("id, sucursal_id, requiere_delivery"),
         supabase.from("clientes_fiado").select("id, negocio_id"),
       ]);

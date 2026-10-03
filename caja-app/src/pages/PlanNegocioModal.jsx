@@ -552,8 +552,9 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, onCl
                     <strong>{formatSoles(p.monto)}</strong>
                   </div>
                   {p.comprobante_url && (
-                    <button type="button" className="tz-plan-pago-ver" onClick={() => setVerComprobante(p)}>
-                      Ver comprobante
+                    <button type="button" className="tz-comprobante-mini" onClick={() => setVerComprobante(p)} title="Ver comprobante">
+                      <img src={p.comprobante_url} alt="Comprobante" loading="lazy" />
+                      <span>Comprobante adjunto · tocar para ampliar</span>
                     </button>
                   )}
                   {p.anulado ? (

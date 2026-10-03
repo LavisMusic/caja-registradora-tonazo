@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { X, Loader2, Receipt, Download, Lock } from "lucide-react";
+import { X, Loader2, Receipt, Download, Save, AlertTriangle, FileSpreadsheet } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Styles from "../components/Styles";
 import { formatSoles } from "../utils/format";
@@ -124,6 +124,22 @@ export default function CierreCajaPlataformaModal({ negocios, planes, onClose })
     cargar();
   };
 
+  const exportarHistorial = () => {
+    const filas = [
+      ["Desde", "Hasta", "Pagos", ...METODOS_PAGO_SA.map((m) => `${m.label} (S/)`), "Cobrado (S/)", "Gastos (S/)", "Balance (S/)"],
+      ...cierres.map((c) => [
+        fechaHora(c.desde),
+        fechaHora(c.hasta),
+        c.cantidad_pagos || 0,
+        ...METODOS_PAGO_SA.map((m) => Number(c.por_metodo?.[m.key] || 0)),
+        Number(c.total_cobrado || 0),
+        Number(c.total_gastos || 0),
+        Number(c.balance || 0),
+      ]),
+    ];
+    descargarXLSX(`historial-cierres-tonazo-${Date.now()}.xlsx`, [{ nombre: "Cierres", filas }]);
+  };
+
   return (
     <div className="tz-modal-backdrop">
       <Styles />
@@ -131,83 +147,131 @@ export default function CierreCajaPlataformaModal({ negocios, planes, onClose })
         <button type="button" className="tz-modal-close" onClick={onClose} aria-label="Cerrar">
           <X size={18} />
         </button>
-        <h2>
-          <Receipt size={17} /> Cierre de caja
-        </h2>
-        <p className="tz-brand-sub" style={{ marginBottom: 12 }}>
-          Desde {desde ? `el último cierre (${fechaHora(desde)})` : "el inicio"} hasta ahora.
-        </p>
+        <div className="tz-payment-modal">
+          <h2>
+            <Receipt size={17} /> Cierre de Caja
+          </h2>
 
-        {loading ? (
-          <div className="tz-loading">
-            <Loader2 className="tz-spin" size={24} />
-          </div>
-        ) : (
-          <>
-            <div className="tz-method-totals tz-cierre-sa-totales">
-              {METODOS_PAGO_SA.map((m) => (
-                <div key={m.key} className="tz-method-total">
-                  <span>{m.label}</span>
-                  <strong>{formatSoles(porMetodo[m.key])}</strong>
-                </div>
-              ))}
+          {loading ? (
+            <div className="tz-loading">
+              <Loader2 className="tz-spin" size={24} />
             </div>
-            <div className="tz-method-totals" style={{ marginTop: 8 }}>
-              <div className="tz-method-total">
-                <span>Cobrado ({pagos.length} pagos)</span>
-                <strong className="tz-green">{formatSoles(totalCobrado)}</strong>
-              </div>
-              <div className="tz-method-total">
-                <span>Gastos</span>
-                <strong className="tz-pink">− {formatSoles(totalGastos)}</strong>
-              </div>
-              <div className="tz-method-total">
-                <span>Balance</span>
-                <strong className={balance >= 0 ? "tz-green" : "tz-pink"}>{formatSoles(balance)}</strong>
-              </div>
-            </div>
-
-            {confirmando ? (
-              <div className="tz-vis-confirm-delete" style={{ marginTop: 14 }}>
-                <p>
-                  ¿Cerrar la caja? Se guarda este resumen y se descarga el Excel. El próximo cierre empieza desde ahora.
-                </p>
-                <div className="tz-vis-confirm-actions">
-                  <button type="button" className="tz-cliente-action-btn tz-cliente-action-pago" onClick={cerrarCaja} disabled={cerrando}>
-                    {cerrando ? <Loader2 size={13} className="tz-spin" /> : <Lock size={13} />} Sí, cerrar caja
-                  </button>
-                  <button type="button" className="tz-cliente-action-btn" onClick={() => setConfirmando(false)} disabled={cerrando}>
-                    <X size={13} /> Cancelar
-                  </button>
+          ) : (
+            <>
+              {/* Recibo del turno actual (desde el último cierre), con el
+                 mismo diseño del cierre de las cajas de los negocios. */}
+              <div className="tz-receipt">
+                <div className="tz-receipt-header">
+                  <span className="tz-receipt-title">Turno actual</span>
+                  <span className="tz-receipt-date">Desde {desde ? fechaHora(desde) : "el inicio"}</span>
                 </div>
-              </div>
-            ) : (
-              <button type="button" className="tz-scan-btn tz-payment-save" style={{ width: "100%", marginTop: 14 }} onClick={() => setConfirmando(true)}>
-                <Lock size={15} /> Cerrar caja y descargar Excel
-              </button>
-            )}
-            {error && <p className="tz-error">{error}</p>}
-
-            <h3 className="tz-plan-subtitulo">Cierres anteriores</h3>
-            {cierres.length === 0 ? (
-              <p className="tz-stock-editor-sub">Todavía no hay cierres.</p>
-            ) : (
-              <ul className="tz-plan-pagos">
-                {cierres.map((c) => (
-                  <li key={c.id}>
-                    <span>{fechaHora(c.hasta)}</span>
-                    <strong className="tz-green">{formatSoles(c.total_cobrado)}</strong>
-                    <span className="tz-pink">− {formatSoles(c.total_gastos)}</span>
-                    <span>Balance {formatSoles(c.balance)}</span>
-                    <button type="button" className="tz-vis-edit-btn" onClick={() => armarExcel(c, negocios, planes)} title="Descargar Excel" aria-label="Descargar Excel">
-                      <Download size={14} />
-                    </button>
-                  </li>
+                <div className="tz-receipt-row">
+                  <span>Responsable</span>
+                  <strong>Super Admin</strong>
+                </div>
+                <div className="tz-receipt-divider" />
+                {METODOS_PAGO_SA.map((m) => (
+                  <div key={m.key} className="tz-receipt-row">
+                    <span>Ingresos ({m.label})</span>
+                    <strong>{formatSoles(porMetodo[m.key])}</strong>
+                  </div>
                 ))}
-              </ul>
-            )}
-          </>
-        )}
+                <div className="tz-receipt-divider" />
+                <div className="tz-receipt-row">
+                  <span>Recaudado</span>
+                  <strong>{formatSoles(totalCobrado)}</strong>
+                </div>
+                <div className="tz-receipt-row">
+                  <span>Pagos registrados</span>
+                  <strong>{pagos.length}</strong>
+                </div>
+                <div className="tz-receipt-row">
+                  <span>Gastos</span>
+                  <strong>{formatSoles(totalGastos)}</strong>
+                </div>
+                <div className="tz-receipt-divider" />
+                <div className="tz-receipt-row tz-receipt-total">
+                  <span>BALANCE DEL TURNO</span>
+                  <strong>{formatSoles(balance)}</strong>
+                </div>
+              </div>
+
+              {!confirmando ? (
+                <button className="tz-scan-btn tz-add-entry-toggle" onClick={() => setConfirmando(true)}>
+                  <Receipt size={16} /> Cerrar turno
+                </button>
+              ) : (
+                <div className="tz-add-entry">
+                  <p className="tz-cierre-warning">
+                    <AlertTriangle size={14} /> Esto guarda una instantánea de estos totales, descarga su Excel y el
+                    próximo cierre empieza desde ahora. No se puede deshacer.
+                  </p>
+                  {error && <p className="tz-error">{error}</p>}
+                  <div className="tz-add-entry-actions">
+                    <button className="tz-camera-cancel" onClick={() => setConfirmando(false)} disabled={cerrando}>
+                      Cancelar
+                    </button>
+                    <button className="tz-pw-submit tz-payment-save" onClick={cerrarCaja} disabled={cerrando}>
+                      {cerrando ? <Loader2 size={16} className="tz-spin" /> : <Save size={16} />}
+                      Sí, cerrar turno
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="tz-method-history">
+                <span className="tz-method-history-label">Historial de cierres</span>
+                {cierres.length === 0 ? (
+                  <p className="tz-method-history-empty">Todavía no hay cierres registrados.</p>
+                ) : (
+                  <>
+                    <div className="tz-export-buttons">
+                      <button type="button" className="tz-csv-btn" onClick={exportarHistorial}>
+                        <Download size={13} /> Exportar Historial de Cierres
+                      </button>
+                    </div>
+                    <div className="tz-cierre-list">
+                      {cierres.map((c) => (
+                        <div key={c.id} className="tz-receipt tz-receipt-compact">
+                          <div className="tz-receipt-header">
+                            <span className="tz-receipt-title">Cierre</span>
+                            <span className="tz-receipt-date">{fechaHora(c.hasta)}</span>
+                          </div>
+                          <div className="tz-receipt-divider" />
+                          <div className="tz-receipt-row">
+                            <span>Recaudado</span>
+                            <strong>{formatSoles(c.total_cobrado)}</strong>
+                          </div>
+                          <div className="tz-receipt-row">
+                            <span>Pagos</span>
+                            <strong>{c.cantidad_pagos || 0}</strong>
+                          </div>
+                          <div className="tz-receipt-row">
+                            <span>Gastos</span>
+                            <strong>{formatSoles(c.total_gastos)}</strong>
+                          </div>
+                          <div className="tz-receipt-divider" />
+                          <div className="tz-receipt-row tz-receipt-total">
+                            <span>Balance</span>
+                            <strong>{formatSoles(c.balance)}</strong>
+                          </div>
+                          <button
+                            type="button"
+                            className="tz-csv-btn"
+                            style={{ marginTop: 8 }}
+                            onClick={() => armarExcel(c, negocios, planes)}
+                          >
+                            <FileSpreadsheet size={13} /> Descargar Excel de este cierre
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

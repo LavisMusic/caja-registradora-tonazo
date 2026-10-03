@@ -11,7 +11,7 @@ import {
   Receipt,
   LayoutGrid,
   Wallet,
-  ChevronDown,
+  CreditCard,
   TrendingDown,
   Lock,
 } from "lucide-react";
@@ -32,7 +32,7 @@ import GestorRubrosModal from "./GestorRubrosModal.jsx";
 import HistorialPagosModal from "./HistorialPagosModal.jsx";
 import NegociosDirectorio, { grupoDeNegocio } from "./NegociosDirectorio.jsx";
 import NegocioEstrellaChip from "./NegocioEstrellaChip.jsx";
-import ComprobantesPlataformaModal, { METODOS_PAGO_SA } from "./ComprobantesPlataformaModal.jsx";
+import ComprobantesPlataformaModal, { METODOS_PAGO_SA, grupoMetodo } from "./ComprobantesPlataformaModal.jsx";
 import GastosPlataformaModal from "./GastosPlataformaModal.jsx";
 import CierreCajaPlataformaModal from "./CierreCajaPlataformaModal.jsx";
 import { usePeticionesPlanSuperAdmin } from "../hooks/usePeticionesPlan";
@@ -61,6 +61,8 @@ export default function SuperAdminPanel() {
   const [planes, setPlanes] = useState([]);
   const [sucursalesPorNegocio, setSucursalesPorNegocio] = useState({});
   const [ingresosMes, setIngresosMes] = useState(0);
+  // Recaudado HOY por método (menú Pagos, como en las cajas).
+  const [hoyPorMetodo, setHoyPorMetodo] = useState({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -84,7 +86,7 @@ export default function SuperAdminPanel() {
       supabase.from("planes").select("*").order("orden", { ascending: true }),
       supabase.from("localidades").select("id, negocio_id"),
       supabase.from("sucursales").select("id, localidad_id, activo"),
-      supabase.from("pagos_plataforma").select("monto").eq("anulado", false).gte("created_at", inicioMes.toISOString()),
+      supabase.from("pagos_plataforma").select("monto, metodo, created_at").eq("anulado", false).gte("created_at", inicioMes.toISOString()),
     ]);
     return { r, n, p, l, s, pagos };
   };
@@ -103,7 +105,18 @@ export default function SuperAdminPanel() {
       });
       setSucursalesPorNegocio(conteo);
     }
-    if (pagos.data) setIngresosMes(pagos.data.reduce((sum, x) => sum + Number(x.monto || 0), 0));
+    if (pagos.data) {
+      setIngresosMes(pagos.data.reduce((sum, x) => sum + Number(x.monto || 0), 0));
+      const inicioHoy = new Date();
+      inicioHoy.setHours(0, 0, 0, 0);
+      const hoy = {};
+      pagos.data.forEach((x) => {
+        if (new Date(x.created_at) < inicioHoy) return;
+        const k = grupoMetodo(x.metodo);
+        hoy[k] = (hoy[k] || 0) + Number(x.monto || 0);
+      });
+      setHoyPorMetodo(hoy);
+    }
   };
 
   useEffect(() => {
@@ -214,27 +227,32 @@ export default function SuperAdminPanel() {
           </div>
 
           <div className="tz-header-side tz-header-side-right">
-            <div className="tz-global-search-wrap" style={{ width: "auto", flex: "0 0 auto" }}>
-              <button className="tz-header-btn" onClick={() => setPagosMenuOpen((v) => !v)} aria-label="Pagos">
+            {/* Menú Pagos: igual que en las cajas — cada método con lo
+               recaudado HOY al lado. */}
+            <div className="tz-header-payment-wrap">
+              <button className="tz-header-btn" onClick={() => setPagosMenuOpen((v) => !v)} aria-label="Métodos de pago">
                 <Wallet size={19} />
                 <span className="tz-header-btn-label">Pagos</span>
-                <ChevronDown size={14} />
               </button>
               {pagosMenuOpen && (
                 <>
                   <div className="tz-dropdown-backdrop" onClick={() => setPagosMenuOpen(false)} />
-                  <div className="tz-global-search-dropdown" style={{ left: "auto", right: 0 }}>
+                  <div className="tz-payment-menu">
                     {METODOS_PAGO_SA.map((m) => (
                       <button
                         key={m.key}
                         type="button"
-                        className="tz-global-search-item"
+                        className="tz-payment-menu-item"
                         onClick={() => {
                           setMetodoAbierto(m.key);
                           setPagosMenuOpen(false);
                         }}
                       >
+                        <CreditCard size={14} />
                         {m.label}
+                        {hoyPorMetodo[m.key] > 0 && (
+                          <span className="tz-payment-menu-amount">{formatSoles(hoyPorMetodo[m.key])}</span>
+                        )}
                       </button>
                     ))}
                   </div>

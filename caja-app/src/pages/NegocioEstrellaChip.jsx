@@ -68,7 +68,7 @@ export default function NegocioEstrellaChip({ negocios }) {
   };
 
   return (
-    <div className="tz-stat-chip tz-stat-chip-star">
+    <div className="tz-stat-chip tz-stat-chip-star tz-stat-chip-negocio-estrella">
       <span className="tz-stat-label">
         <Star size={13} /> Negocio Estrella
       </span>

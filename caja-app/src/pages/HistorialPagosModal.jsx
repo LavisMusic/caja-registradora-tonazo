@@ -12,6 +12,8 @@ import { duracionPlan, formatFechaCorta } from "../lib/planes";
 // gestor de cada negocio (⚡ → Pagos); lo anulado se ve acá al instante
 // (tiempo real). Filtro Todas / Registradas / Anuladas y buscador por
 // negocio, código, plan o método.
+const formatHora = (iso) =>
+  iso ? new Date(iso).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }) : "";
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const FILTROS = [
   { id: "todas", label: "Todas" },
@@ -102,9 +104,13 @@ export default function HistorialPagosModal({ negocios, planes, onClose }) {
         <button type="button" className="tz-modal-close" onClick={onClose} aria-label="Cerrar">
           <X size={18} />
         </button>
+        <div className="tz-payment-modal">
         <h2>
           <Receipt size={17} /> Historial de ventas
         </h2>
+        <p className="tz-stock-editor-sub">
+          Pagos de planes de todos los negocios. Solo consulta: para anular una venta entra al gestor ⚡ del negocio.
+        </p>
         <div className="tz-sa-mes-nav">
           <button type="button" className="tz-vis-edit-btn" onClick={() => mover(-1)} aria-label="Mes anterior">
             <ChevronLeft size={16} />
@@ -158,33 +164,65 @@ export default function HistorialPagosModal({ negocios, planes, onClose }) {
             {pagos.length === 0 ? "No hay ventas en este mes." : "Ninguna venta coincide con el filtro."}
           </p>
         ) : (
-          <ul className="tz-plan-pagos">
+          <div className="tz-cierre-list">
             {visibles.map((p) => (
-              <li key={p.id} className={p.anulado ? "tz-plan-pago-anulado" : ""}>
-                <span className="tz-plan-pago-codigo">{p.codigo || "—"}</span>
-                <span>{formatFechaCorta(p.created_at)}</span>
-                <strong>{nombreNegocio(p.negocio_id)}</strong>
-                <span>
-                  {nombrePlan(p.plan_id)} · {duracionPlan(p.meses)} · {formatSoles(p.monto)}
-                  {p.metodo ? ` · ${p.metodo}` : ""}
-                  {p.vuelto != null ? ` · recibido ${formatSoles(p.monto_recibido)}, vuelto ${formatSoles(p.vuelto)}` : ""}
-                </span>
-                <span className="tz-plan-pagos-hasta">hasta {formatFechaCorta(p.vence_nuevo)}</span>
+              <div key={p.id} className={`tz-receipt tz-receipt-compact ${p.anulado ? "tz-plan-pago-anulado" : ""}`}>
+                <div className="tz-receipt-header">
+                  <span className="tz-receipt-title">{p.codigo || "—"}</span>
+                  <span className="tz-receipt-date">
+                    {formatFechaCorta(p.created_at)} · {formatHora(p.created_at)} · {p.metodo || "?"}
+                  </span>
+                </div>
+                <div className="tz-receipt-divider" />
+                <div className="tz-receipt-row">
+                  <span>
+                    <strong>{nombreNegocio(p.negocio_id)}</strong>
+                  </span>
+                </div>
+                <div className="tz-receipt-row">
+                  <span>
+                    Plan {nombrePlan(p.plan_id)} · {duracionPlan(p.meses)}
+                  </span>
+                  <strong>{formatSoles(p.monto)}</strong>
+                </div>
+                <div className="tz-receipt-row tz-plan-pagos-nota">
+                  <span>Vigente hasta</span>
+                  <span>{formatFechaCorta(p.vence_nuevo)}</span>
+                </div>
+                {p.vuelto != null && (
+                  <div className="tz-receipt-row tz-plan-pagos-nota">
+                    <span>Recibido · vuelto</span>
+                    <span>
+                      {formatSoles(p.monto_recibido)} · {formatSoles(p.vuelto)}
+                    </span>
+                  </div>
+                )}
+                {p.nota && (
+                  <div className="tz-receipt-row tz-plan-pagos-nota">
+                    <span>{p.nota}</span>
+                  </div>
+                )}
+                <div className="tz-receipt-divider" />
+                <div className="tz-receipt-row tz-receipt-total">
+                  <span>Total</span>
+                  <strong>{formatSoles(p.monto)}</strong>
+                </div>
                 {p.comprobante_url && (
-                  <button type="button" className="tz-plan-pago-ver" onClick={() => setVer(p)}>
-                    Ver comprobante
+                  <button type="button" className="tz-comprobante-mini" onClick={() => setVer(p)} title="Ver comprobante">
+                    <img src={p.comprobante_url} alt="Comprobante" loading="lazy" />
+                    <span>Comprobante adjunto · tocar para ampliar</span>
                   </button>
                 )}
                 {p.anulado && (
-                  <span className="tz-tag tz-tag-danger">
+                  <p className="tz-tag tz-tag-danger" style={{ marginTop: 10, textAlign: "center" }}>
                     Anulada{p.anulado_at ? ` el ${formatFechaCorta(p.anulado_at)}` : ""}
-                  </span>
+                  </p>
                 )}
-                {p.nota && <span className="tz-plan-pagos-nota">{p.nota}</span>}
-              </li>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
+        </div>
       </div>
 
       {ver && (

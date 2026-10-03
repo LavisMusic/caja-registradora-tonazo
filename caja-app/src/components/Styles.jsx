@@ -786,7 +786,7 @@ export default function Styles() {
       }
       /* Negocio Estrella (super admin) — mismo medidor que el Usuario
          Estrella de Taxi-PE: doble de ancho, selector y carrusel Top 5. */
-      .tz-stats > .tz-stat-chip-star { grid-column: span 2; }
+      .tz-stats > .tz-stat-chip-negocio-estrella { grid-column: span 2; }
       .tz-star-roles { flex-wrap: nowrap; justify-content: space-around; }
       .tz-star-carousel {
         display: flex;
@@ -6589,6 +6589,48 @@ export default function Styles() {
       .tz-plan-pago-confirmar { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--yellow); }
       .tz-receipt.tz-plan-pago-anulado .tz-receipt-row { text-decoration: line-through; }
       .tz-receipt .tz-plan-pago-ver { margin-top: 8px; }
+      /* Visor chico del comprobante adjunto (historiales): miniatura que
+         se amplía al tocarla. */
+      .tz-comprobante-mini {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        margin-top: 10px;
+        padding: 6px;
+        border-radius: 10px;
+        border: 1px dashed rgba(43,232,255,0.35);
+        background: rgba(43,232,255,0.05);
+        color: var(--cyan);
+        font-family: inherit;
+        font-size: 12px;
+        text-align: left;
+        cursor: pointer;
+      }
+      .tz-comprobante-mini img { width: 52px; height: 52px; object-fit: cover; border-radius: 8px; flex-shrink: 0; background: #fff; }
+      .tz-comprobante-mini:hover { background: rgba(43,232,255,0.12); }
+      button.tz-history-row-photo-link { border: none; background: none; padding: 0; cursor: zoom-in; }
+      /* Lista arrastrable (gestor de Planes, igual que Configurar
+         Membresías de Taxi-PE). */
+      .tz-paquete-draggable-li { display: flex; align-items: stretch; gap: 4px; }
+      .tz-paquete-draggable-li.tz-paquete-dragging {
+        z-index: 5;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 0 1.5px var(--cyan);
+      }
+      .tz-drag-handle {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 30px;
+        border: none;
+        background: transparent;
+        color: var(--text-dim);
+        cursor: grab;
+        touch-action: none;
+      }
+      .tz-drag-handle:hover { color: var(--cyan); background: rgba(43,232,255,0.1); }
+      .tz-drag-handle:active { cursor: grabbing; }
       /* Desplegable de venta registrada (super admin / Recarga rápida):
          la misma barra inferior de la caja, encima de los modales. */
       .tz-submitbar.tz-panel-venta { z-index: 140; }
