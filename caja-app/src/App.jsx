@@ -83,6 +83,7 @@ import Combobox from "./components/Combobox";
 import GestorLocalidadesModal from "./components/GestorLocalidadesModal";
 import { imprimirBoleta, copiarBoletaAlPortapapeles } from "./lib/boleta";
 import PerfilNegocioModal from "./components/PerfilNegocioModal";
+import TemaNegocio from "./components/TemaNegocio";
 import { AvisoPlan, PantallaPlanSuspendido } from "./components/AvisoPlanNegocio";
 import RenovarPlanModal from "./components/RenovarPlanModal";
 import { useMiPeticionPlan } from "./hooks/usePeticionesPlan";
@@ -569,6 +570,7 @@ export default function App() {
     negocioId,
     negocioLogoUrl,
     negocioPlan,
+    negocioTema,
   } = useAuth();
   // Logo real de ESTE negocio (el mismo que ya usa la boleta) — cae al
   // de Tonazo solo si el negocio todavía no subió uno.
@@ -7228,6 +7230,7 @@ export default function App() {
     return (
       <div className="tz-root tz-loading">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         <Loader2 className="tz-spin" size={34} />
         <p>Cargando caja registradora…</p>
       </div>
@@ -7238,6 +7241,7 @@ export default function App() {
     return (
       <div className="tz-root tz-loading">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         <AlertTriangle size={34} className="tz-cliente-debe" />
         <p>{loadError}</p>
       </div>
@@ -7289,6 +7293,7 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         <PantallaPlanSuspendido
           esAdmin={isAdmin}
           logo={logoNegocio}
@@ -7323,6 +7328,7 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         {bienvenidaStaffOverlay}
         <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <Lock size={44} />
@@ -7347,6 +7353,7 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         {bienvenidaStaffOverlay}
         <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <Lock size={44} />
@@ -7372,6 +7379,7 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         {bienvenidaStaffOverlay}
         <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <DollarSign size={44} />
@@ -7397,6 +7405,7 @@ export default function App() {
   return (
     <div className="tz-root">
       <Styles />
+      <TemaNegocio tema={negocioTema} />
       {bienvenidaStaffOverlay}
       <AvisoPlan
         plan={negocioPlan}

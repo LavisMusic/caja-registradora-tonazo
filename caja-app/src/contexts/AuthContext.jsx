@@ -247,12 +247,18 @@ export function AuthProvider({ children }) {
   //    temporizador al próximo hito y se recalcula en ese instante.
   // El cálculo replica public.plan_estado (ver lib/planes.js).
   const [negocioFila, setNegocioFila] = useState(null);
+  // Tema del negocio (migración 0096) — consulta APARTE y tolerante: si
+  // la columna todavía no existe, la caja sigue con el tema original en
+  // vez de perder los datos del plan. Se actualiza en tiempo real con la
+  // misma suscripción de la fila del negocio.
+  const [negocioTema, setNegocioTema] = useState(null);
   const [relojPlan, setRelojPlan] = useState(0);
   useEffect(() => {
     const negocioId = profile?.negocio_id;
     if (!negocioId) {
       setNegocioLogoUrl(null);
       setNegocioFila(null);
+      setNegocioTema(null);
       return undefined;
     }
     let active = true;
@@ -266,6 +272,14 @@ export function AuthProvider({ children }) {
         setNegocioLogoUrl(data?.logo_url || null);
         setNegocioFila(data || null);
       });
+    supabase
+      .from("negocios")
+      .select("tema")
+      .eq("id", negocioId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (active && !error) setNegocioTema(data?.tema || null);
+      });
     const canal = supabase
       .channel(`negocio-plan-${negocioId}-${Math.random().toString(36).slice(2, 10)}`)
       .on(
@@ -275,6 +289,7 @@ export function AuthProvider({ children }) {
           if (!active || !fila) return;
           setNegocioLogoUrl(fila.logo_url || null);
           setNegocioFila((prev) => ({ ...(prev || {}), ...fila }));
+          if ("tema" in fila) setNegocioTema(fila.tema || null);
         }
       )
       .subscribe();
@@ -353,6 +368,7 @@ export function AuthProvider({ children }) {
     negocioId: profile?.negocio_id ?? null,
     negocioLogoUrl,
     negocioPlan,
+    negocioTema,
     loading,
     isAdmin: profile?.role === "admin",
     isCliente: profile?.role === "cliente",

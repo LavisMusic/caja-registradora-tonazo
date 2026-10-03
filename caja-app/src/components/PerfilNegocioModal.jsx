@@ -6,6 +6,7 @@ import LogoAdaptadorModal from "./LogoAdaptadorModal";
 import { COLORES } from "../pages/NegociosDirectorio";
 import { DIAS_SEMANA, horarioVacio } from "../lib/horario";
 import logoTonazo from "../assets/logo.webp";
+import TemaEditor from "./TemaEditor";
 
 // "Perfil" del negocio (botón de la cabecera, solo admin). Apartados:
 //   * Datos: logo (se adapta a cuadrado / horizontal / vertical con
@@ -16,12 +17,14 @@ import logoTonazo from "../assets/logo.webp";
 //     tienda pública muestra debajo del logo, una tras otra.
 //   * Horarios: horario de atención de cada sucursal (la tienda muestra
 //     el de hoy de la sucursal elegida).
+//   * Tema: colores de su caja y su tienda (TemaEditor).
 // El slug (dirección de login) NO se edita acá: solo el super admin.
 // Guarda con la RPC actualizar_perfil_negocio (migración 0095).
 const APARTADOS = [
   { id: "datos", label: "Datos" },
   { id: "descripciones", label: "Descripciones" },
   { id: "horarios", label: "Horarios" },
+  { id: "tema", label: "Tema" },
 ];
 const MAX_DESCRIPCIONES = 6;
 
@@ -339,6 +342,10 @@ export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos" 
                     </button>
                   </div>
                 </div>
+              )}
+
+              {apartado === "tema" && (
+                <TemaEditor negocioId={negocioId} nombre={nombre} logoUrl={logoPreview || negocio?.logo_url} />
               )}
 
               {apartado === "horarios" &&

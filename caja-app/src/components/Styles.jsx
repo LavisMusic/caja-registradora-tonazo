@@ -6557,7 +6557,7 @@ export default function Styles() {
         cursor: pointer;
         padding: 0;
       }
-      .tz-card-negocio-color-activo { border-color: #fff; box-shadow: 0 0 10px rgba(var(--fg-rgb),0.6); }
+      .tz-card-negocio-color-activo { border-color: var(--text); box-shadow: 0 0 10px rgba(var(--fg-rgb),0.6); }
       .tz-card-negocio-colores input[type="color"] { width: 30px; height: 26px; border: none; background: none; padding: 0; cursor: pointer; }
       .tz-card-negocio-admin { display: flex; flex-direction: column; gap: 6px; }
 
@@ -6647,6 +6647,69 @@ export default function Styles() {
         .tz-horario-dia { grid-template-columns: 1fr auto; }
         .tz-horario-horas { grid-column: 1 / -1; justify-content: flex-start; }
       }
+
+      /* ---- Tema del negocio (Perfil → Tema) ---- */
+      .tz-tema-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+      .tz-tema-preset {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 10px;
+        border-radius: 12px;
+        border: 1.5px solid rgba(var(--fg-rgb), 0.12);
+        cursor: pointer;
+        font-family: inherit;
+        text-align: left;
+      }
+      .tz-tema-preset-activa { border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(var(--cyan-rgb), 0.35); }
+      .tz-tema-preset-puntos { display: flex; gap: 4px; }
+      .tz-tema-preset-puntos i { width: 14px; height: 14px; border-radius: 50%; display: block; box-shadow: 0 0 0 1px rgba(0,0,0,0.25); }
+      .tz-tema-preset-nombre { font-size: 12px; font-weight: 700; }
+      .tz-tema-preset-check {
+        position: absolute; top: 6px; right: 6px;
+        width: 18px; height: 18px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--cyan); color: var(--on-cyan);
+      }
+      .tz-tema-libre { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; border: 1.5px solid rgba(var(--fg-rgb), 0.12); }
+      .tz-tema-libre-activo { border-color: var(--cyan); }
+      .tz-tema-libre input[type="color"] { width: 46px; height: 38px; border: none; background: none; padding: 0; cursor: pointer; flex-shrink: 0; }
+      /* La vista previa recibe las variables del tema por style={...}:
+         todo lo de adentro se pinta con ese tema. */
+      .tz-tema-preview {
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid var(--border-soft);
+        color: var(--text);
+        background:
+          radial-gradient(ellipse 300px 160px at 15% 0%, rgba(var(--cyan-rgb), 0.12), transparent 60%),
+          radial-gradient(ellipse 300px 160px at 95% 10%, rgba(var(--pink-rgb), 0.12), transparent 60%),
+          linear-gradient(160deg, var(--bg-1), var(--bg-2) 55%, var(--bg-1));
+      }
+      .tz-tema-preview-cabecera {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 8px;
+        padding: 10px;
+        border-bottom: 1px solid var(--border-soft);
+      }
+      .tz-tema-preview-cabecera .tz-header-btn { pointer-events: none; padding: 6px 8px; }
+      .tz-tema-preview-centro { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+      .tz-tema-preview-centro img { width: 54px; height: auto; }
+      .tz-tema-preview-cuerpo { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; }
+      .tz-tema-preview-cuerpo > :nth-child(n+3) { grid-column: 1 / -1; }
+      .tz-tema-preview-cuerpo button { pointer-events: none; }
+      .tz-tema-preview-producto {
+        display: flex; flex-direction: column; gap: 2px;
+        padding: 10px 12px; border-radius: 12px;
+        background: var(--panel); border: 1px solid rgba(var(--cyan-rgb), 0.3);
+        font-size: 13px; color: var(--text-dim);
+      }
+      .tz-tema-preview-producto strong { color: var(--text); font-size: 14px; }
+      .tz-tema-preview-precio { align-self: flex-end; font-family: 'Orbitron', sans-serif; color: var(--pink); font-size: 15px; }
 
       /* ---- Texto debajo del logo de la tienda: mensajes en secuencia
          que se escriben desde el centro y se borran al revés. ---- */

@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CreditCard, CalendarClock, Store } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import TextoMaquina from "../components/TextoMaquina";
+import TemaNegocio from "../components/TemaNegocio";
 import { textoHorarioHoy } from "../lib/horario";
 import { useCatalog } from "../hooks/useCatalog";
 import { usePedidosBadge } from "../hooks/usePedidosBadge";
@@ -291,6 +292,23 @@ export default function CatalogPage() {
   // tolerante: si algo falla, la tienda carga igual (solo sin esos
   // mensajes).
   const [perfilPublico, setPerfilPublico] = useState({ descripciones: [], horarios: {} });
+  // Tema de la tienda (migración 0096): consulta aparte y tolerante.
+  const [temaTienda, setTemaTienda] = useState(null);
+  useEffect(() => {
+    if (!negocio?.id) return undefined;
+    let vivo = true;
+    supabase
+      .from("negocios")
+      .select("tema")
+      .eq("id", negocio.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (vivo && !error) setTemaTienda(data?.tema || null);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [negocio?.id]);
   useEffect(() => {
     if (!negocio?.id) return undefined;
     let vivo = true;
@@ -494,6 +512,7 @@ export default function CatalogPage() {
     return (
       <div className="tz-root tz-loading">
         <Styles />
+        <TemaNegocio tema={temaTienda} />
         <Loader2 className="tz-spin" size={34} />
       </div>
     );
@@ -503,6 +522,7 @@ export default function CatalogPage() {
     return (
       <div className="tz-root tz-loading">
         <Styles />
+        <TemaNegocio tema={temaTienda} />
         <Store size={34} />
         <p>{negocioError || "No encontramos esta tienda."}</p>
         <Link to="/directorio" className="tz-header-btn">
@@ -516,6 +536,7 @@ export default function CatalogPage() {
     return (
       <div className="tz-root tz-loading">
         <Styles />
+        <TemaNegocio tema={temaTienda} />
         <Loader2 className="tz-spin" size={34} />
         <p>Cargando catálogo…</p>
       </div>
@@ -532,6 +553,7 @@ export default function CatalogPage() {
   return (
     <div className="tz-root">
       <Styles />
+      <TemaNegocio tema={temaTienda} />
       {mostrarBienvenida && (
         <AnimacionNeonBienvenida
           eyebrow={`✦ Bienvenido a ${negocio.nombre} ✦`}
