@@ -56,6 +56,8 @@ export default function Styles() {
         --yape: #b621ff;
         --plin: #00e0c6;
         --gris: #9ca3af;
+        /* Fondo del recuadro de foto de producto (sin foto o mientras carga). */
+        --img-bg: #14101f;
       }
       .tz-root {
         --tz-footer-h: 84px;
@@ -1193,7 +1195,7 @@ export default function Styles() {
         flex-shrink: 0;
         border-radius: 14px;
         overflow: hidden;
-        background: #14101f;
+        background: var(--img-bg);
         border: 1px solid var(--border-soft);
         --mouse-x: 50%;
         --mouse-y: 50%;

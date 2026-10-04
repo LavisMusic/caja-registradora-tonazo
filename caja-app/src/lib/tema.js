@@ -179,6 +179,7 @@ export function variablesTema(tema) {
     "--on-yellow": textoSobre(yellow),
     "--on-danger": textoSobre(danger),
     "--on-green": textoSobre(green),
+    "--img-bg": oscuro ? rgbAHex(hexARgb(fondo).map((v) => v * 1.15 + 4)) : "#eceef3",
   };
 }
 
