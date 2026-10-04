@@ -1171,6 +1171,191 @@ const huellitas = (S) =>
   });
 
 // =====================================================================
+// BARBERÍA — "Barbería clásica"
+// =====================================================================
+// Poste de barbero con las franjas girando (animación DENTRO del SVG:
+// solo se mueve la imagen, no repinta la página).
+const POSTE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 110'><defs><clipPath id='t'><rect x='5' y='14' width='14' height='82' rx='7'/></clipPath><linearGradient id='v' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='rgba(255,255,255,0.45)'/><stop offset='.35' stop-color='rgba(255,255,255,0)'/><stop offset='.75' stop-color='rgba(0,0,0,0)'/><stop offset='1' stop-color='rgba(0,0,0,0.35)'/></linearGradient><linearGradient id='c' x1='0' y1='0' x2='1' y2='0'><stop offset='0' stop-color='#9ca3af'/><stop offset='.45' stop-color='#f8fafc'/><stop offset='1' stop-color='#6b7280'/></linearGradient></defs><g clip-path='url(#t)'><rect x='0' y='0' width='24' height='110' fill='#ffffff'/><g><animateTransform attributeName='transform' type='translate' from='0 0' to='0 24' dur='1.6s' repeatCount='indefinite'/><g stroke-width='6'>${Array.from({ length: 9 }, (_, i) => `<path d='M-4 ${i * 24 - 30} L28 ${i * 24 - 46}' stroke='#dc2626'/><path d='M-4 ${i * 24 - 18} L28 ${i * 24 - 34}' stroke='#1d4ed8'/>`).join("")}</g></g><rect x='5' y='14' width='14' height='82' fill='url(#v)'/></g><rect x='3' y='4' width='18' height='11' rx='4' fill='url(#c)' stroke='#4b5563' stroke-width='.8'/><circle cx='12' cy='4' r='3' fill='url(#c)' stroke='#4b5563' stroke-width='.8'/><rect x='3' y='95' width='18' height='11' rx='4' fill='url(#c)' stroke='#4b5563' stroke-width='.8'/></svg>`
+);
+const NAVAJA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 18'><path d='M2 9 Q2 4 8 4 H22 L22 10 H8 Q4 10 2 9 Z' fill='#e5e7eb' stroke='#6b7280' stroke-width='.9'/><path d='M4 8.5 H21' stroke='#ffffff' stroke-width='1'/><rect x='21' y='6' width='12' height='6' rx='3' fill='#1f2937' stroke='#9ca3af' stroke-width='.8'/><circle cx='23.5' cy='9' r='1.2' fill='#d1d5db'/></svg>`
+);
+const GRANO_CUERO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><g fill='rgba(255,255,255,0.025)'><circle cx='6' cy='8' r='1.5'/><circle cx='22' cy='4' r='1'/><circle cx='40' cy='12' r='1.8'/><circle cx='54' cy='30' r='1.2'/><circle cx='14' cy='30' r='1.6'/><circle cx='34' cy='46' r='1.3'/><circle cx='50' cy='54' r='1'/><circle cx='8' cy='52' r='1.4'/></g></svg>`
+);
+const CUERO = "linear-gradient(170deg, #26262b 0%, #18181c 100%)";
+const COSTURA = "outline: 1.5px dashed rgba(229,231,235,0.35); outline-offset: -6px;";
+
+const barberia = (S) =>
+  construir(S, {
+    raiz: [trama(GRANO_CUERO, "60px 60px"), capa("linear-gradient(180deg, #121215 0%, #0b0b0d 100%)")],
+    cabecera: [capa(POSTE, "left 3% center", "26px 118px"), capa(POSTE, "right 3% center", "26px 118px"), trama(GRANO_CUERO, "60px 60px"), capa("linear-gradient(180deg, #1f1f24 0%, #141418 100%)")],
+    cabeceraEstilo: "border-bottom: 3px solid transparent !important; border-image: linear-gradient(90deg, #dc2626 0 33.3%, #f8fafc 33.3% 66.6%, #1d4ed8 66.6%) 1 !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6);",
+    pie: [trama(GRANO_CUERO, "60px 60px"), capa(CUERO)],
+    pieEstilo: "border-top: 3px solid transparent !important; border-image: linear-gradient(90deg, #dc2626 0 33.3%, #f8fafc 33.3% 66.6%, #1d4ed8 66.6%) 1 !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.10), transparent 55%)"), capa(CUERO)],
+    botonEstilo: `border: 1px solid #9ca3af !important; color: #f3f4f6 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 3px 8px rgba(0,0,0,0.5) !important; ${COSTURA} outline-offset: -4px;`,
+    botonPieEstilo: `border-radius: 10px !important; border: 1px solid #9ca3af !important; color: #f3f4f6 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.55) !important; ${COSTURA} outline-offset: -4px;`,
+    panel: [capa(NAVAJA, "right 8px top 8px", "26px 14px"), trama(GRANO_CUERO, "60px 60px"), capa(CUERO)],
+    panelEstilo: `border: 1px solid #3f3f46 !important; box-shadow: 0 8px 18px rgba(0,0,0,0.5) !important; ${COSTURA}`,
+    modal: [trama(GRANO_CUERO, "60px 60px"), capa("linear-gradient(170deg, #222227 0%, #141418 100%)")],
+    modalEstilo: `border: 1px solid #6b7280 !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important; ${COSTURA} outline-offset: -8px;`,
+    tituloEstilo: "color: #f8fafc !important; border-bottom: 3px solid transparent; border-image: linear-gradient(90deg, #dc2626 0 33.3%, #f8fafc 33.3% 66.6%, #1d4ed8 66.6%) 1; padding-bottom: 8px;",
+    pestana: [capa(CUERO)],
+    pestanaEstilo: "border: 1px solid #52525b !important; color: #e4e4e7 !important;",
+    activa: [capa("linear-gradient(180deg, #f8fafc 0%, #d1d5db 50%, #9ca3af 100%)")],
+    activaEstilo: "border-color: #4b5563 !important; color: #111827 !important; box-shadow: 0 0 12px rgba(229,231,235,0.35) !important;",
+    campoEstilo: "background: #0b0b0d !important; border: 1px solid #52525b !important;",
+  });
+
+// =====================================================================
+// SALÓN DE BELLEZA — "Glamour"
+// =====================================================================
+const FOCOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='44' height='26'><defs><radialGradient id='f' cx='.5' cy='.45' r='.55'><stop offset='0' stop-color='#ffffff'/><stop offset='.5' stop-color='#fff4d6'/><stop offset='1' stop-color='#fcd34d'/></radialGradient><radialGradient id='h' cx='.5' cy='.5' r='.5'><stop offset='0' stop-color='rgba(253,224,140,0.55)'/><stop offset='1' stop-color='rgba(253,224,140,0)'/></radialGradient></defs><rect width='44' height='26' fill='#c9a227'/><rect y='1' width='44' height='24' fill='#2e1228'/><circle cx='22' cy='13' r='13' fill='url(#h)'/><circle cx='22' cy='13' r='7' fill='url(#f)' stroke='#d4a017' stroke-width='1'/></svg>`
+);
+const BRILLITOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='rgba(252,211,77,0.35)'><path d='M12 8 l1.2 3 l3 1.2 l-3 1.2 l-1.2 3 l-1.2 -3 l-3 -1.2 l3 -1.2 Z'/><path d='M58 40 l1 2.5 l2.5 1 l-2.5 1 l-1 2.5 l-1 -2.5 l-2.5 -1 l2.5 -1 Z'/></g><g fill='rgba(249,168,212,0.3)'><circle cx='36' cy='22' r='1.2'/><circle cx='70' cy='12' r='0.9'/><circle cx='20' cy='60' r='1.1'/><circle cx='48' cy='70' r='0.8'/></g></svg>`
+);
+const PEINE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 16'><rect x='1' y='2' width='28' height='5' rx='2' fill='#fcd34d' stroke='#b45309' stroke-width='.8'/><g stroke='#fcd34d' stroke-width='1.6' stroke-linecap='round'>${Array.from({ length: 11 }, (_, i) => `<path d='M${3.5 + i * 2.3} 7 V14'/>`).join("")}</g></svg>`
+);
+
+const glamour = (S) =>
+  construir(S, {
+    raiz: [trama(BRILLITOS, "80px 80px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(249,168,212,0.16), transparent 60%)"), capa("linear-gradient(180deg, #1c0a18 0%, #120610 100%)")],
+    // Espejo de camerino: fila de focos encendidos bajo la cabecera.
+    cabecera: [capa(FOCOS, "left 0 bottom 0", "44px 26px", "repeat-x"), trama(BRILLITOS, "80px 80px"), capa("linear-gradient(180deg, #3d1735 0%, #2a0f24 100%)")],
+    cabeceraEstilo: "padding-bottom: 36px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.5);",
+    pie: [capa(FOCOS, "left 0 top 0", "44px 26px", "repeat-x"), trama(BRILLITOS, "80px 80px"), capa("linear-gradient(180deg, #2a0f24, #1c0a18)")],
+    pieEstilo: "border-top: none !important; padding-top: 36px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.22), transparent 55%)"), capa("linear-gradient(180deg, #e7a1c4, #c86e9c)")],
+    botonEstilo: "border: 1px solid #fcd34d !important; color: #2a0f24 !important; box-shadow: 0 0 10px rgba(252,211,77,0.3), 0 3px 8px rgba(0,0,0,0.45) !important; border-radius: 999px !important; font-weight: 800;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #fcd34d !important; color: #2a0f24 !important; box-shadow: 0 0 12px rgba(252,211,77,0.35) !important;",
+    panel: [capa(PEINE, "right 8px top 8px", "24px 13px"), trama(BRILLITOS, "80px 80px"), capa("linear-gradient(160deg, rgba(249,168,212,0.10) 0%, transparent 40%)"), capa("linear-gradient(170deg, #34142c 0%, #220c1d 100%)")],
+    panelEstilo: "border: 1px solid #c9a227 !important; box-shadow: inset 0 0 0 3px rgba(34,12,29,0.9), inset 0 0 0 4px rgba(252,211,77,0.35), 0 8px 18px rgba(0,0,0,0.5) !important;",
+    modal: [capa(FOCOS, "left 0 top 0", "44px 26px", "repeat-x"), trama(BRILLITOS, "80px 80px"), capa("linear-gradient(170deg, #3a1532 0%, #1c0a18 100%)")],
+    modalEstilo: "border: 1px solid #fcd34d !important; box-shadow: 0 0 24px rgba(249,168,212,0.25), 0 20px 60px rgba(0,0,0,0.7) !important; padding-top: 40px !important;",
+    tituloEstilo: "color: #fde68a !important; text-shadow: 0 0 10px rgba(252,211,77,0.5); border-bottom: 1px solid rgba(252,211,77,0.6); padding-bottom: 8px; letter-spacing: 0.1em;",
+    pestana: [capa("linear-gradient(170deg, #34142c 0%, #220c1d 100%)")],
+    pestanaEstilo: "border: 1px solid rgba(252,211,77,0.45) !important; color: #fbcfe8 !important;",
+    activa: [capa("linear-gradient(135deg, #f7c6a3 0%, #e8a0b4 50%, #d4a017 100%)")],
+    activaEstilo: "border-color: #8a6a10 !important; color: #2a0f24 !important; box-shadow: 0 0 16px rgba(249,168,212,0.5) !important;",
+    campoEstilo: "background: #160813 !important; border: 1px solid rgba(252,211,77,0.4) !important;",
+  });
+
+// =====================================================================
+// SPA — "Zen" (claro)
+// =====================================================================
+const PIEDRAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 52'><ellipse cx='20' cy='45' rx='17' ry='6.5' fill='#8a8f86'/><ellipse cx='20' cy='34' rx='13' ry='6' fill='#a3a89e'/><ellipse cx='20' cy='24' rx='10' ry='5' fill='#7d8278'/><ellipse cx='20' cy='15' rx='7' ry='4' fill='#b4b8ad'/><g fill='rgba(255,255,255,0.35)'><ellipse cx='14' cy='43' rx='5' ry='1.6'/><ellipse cx='15' cy='32' rx='4' ry='1.4'/><ellipse cx='16' cy='13.5' rx='2.5' ry='1'/></g><path d='M24 8 Q30 2 36 4 Q32 10 24 8 Z' fill='#6b8f5e'/></svg>`
+);
+const BAMBU = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><g stroke='rgba(63,107,79,0.10)' stroke-width='6' stroke-linecap='round'><path d='M20 0 V120'/><path d='M84 0 V120'/></g><g stroke='rgba(63,107,79,0.16)' stroke-width='7'><path d='M17 38 H23'/><path d='M17 90 H23'/><path d='M81 20 H87'/><path d='M81 72 H87'/></g><g fill='rgba(77,124,15,0.12)'><path d='M23 40 Q40 30 52 34 Q40 42 23 40 Z'/><path d='M81 74 Q62 64 52 70 Q64 78 81 74 Z'/></g></svg>`
+);
+const ONDAS_AGUA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='100' height='12'><path d='M0 6 Q12.5 0 25 6 T50 6 T75 6 T100 6' fill='none' stroke='rgba(63,107,79,0.45)' stroke-width='1.6'/></svg>`
+);
+const GOTA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 22'><path d='M8 1 C8 1 2 9 2 14 A6 6 0 0 0 14 14 C14 9 8 1 8 1 Z' fill='#bfe3d4' stroke='#5b8f7b' stroke-width='1'/><ellipse cx='6' cy='13' rx='1.6' ry='2.6' fill='#ffffff' opacity='.7'/></svg>`
+);
+
+const zen = (S) =>
+  construir(S, {
+    raiz: [trama(BAMBU, "120px 120px"), capa("linear-gradient(180deg, #f6f7f3 0%, #e9ede4 100%)")],
+    cabecera: [capa(PIEDRAS, "left 3% bottom 14px", "40px 52px"), capa(PIEDRAS, "right 3% bottom 14px", "34px 44px"), capa(ONDAS_AGUA, "left 0 bottom 2px", "100px 12px", "repeat-x"), trama(BAMBU, "120px 120px"), capa("linear-gradient(180deg, #ffffff 0%, #eef2ea 100%)")],
+    cabeceraEstilo: "padding-bottom: 24px !important; border-bottom: 1px solid #cdd6c6 !important; box-shadow: 0 6px 16px rgba(63,107,79,0.08);",
+    pie: [capa(ONDAS_AGUA, "left 0 top 6px", "100px 12px", "repeat-x"), capa("linear-gradient(180deg, #eef2ea, #e2e9dc)")],
+    pieEstilo: "border-top: 1px solid #cdd6c6 !important; padding-top: 26px !important;",
+    boton: [capa("linear-gradient(180deg, #6f9a7d, #4f7a5e)")],
+    botonEstilo: "border: 1px solid #3f6b4f !important; color: #ffffff !important; box-shadow: 0 3px 8px rgba(63,107,79,0.2) !important; border-radius: 999px !important;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #3f6b4f !important; color: #ffffff !important; box-shadow: 0 4px 10px rgba(63,107,79,0.22) !important;",
+    panel: [capa(GOTA, "right 9px top 8px", "13px 18px"), capa("linear-gradient(180deg, #ffffff, #fbfcf9)")],
+    panelEstilo: "border: 1px solid #dbe3d4 !important; border-radius: 18px !important; box-shadow: 0 8px 20px rgba(63,107,79,0.08) !important;",
+    modal: [capa(PIEDRAS, "right 14px bottom 12px", "36px 47px"), capa("linear-gradient(180deg, #ffffff, #f4f6f1)")],
+    modalEstilo: "border: 1px solid #cdd6c6 !important; box-shadow: 0 20px 60px rgba(63,107,79,0.18) !important;",
+    tituloEstilo: `color: #2f5541 !important; background: ${ONDAS_AGUA} left 0 bottom 0 / 100px 10px repeat-x !important; padding-bottom: 16px; font-weight: 600;`,
+    pestana: [capa("linear-gradient(180deg, #ffffff, #f1f4ee)")],
+    pestanaEstilo: "border: 1px solid #cdd6c6 !important; color: #3f6b4f !important; border-radius: 999px !important;",
+    activa: [capa("linear-gradient(180deg, #6f9a7d, #3f6b4f)")],
+    activaEstilo: "border-color: #2f5541 !important; color: #ffffff !important; box-shadow: 0 4px 12px rgba(63,107,79,0.3) !important;",
+    campoEstilo: "background: #ffffff !important; border: 1px solid #cdd6c6 !important;",
+  });
+
+// =====================================================================
+// ROPA Y MODA — "Boutique"
+// =====================================================================
+const GANCHOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='70' height='30'><path d='M0 3 H70' stroke='#d4af37' stroke-width='2'/><g fill='none' stroke='#d4af37' stroke-width='1.6' stroke-linecap='round'><path d='M35 3 Q35 7 32 8 Q30 9 31 11 L35 13'/><path d='M35 13 L14 24 H56 Z'/></g></svg>`
+);
+const ETIQUETA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 30'><path d='M11 1 Q15 1 15 5' stroke='#d4af37' stroke-width='1' fill='none'/><path d='M5 8 L11 4 L17 8 V27 H5 Z' fill='#f5ecd2' stroke='#a67c00' stroke-width='1'/><circle cx='11' cy='9' r='1.6' fill='#1c1a14'/><path d='M8 15 H14 M8 18.5 H14 M8 22 H12' stroke='#a67c00' stroke-width='1'/></svg>`
+);
+const CINTA_COSTURA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='12'><rect width='40' height='12' fill='#f3e5ab'/><g stroke='#1c1a14' stroke-width='.8'><path d='M0 0 V6'/><path d='M4 0 V3'/><path d='M8 0 V3'/><path d='M12 0 V3'/><path d='M16 0 V3'/><path d='M20 0 V5'/><path d='M24 0 V3'/><path d='M28 0 V3'/><path d='M32 0 V3'/><path d='M36 0 V3'/></g></svg>`
+);
+
+const boutique = (S) =>
+  construir(S, {
+    raiz: [capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(212,175,55,0.10), transparent 60%)"), capa("linear-gradient(180deg, #0e0d0a 0%, #080706 100%)")],
+    cabecera: [capa(CINTA_COSTURA, "left 0 bottom 0", "40px 12px", "repeat-x"), capa(GANCHOS, "left 0 top 0", "70px 30px", "repeat-x"), capa("linear-gradient(180deg, #16140f 0%, #0e0d0a 100%)")],
+    cabeceraEstilo: "padding-top: 38px !important; padding-bottom: 24px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6);",
+    pie: [capa(CINTA_COSTURA, "left 0 top 0", "40px 12px", "repeat-x"), capa("linear-gradient(180deg, #16140f, #0b0a08)")],
+    pieEstilo: "border-top: none !important; padding-top: 24px !important;",
+    boton: [capa("linear-gradient(180deg, #16140f, #0b0a08)")],
+    botonEstilo: "border: 1px solid #d4af37 !important; color: #f3e5ab !important; box-shadow: 0 3px 8px rgba(0,0,0,0.5) !important; letter-spacing: 0.08em;",
+    botonPieEstilo: "border-radius: 4px !important; border: 1px solid #d4af37 !important; color: #f3e5ab !important; box-shadow: 0 4px 10px rgba(0,0,0,0.55) !important; letter-spacing: 0.08em;",
+    panel: [capa(ETIQUETA, "right 8px top 6px", "16px 22px"), capa("linear-gradient(155deg, rgba(255,255,255,0.06) 0%, transparent 35%)"), capa("linear-gradient(170deg, #1a1813 0%, #0f0e0b 100%)")],
+    panelEstilo: "border: 1px solid #a67c00 !important; box-shadow: inset 0 0 0 3px #0f0e0b, inset 0 0 0 4px rgba(212,175,55,0.35), 0 8px 18px rgba(0,0,0,0.55) !important;",
+    modal: [capa("linear-gradient(155deg, rgba(255,255,255,0.06) 0%, transparent 35%)"), capa("linear-gradient(170deg, #1c1a14 0%, #0b0a08 100%)")],
+    modalEstilo: "border: 1px solid #d4af37 !important; box-shadow: inset 0 0 0 5px #0b0a08, inset 0 0 0 6px rgba(212,175,55,0.35), 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: "color: #f3e5ab !important; letter-spacing: 0.18em; border-bottom: 1px solid #d4af37; padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #16140f, #0b0a08)")],
+    pestanaEstilo: "border: 1px solid rgba(212,175,55,0.45) !important; color: #e9dcb0 !important; letter-spacing: 0.06em;",
+    activa: [capa("linear-gradient(180deg, #f3e5ab 0%, #d4af37 55%, #a67c00 100%)")],
+    activaEstilo: "border-color: #6b5200 !important; color: #0b0a08 !important; box-shadow: 0 0 14px rgba(212,175,55,0.45) !important;",
+    campoEstilo: "background: #0b0a08 !important; border: 1px solid rgba(212,175,55,0.4) !important;",
+  });
+
+// =====================================================================
+// CALZADO — "Vitrina"
+// =====================================================================
+const CORDONES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='22'><g fill='#1c1917'><circle cx='4' cy='4' r='2.4'/><circle cx='4' cy='18' r='2.4'/><circle cx='24' cy='4' r='2.4'/><circle cx='24' cy='18' r='2.4'/></g><g fill='#d6d3d1'><circle cx='4' cy='4' r='1.2'/><circle cx='4' cy='18' r='1.2'/><circle cx='24' cy='4' r='1.2'/><circle cx='24' cy='18' r='1.2'/></g><path d='M4 4 L24 18 M4 18 L24 4' stroke='#f8fafc' stroke-width='2.4' stroke-linecap='round'/><path d='M24 4 L44 18 M24 18 L44 4' stroke='#f8fafc' stroke-width='2.4' stroke-linecap='round'/></svg>`
+);
+const SUELA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><g fill='rgba(255,255,255,0.035)'><rect x='4' y='6' width='14' height='5' rx='2.5'/><rect x='22' y='6' width='14' height='5' rx='2.5'/><rect x='40' y='6' width='14' height='5' rx='2.5'/><rect x='13' y='18' width='14' height='5' rx='2.5'/><rect x='31' y='18' width='14' height='5' rx='2.5'/><rect x='4' y='30' width='14' height='5' rx='2.5'/><rect x='22' y='30' width='14' height='5' rx='2.5'/><rect x='40' y='30' width='14' height='5' rx='2.5'/><rect x='13' y='42' width='14' height='5' rx='2.5'/><rect x='31' y='42' width='14' height='5' rx='2.5'/></g></svg>`
+);
+const ZAPATILLA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 20'><path d='M2 14 Q2 6 9 5 L15 4 Q18 9 24 10 L32 12 Q35 13 34 16 H2 Z' fill='#fb7185' stroke='#9f1239' stroke-width='1'/><path d='M2 16 H34 V18 Q34 19 33 19 H3 Q2 19 2 18 Z' fill='#f8fafc' stroke='#9f1239' stroke-width='.8'/><path d='M14 7 L18 11 M17 6 L21 10' stroke='#f8fafc' stroke-width='1.4' stroke-linecap='round'/><path d='M6 11 Q12 9 14 12' stroke='#fde047' stroke-width='1.4' fill='none'/></svg>`
+);
+const KRAFT_CAJA = "linear-gradient(180deg, #d98a4e 0%, #c67635 100%)";
+
+const vitrina = (S) =>
+  construir(S, {
+    raiz: [trama(SUELA, "60px 60px"), capa("linear-gradient(180deg, #17110d 0%, #0f0b08 100%)")],
+    // Tapa de caja de zapatos con cordones cruzados.
+    cabecera: [capa(CORDONES, "left 0 bottom 6px", "40px 22px", "repeat-x"), capa("linear-gradient(180deg, #2b1d14, #2b1d14)", "left 0 bottom 0", "100% 34px"), capa(KRAFT_CAJA)],
+    cabeceraEstilo: "padding-bottom: 46px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.55);",
+    pie: [capa(CORDONES, "left 0 top 6px", "40px 22px", "repeat-x"), capa("linear-gradient(180deg, #2b1d14, #2b1d14)", "left 0 top 0", "100% 34px"), capa(KRAFT_CAJA)],
+    pieEstilo: "border-top: none !important; padding-top: 46px !important;",
+    boton: [capa("linear-gradient(180deg, #fde3c4, #f6c99a)")],
+    botonEstilo: "border: 1px solid #8a4b1c !important; color: #3a1c08 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.35) !important; font-weight: 800;",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #8a4b1c !important; color: #3a1c08 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.4) !important;",
+    panel: [capa(ZAPATILLA, "right 6px top 8px", "28px 16px"), trama(SUELA, "60px 60px"), capa("linear-gradient(170deg, #2b2019 0%, #1d1510 100%)")],
+    panelEstilo: "border: 1px solid #4a3527 !important; border-top: 3px solid #c67635 !important; box-shadow: 0 8px 18px rgba(0,0,0,0.5) !important;",
+    modal: [trama(SUELA, "60px 60px"), capa("linear-gradient(180deg, #c67635 0 8px, transparent 8px)"), capa("linear-gradient(170deg, #2b2019 0%, #160f0b 100%)")],
+    modalEstilo: "border: 1px solid #8a4b1c !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: `color: #fde3c4 !important; background: ${CORDONES} left 0 bottom 0 / 30px 16px repeat-x !important; padding-bottom: 24px;`,
+    pestana: [capa("linear-gradient(170deg, #2b2019 0%, #1d1510 100%)")],
+    pestanaEstilo: "border: 1px solid #6b4a32 !important; color: #f3d5b5 !important;",
+    activa: [capa("linear-gradient(180deg, #fb7185, #e11d48)")],
+    activaEstilo: "border-color: #9f1239 !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(251,113,133,0.45) !important;",
+    campoEstilo: "background: #120d0a !important; border: 1px solid #6b4a32 !important;",
+  });
+
+// =====================================================================
 // Catálogo
 // =====================================================================
 export const TEMATICOS = [
@@ -1364,6 +1549,51 @@ export const TEMATICOS = [
     paleta: { id: "tematico-huellitas", nombre: "Huellitas", modo: "claro", principal: "#0e7490", secundario: "#c2410c", acento: "#7c3aed", botones: "#0e7490", fondo1: "#f5fbfd", fondo2: "#e8f5f9" },
     muestra: `${PLACA_COLLAR} right 10px top 8px / 20px 22px no-repeat, ${JUGUETES} left 0 bottom 4px / 100px 22px repeat-x, ${HUELLAS} 0 0 / 70px 70px, linear-gradient(180deg, #fef9c3, #fde68a)`,
     css: huellitas,
+  },
+  {
+    id: "barberia",
+    rubro: "barberia",
+    nombre: "Barbería clásica",
+    descripcion: "Poste giratorio, cuero con costura, navaja y cromo",
+    paleta: { id: "tematico-barberia", nombre: "Barbería clásica", modo: "oscuro", principal: "#e5e7eb", secundario: "#f87171", acento: "#93c5fd", botones: "#f8fafc", fondo1: "#0b0b0d", fondo2: "#1d1d22" },
+    muestra: `${POSTE} left 10px center / 20px 70px no-repeat, ${NAVAJA} right 10px top 10px / 26px 14px no-repeat, linear-gradient(90deg, #dc2626 0 33.3%, #f8fafc 33.3% 66.6%, #1d4ed8 66.6%) left 0 bottom 0 / 100% 3px no-repeat, ${GRANO_CUERO} 0 0 / 50px 50px, ${CUERO}`,
+    css: barberia,
+  },
+  {
+    id: "glamour",
+    rubro: "salon-belleza",
+    nombre: "Glamour",
+    descripcion: "Rosa y dorado, focos de camerino y brillos",
+    paleta: { id: "tematico-glamour", nombre: "Glamour", modo: "oscuro", principal: "#f9a8d4", secundario: "#fcd34d", acento: "#fbcfe8", botones: "#fde68a", fondo1: "#120610", fondo2: "#2e1228" },
+    muestra: `${FOCOS} left 0 bottom 0 / 34px 20px repeat-x, ${PEINE} right 10px top 10px / 24px 13px no-repeat, ${BRILLITOS} 0 0 / 60px 60px, linear-gradient(180deg, #3d1735, #2a0f24)`,
+    css: glamour,
+  },
+  {
+    id: "zen",
+    rubro: "spa",
+    nombre: "Zen",
+    descripcion: "Salvia, piedras apiladas, bambú y agua",
+    paleta: { id: "tematico-zen", nombre: "Zen", modo: "claro", principal: "#3f6b4f", secundario: "#7c6a55", acento: "#4d7c0f", botones: "#3f6b4f", fondo1: "#f6f7f3", fondo2: "#e9ede4" },
+    muestra: `${PIEDRAS} right 10px bottom 6px / 30px 39px no-repeat, ${ONDAS_AGUA} left 0 bottom 2px / 80px 10px repeat-x, ${BAMBU} 0 0 / 90px 90px, linear-gradient(180deg, #ffffff, #eef2ea)`,
+    css: zen,
+  },
+  {
+    id: "boutique",
+    rubro: "ropa-moda",
+    nombre: "Boutique",
+    descripcion: "Negro y dorado, ganchos, cinta de costura y etiqueta",
+    paleta: { id: "tematico-boutique", nombre: "Boutique", modo: "oscuro", principal: "#d4af37", secundario: "#f5d77a", acento: "#f3e5ab", botones: "#f3e5ab", fondo1: "#080706", fondo2: "#1c1a14" },
+    muestra: `${GANCHOS} left 0 top 0 / 56px 24px repeat-x, ${ETIQUETA} right 12px bottom 8px / 16px 22px no-repeat, ${CINTA_COSTURA} left 0 bottom 0 / 30px 9px repeat-x, linear-gradient(180deg, #16140f, #0e0d0a)`,
+    css: boutique,
+  },
+  {
+    id: "vitrina",
+    rubro: "calzado",
+    nombre: "Vitrina",
+    descripcion: "Caja de zapatos, cordones, suelas y zapatilla",
+    paleta: { id: "tematico-vitrina", nombre: "Vitrina", modo: "oscuro", principal: "#fdba74", secundario: "#fb7185", acento: "#fde047", botones: "#fde3c4", fondo1: "#0f0b08", fondo2: "#241a14" },
+    muestra: `${ZAPATILLA} right 10px top 8px / 28px 16px no-repeat, ${CORDONES} left 0 bottom 4px / 30px 16px repeat-x, linear-gradient(180deg, #2b1d14, #2b1d14) left 0 bottom 0 / 100% 24px no-repeat, ${KRAFT_CAJA}`,
+    css: vitrina,
   },
 ];
 
