@@ -526,6 +526,221 @@ const ESCENA_MARINO = [
 ];
 
 // =====================================================================
+// CHIFA — "Dragón rojo"
+// =====================================================================
+const NUBES_CHINAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='40'><g fill='none' stroke='rgba(245,197,66,0.16)' stroke-width='2' stroke-linecap='round'><path d='M6 30 q6 -12 16 -6 q4 -10 14 -4 q8 -6 12 4'/><path d='M18 24 q-2 -6 4 -6 q4 0 2 5'/><path d='M38 26 q0 -6 6 -5 q4 2 1 6'/><path d='M44 12 q8 -8 16 0 q6 -4 10 3'/><path d='M58 12 q-1 -5 4 -5 q4 1 1 5'/></g></svg>`
+);
+const FAROL = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 56'><path d='M16 0 V6' stroke='#f5c542' stroke-width='1.5'/><rect x='10' y='5' width='12' height='4' rx='1' fill='#f5c542'/><ellipse cx='16' cy='23' rx='13' ry='14' fill='#d62828'/><ellipse cx='16' cy='23' rx='13' ry='14' fill='none' stroke='#f5c542' stroke-width='1.2'/><path d='M8 13 Q16 23 8 33 M24 13 Q16 23 24 33 M16 9 V37' stroke='rgba(245,197,66,0.7)' stroke-width='1' fill='none'/><ellipse cx='12' cy='18' rx='3' ry='5' fill='rgba(255,220,150,0.35)'/><rect x='10' y='36' width='12' height='4' rx='1' fill='#f5c542'/><path d='M14 40 V54 M16 40 V56 M18 40 V54' stroke='#f5c542' stroke-width='1.3'/></svg>`
+);
+const GRECA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='12'><rect width='24' height='12' fill='#b8860b'/><path d='M0 10 H6 V2 H14 V8 H10 V5 M14 10 H24' fill='none' stroke='#7a0c0c' stroke-width='1.6' stroke-linejoin='miter'/></svg>`
+);
+const celosia = (rot) =>
+  svg(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><g transform='rotate(${rot} 12 12)' fill='none' stroke='#f5c542' stroke-width='1.6'><path d='M2 22 V2 H22'/><path d='M6 22 V6 H22'/><path d='M10 14 V10 H14'/></g></svg>`
+  );
+const CEL_SI = celosia(0);
+const CEL_SD = celosia(90);
+const CEL_ID = celosia(180);
+const CEL_II = celosia(270);
+const LACA = "linear-gradient(170deg, #8b1a1a 0%, #6e1111 55%, #560c0c 100%)";
+const LACA_OSCURA = "linear-gradient(170deg, #5c1010 0%, #470b0b 55%, #3a0808 100%)";
+
+const dragon = (S) =>
+  construir(S, {
+    raiz: [trama(NUBES_CHINAS, "72px 40px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(245,197,66,0.10), transparent 60%)"), capa("linear-gradient(180deg, #1f0707 0%, #140404 100%)")],
+    cabecera: [
+      capa(FAROL, "left 3% top 0", "36px 63px"),
+      capa(FAROL, "right 3% top 0", "36px 63px"),
+      capa(GRECA, "left 0 bottom 0", "24px 12px", "repeat-x"),
+      trama(NUBES_CHINAS, "72px 40px"),
+      capa(LACA),
+    ],
+    cabeceraEstilo: "padding-bottom: 30px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.5);",
+    pie: [capa(GRECA, "left 0 top 0", "24px 12px", "repeat-x"), trama(NUBES_CHINAS, "72px 40px"), capa("linear-gradient(180deg, #3a0a0a, #1f0707)")],
+    pieEstilo: "border-top: none !important; padding-top: 30px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,230,160,0.18), transparent 55%)"), capa(LACA)],
+    botonEstilo: "border: 1.5px solid #d4a017 !important; color: #f5c542 !important; box-shadow: inset 0 0 0 2px rgba(86,12,12,0.9), inset 0 0 0 3px rgba(245,197,66,0.35), 0 3px 8px rgba(0,0,0,0.45) !important;",
+    botonPieEstilo: "border-radius: 10px !important; border: 1.5px solid #d4a017 !important; color: #f5c542 !important; box-shadow: inset 0 0 0 2px rgba(86,12,12,0.9), inset 0 0 0 3px rgba(245,197,66,0.35), 0 4px 10px rgba(0,0,0,0.5) !important;",
+    // Celosía dorada en 3 esquinas (arriba a la izquierda van los títulos).
+    panel: [capa(CEL_SD, "right 4px top 4px", "14px 14px"), capa(CEL_ID, "right 4px bottom 4px", "14px 14px"), capa(CEL_II, "left 4px bottom 4px", "14px 14px"), trama(NUBES_CHINAS, "72px 40px"), capa(LACA_OSCURA)],
+    panelEstilo: "border: 1px solid #d4a017 !important; box-shadow: inset 0 0 0 3px rgba(86,12,12,0.85), inset 0 0 0 4px rgba(245,197,66,0.45), 0 8px 18px rgba(0,0,0,0.45) !important;",
+    modal: [capa(CEL_SI, "left 8px top 8px", "18px 18px"), capa(CEL_SD, "right 8px top 8px", "18px 18px"), capa(CEL_ID, "right 8px bottom 8px", "18px 18px"), capa(CEL_II, "left 8px bottom 8px", "18px 18px"), trama(NUBES_CHINAS, "72px 40px"), capa("linear-gradient(170deg, #4a0d0d 0%, #2a0606 100%)")],
+    modalEstilo: "border: 2px solid #d4a017 !important; box-shadow: inset 0 0 0 4px rgba(42,6,6,0.9), inset 0 0 0 5px rgba(245,197,66,0.4), 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: `color: #f5c542 !important; text-shadow: 0 1px 0 #000, 0 0 12px rgba(245,197,66,0.35); background: ${GRECA} left 0 bottom 0 / 24px 8px repeat-x !important; padding-bottom: 14px;`,
+    pestana: [capa(LACA)],
+    pestanaEstilo: "border: 1px solid rgba(212,160,23,0.6) !important; color: #f3d9a0 !important;",
+    activa: [capa("linear-gradient(180deg, #ffe08a 0%, #f5c542 50%, #c9971a 100%)")],
+    activaEstilo: "border-color: #7a5a00 !important; color: #5a0b0b !important; text-shadow: 0 1px 0 rgba(255,255,255,0.4); box-shadow: 0 0 16px rgba(245,197,66,0.45) !important;",
+    campoEstilo: "background: #1f0707 !important; border: 1px solid rgba(212,160,23,0.5) !important;",
+    extra: (S) => `${en(S, ".tz-logo")} { filter: drop-shadow(0 0 16px rgba(245,197,66,0.4)) drop-shadow(0 4px 10px rgba(0,0,0,0.6)) !important; }`,
+  });
+
+// =====================================================================
+// PIZZERÍA — "Horno de leña"
+// =====================================================================
+const LADRILLOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='64' height='32'><rect width='64' height='32' fill='#7a3322'/><g fill='#8e3d28'><rect x='1' y='1' width='30' height='14' rx='1.5'/><rect x='33' y='1' width='30' height='14' rx='1.5'/><rect x='-15' y='17' width='30' height='14' rx='1.5'/><rect x='17' y='17' width='30' height='14' rx='1.5'/><rect x='49' y='17' width='30' height='14' rx='1.5'/></g><g fill='rgba(0,0,0,0.12)'><rect x='4' y='9' width='20' height='3'/><rect x='38' y='4' width='14' height='2'/><rect x='22' y='25' width='18' height='3'/></g></svg>`
+);
+const TRICOLOR = "linear-gradient(90deg, #009246 0 33.33%, #f4f5f0 33.33% 66.66%, #ce2b37 66.66%)";
+const ALBAHACA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 28'><path d='M4 24 Q2 8 18 4 Q22 18 4 24 Z' fill='#43a047' stroke='#1b5e20' stroke-width='1'/><path d='M4 24 Q10 14 16 7' stroke='#1b5e20' stroke-width='1' fill='none'/><path d='M14 26 Q16 12 30 10 Q30 24 14 26 Z' fill='#66bb6a' stroke='#1b5e20' stroke-width='1'/><path d='M14 26 Q22 18 28 12' stroke='#1b5e20' stroke-width='1' fill='none'/></svg>`
+);
+const HARINA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><g fill='rgba(255,250,240,0.10)'><circle cx='8' cy='10' r='1.4'/><circle cx='30' cy='6' r='1'/><circle cx='50' cy='20' r='1.6'/><circle cx='18' cy='34' r='1.2'/><circle cx='44' cy='46' r='1'/><circle cx='8' cy='52' r='1.5'/><circle cx='36' cy='30' r='0.8'/></g></svg>`
+);
+const NOGAL = "linear-gradient(170deg, #4a2f1d 0%, #3a2416 60%, #2f1d12 100%)";
+
+const horno = (S) =>
+  construir(S, {
+    raiz: [capa("radial-gradient(ellipse 1000px 380px at 50% -10%, rgba(255,140,40,0.14), transparent 60%)"), trama(HARINA, "60px 60px"), capa("linear-gradient(180deg, #1d100a 0%, #140b07 100%)")],
+    cabecera: [capa("radial-gradient(ellipse 70% 60% at 50% 120%, rgba(255,140,30,0.55), transparent 70%)"), capa(LADRILLOS, "0 0", "64px 32px", "repeat"), capa("#5a2618")],
+    cabeceraEstilo: `border-bottom: 8px solid transparent !important; border-image: ${TRICOLOR} 1 !important; box-shadow: 0 6px 18px rgba(0,0,0,0.5);`,
+    pie: [capa(LADRILLOS, "0 0", "64px 32px", "repeat"), capa("#5a2618")],
+    pieEstilo: `border-top: 8px solid transparent !important; border-image: ${TRICOLOR} 1 !important;`,
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.18), transparent 55%)"), capa("linear-gradient(180deg, #d84330, #b5291c)")],
+    botonEstilo: "border: 1px solid #7f1d14 !important; color: #fff3e0 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.45) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #7f1d14 !important; color: #fff3e0 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
+    panel: [capa(ALBAHACA, "right 6px top 6px", "24px 21px"), trama(HARINA, "60px 60px"), trama(VETA, "160px 46px"), capa(NOGAL)],
+    panelEstilo: "border: 1px solid #1c110a !important; box-shadow: inset 0 1px 0 rgba(255,220,170,0.1), 0 8px 18px rgba(0,0,0,0.45) !important;",
+    modal: [capa(LADRILLOS, "left 0 top 0", "64px 32px", "repeat-x"), trama(HARINA, "60px 60px"), capa("linear-gradient(180deg, transparent 32px, #241510 32px, #1a0f0a 100%)")],
+    modalEstilo: "border: 1px solid #6b2a1a !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important; padding-top: 44px !important;",
+    tituloEstilo: `color: #fff3e0 !important; border-bottom: 4px solid transparent; border-image: ${TRICOLOR} 1; padding-bottom: 8px;`,
+    pestana: [trama(VETA, "160px 46px"), capa(NOGAL)],
+    pestanaEstilo: "border: 1px solid #1c110a !important; color: #f5deb3 !important;",
+    activa: [capa("linear-gradient(180deg, #e8513c, #c62f20)")],
+    activaEstilo: "border-color: #7f1d14 !important; color: #fff8ef !important; box-shadow: 0 0 14px rgba(232,81,60,0.45) !important;",
+    campoEstilo: "background: #1a0f0a !important; border: 1px solid #5c3a24 !important;",
+    extra: (S) => `${en(S, ".tz-logo")} { filter: drop-shadow(0 0 18px rgba(255,140,30,0.45)) drop-shadow(0 4px 10px rgba(0,0,0,0.6)) !important; }`,
+  });
+
+// =====================================================================
+// PANADERÍA Y PASTELERÍA — "Pastelería" (claro)
+// =====================================================================
+const LUNARES = "radial-gradient(circle, rgba(236,72,153,0.10) 3px, transparent 3.5px)";
+const CHISPAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='70' height='50'><g stroke-width='3' stroke-linecap='round'><path d='M8 10 l6 3' stroke='#f472b6'/><path d='M30 6 l2 6' stroke='#60a5fa'/><path d='M52 12 l6 -2' stroke='#facc15'/><path d='M18 30 l-2 6' stroke='#34d399'/><path d='M40 28 l6 4' stroke='#f97316'/><path d='M60 36 l-4 5' stroke='#a78bfa'/><path d='M10 44 l6 0' stroke='#facc15'/><path d='M34 44 l3 -5' stroke='#f472b6'/></g></svg>`
+);
+const GLASEADO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='90' height='22'><path d='M0 0 H90 V6 C84 6 84 18 78 18 C72 18 73 8 66 8 C60 8 61 14 54 14 C47 14 48 6 40 6 C33 6 34 20 26 20 C19 20 20 7 12 7 C6 7 6 12 0 12 Z' fill='#f9a8d4'/><path d='M0 0 H90 V6 C84 6 84 18 78 18 C72 18 73 8 66 8 C60 8 61 14 54 14 C47 14 48 6 40 6 C33 6 34 20 26 20 C19 20 20 7 12 7 C6 7 6 12 0 12' fill='none' stroke='#ec4899' stroke-width='1'/><g fill='#fff' opacity='.7'><ellipse cx='25' cy='15' rx='1.5' ry='2.5'/><ellipse cx='77' cy='13' rx='1.4' ry='2.2'/></g></svg>`
+);
+const CUPCAKE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 30'><path d='M6 16 H22 L20 28 H8 Z' fill='#f59e0b' stroke='#b45309' stroke-width='1'/><path d='M10 16 L11 28 M14 16 V28 M18 16 L17 28' stroke='#b45309' stroke-width='.8'/><path d='M4 16 Q4 8 10 8 Q12 3 16 5 Q22 4 23 10 Q26 12 24 16 Z' fill='#f9a8d4' stroke='#db2777' stroke-width='1'/><circle cx='15' cy='4' r='2.4' fill='#ef4444'/><g stroke-width='1.5' stroke-linecap='round'><path d='M9 12 l2 1' stroke='#60a5fa'/><path d='M16 10 l1 2' stroke='#facc15'/><path d='M20 13 l2 -1' stroke='#34d399'/></g></svg>`
+);
+
+const pasteleria = (S) =>
+  construir(S, {
+    raiz: [capa(LUNARES, "0 0", "36px 36px", "repeat"), capa("linear-gradient(180deg, #fff9f2 0%, #fbefe4 100%)")],
+    cabecera: [capa(GLASEADO, "left 0 bottom 0", "90px 22px", "repeat-x"), capa("linear-gradient(180deg, transparent 0 calc(100% - 22px), #fff9f2 calc(100% - 22px))"), capa(CHISPAS, "0 0", "70px 50px", "repeat"), capa("linear-gradient(180deg, #fde4ef 0%, #fbcfe1 100%)")],
+    cabeceraEstilo: "padding-bottom: 34px !important; border-bottom: none !important;",
+    pie: [capa("linear-gradient(180deg, #ec4899 0 4px, transparent 4px)"), capa(CHISPAS, "0 0", "70px 50px", "repeat"), capa("linear-gradient(180deg, #fde4ef, #fbcfe1)")],
+    pieEstilo: "border-top: none !important;",
+    boton: [capa("linear-gradient(180deg, #ffffff, #ffe4ef)")],
+    botonEstilo: "border: 1.5px solid #f9a8d4 !important; color: #be185d !important; box-shadow: 0 3px 8px rgba(190,24,93,0.15) !important;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1.5px solid #f9a8d4 !important; color: #be185d !important; box-shadow: 0 4px 10px rgba(190,24,93,0.15) !important;",
+    panel: [capa(CUPCAKE, "right 6px top 6px", "22px 24px"), capa("linear-gradient(180deg, #ffffff, #fffaf6)")],
+    panelEstilo: "border: 1px solid #fbcfe8 !important; outline: 1.5px dashed rgba(236,72,153,0.35); outline-offset: -6px; box-shadow: 0 6px 16px rgba(190,24,93,0.08) !important;",
+    modal: [capa(CHISPAS, "left 0 top 0", "70px 50px", "repeat-x"), capa("linear-gradient(180deg, #fde4ef 0 50px, #ffffff 50px)")],
+    modalEstilo: "border: 1px solid #f9a8d4 !important; box-shadow: 0 20px 60px rgba(190,24,93,0.2) !important;",
+    tituloEstilo: "color: #9d174d !important; border-bottom: 2px dashed rgba(236,72,153,0.45); padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #ffffff, #fff1f6)")],
+    pestanaEstilo: "border: 1px solid #fbcfe8 !important; color: #831843 !important;",
+    activa: [capa("linear-gradient(180deg, #f472b6, #db2777)")],
+    activaEstilo: "border-color: #9d174d !important; color: #ffffff !important; box-shadow: 0 4px 14px rgba(219,39,119,0.35) !important;",
+    campoEstilo: "background: #ffffff !important; border: 1px solid #f5c2d8 !important;",
+  });
+
+// =====================================================================
+// CAFETERÍA — "Café de especialidad"
+// =====================================================================
+const GRANOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='rgba(200,140,90,0.10)'><ellipse cx='16' cy='18' rx='7' ry='10' transform='rotate(-30 16 18)'/><ellipse cx='58' cy='30' rx='6' ry='9' transform='rotate(25 58 30)'/><ellipse cx='30' cy='62' rx='7' ry='10' transform='rotate(60 30 62)'/></g><g fill='none' stroke='rgba(20,10,5,0.35)' stroke-width='1.5'><path d='M13 11 Q19 18 15 26' transform='rotate(-30 16 18)'/><path d='M56 23 Q61 30 57 38' transform='rotate(25 58 30)'/><path d='M27 55 Q33 62 29 70' transform='rotate(60 30 62)'/></g></svg>`
+);
+const GRANO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 26'><ellipse cx='10' cy='13' rx='8' ry='11.5' fill='#6b3f22' stroke='#3b2112' stroke-width='1'/><path d='M8 3 Q13 13 9 23' stroke='#2a170c' stroke-width='1.8' fill='none'/><ellipse cx='7' cy='8' rx='2' ry='3.5' fill='rgba(255,220,180,0.25)'/></svg>`
+);
+const CREMA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='14' preserveAspectRatio='none'><path d='M0 0 H80 V6 C70 12 60 2 50 7 S30 12 20 6 S6 10 0 6 Z' fill='#d9b48a'/><path d='M0 0 H80 V4 C70 9 60 0 50 5 S30 9 20 4 S6 7 0 4 Z' fill='#ead2b0'/></svg>`
+);
+const ESPRESSO = "linear-gradient(170deg, #3a2417 0%, #2a1910 60%, #22140c 100%)";
+
+const cafe = (S) =>
+  construir(S, {
+    raiz: [trama(GRANOS, "80px 80px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(230,201,168,0.10), transparent 60%)"), capa("linear-gradient(180deg, #170e09 0%, #100906 100%)")],
+    cabecera: [capa(CREMA, "left 0 bottom 0", "80px 14px", "repeat-x"), trama(GRANOS, "80px 80px"), capa("linear-gradient(180deg, #2a1810 0%, #3b2416 100%)")],
+    cabeceraEstilo: "padding-bottom: 28px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(0,0,0,0.5);",
+    pie: [capa(CREMA, "left 0 top 0", "80px 14px", "repeat-x"), trama(GRANOS, "80px 80px"), capa("linear-gradient(180deg, #2a1810, #170e09)")],
+    pieEstilo: "border-top: none !important; padding-top: 26px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,230,200,0.25), transparent 55%)"), capa("linear-gradient(180deg, #c27a45, #94562c)")],
+    botonEstilo: "border: 1px solid #5c3418 !important; color: #fff3e3 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.45) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #5c3418 !important; color: #fff3e3 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
+    // Taza de café: borde de crema arriba y un grano en la esquina.
+    panel: [capa(GRANO, "right 8px top 12px", "14px 18px"), capa(CREMA, "left 0 top 0", "80px 10px", "repeat-x"), trama(GRANOS, "80px 80px"), capa(ESPRESSO)],
+    panelEstilo: "border: 1px solid #1a0f08 !important; box-shadow: inset 0 0 0 1px rgba(230,201,168,0.08), 0 8px 18px rgba(0,0,0,0.45) !important;",
+    modal: [capa(CREMA, "left 0 top 0", "80px 14px", "repeat-x"), trama(GRANOS, "80px 80px"), capa("linear-gradient(170deg, #2f1d12 0%, #1a100a 100%)")],
+    modalEstilo: "border: 1px solid #6b4426 !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: "color: #f3dcc0 !important; border-bottom: 2px solid rgba(217,180,138,0.45); padding-bottom: 8px;",
+    pestana: [capa(ESPRESSO)],
+    pestanaEstilo: "border: 1px solid #5c3a24 !important; color: #ecd2b4 !important;",
+    activa: [capa("linear-gradient(180deg, #f1dcc0 0%, #e0bf95 100%)")],
+    activaEstilo: "border-color: #8a5a32 !important; color: #3a2112 !important; box-shadow: 0 0 14px rgba(230,201,168,0.35) !important;",
+    campoEstilo: "background: #140c08 !important; border: 1px solid #5c3a24 !important;",
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 16px !important; }`,
+  });
+
+// =====================================================================
+// JUGUERÍA — "Tropical"
+// =====================================================================
+const RODAJAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='150' height='70'><g transform='translate(22 22)'><circle r='15' fill='#fb923c'/><circle r='12.5' fill='#fdba74'/><g stroke='#fb923c' stroke-width='1.4'><path d='M0 -12 V12 M-12 0 H12 M-8.5 -8.5 L8.5 8.5 M-8.5 8.5 L8.5 -8.5'/></g><circle r='2' fill='#fff7ed'/></g><g transform='translate(78 46)'><circle r='14' fill='#65a30d'/><circle r='11.5' fill='#bef264'/><circle r='4' fill='#f7fee7'/><g fill='#1a2e05'><circle cx='0' cy='-7' r='1'/><circle cx='6' cy='-3.5' r='1'/><circle cx='6' cy='3.5' r='1'/><circle cx='0' cy='7' r='1'/><circle cx='-6' cy='3.5' r='1'/><circle cx='-6' cy='-3.5' r='1'/></g></g><g transform='translate(128 20)'><path d='M-15 0 A15 15 0 0 0 15 0 Z' fill='#16a34a'/><path d='M-12.5 0 A12.5 12.5 0 0 0 12.5 0 Z' fill='#f87171'/><g fill='#1f2937'><circle cx='-5' cy='4' r='1'/><circle cx='0' cy='7' r='1'/><circle cx='5' cy='4' r='1'/></g></g></svg>`
+);
+const HOJA = (rot) =>
+  svg(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'><g transform='rotate(${rot} 60 60)'><path d='M60 112 C10 100 6 40 60 8 C114 40 110 100 60 112 Z' fill='#166534'/><path d='M60 112 V14' stroke='#4ade80' stroke-width='2' opacity='.6'/><g stroke='#052e16' stroke-width='5' stroke-linecap='round'><path d='M60 40 L28 30'/><path d='M60 60 L22 58'/><path d='M60 80 L30 88'/><path d='M60 40 L92 30'/><path d='M60 60 L98 58'/><path d='M60 80 L90 88'/></g></g></svg>`
+  );
+const HOJA_SI = HOJA(-40);
+const HOJA_ID = HOJA(140);
+const JUGO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='18' preserveAspectRatio='none'><path d='M0 0 H120 V8 C100 16 80 2 60 9 S20 16 0 8 Z' fill='#fb923c'/><path d='M0 0 H120 V5 C100 12 80 0 60 6 S20 12 0 5 Z' fill='#fdba74'/><g fill='#fff7ed' opacity='.7'><circle cx='30' cy='4' r='1.4'/><circle cx='86' cy='3' r='1.1'/></g></svg>`
+);
+const RODAJA_NARANJA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='-16 -16 32 32'><circle r='15' fill='#fb923c'/><circle r='12.5' fill='#fdba74'/><g stroke='#fb923c' stroke-width='1.4'><path d='M0 -12 V12 M-12 0 H12 M-8.5 -8.5 L8.5 8.5 M-8.5 8.5 L8.5 -8.5'/></g><circle r='2' fill='#fff7ed'/></svg>`
+);
+const VIDRIO_TROPICAL = "linear-gradient(170deg, rgba(22,101,52,0.55) 0%, rgba(6,40,22,0.88) 100%)";
+
+const tropical = (S) =>
+  construir(S, {
+    raiz: [capa(HOJA_SI, "left -40px top 120px", "220px 220px"), capa(HOJA_ID, "right -40px bottom -20px", "240px 240px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(163,230,53,0.16), transparent 60%)"), capa("linear-gradient(180deg, #06200f 0%, #04140c 100%)")],
+    // Frutas tenues y espaciadas, con una zona tranquila detrás del logo
+    // (que no compitan con el logo ni con los textos del centro).
+    cabecera: [
+      capa(JUGO, "left 0 bottom 0", "120px 18px", "repeat-x"),
+      capa("radial-gradient(ellipse 260px 150px at 50% 45%, rgba(21,101,52,0.95) 0%, rgba(21,101,52,0.75) 55%, transparent 100%)"),
+      capa("linear-gradient(180deg, rgba(21,128,61,0.55), rgba(22,101,52,0.55))"),
+      capa(RODAJAS, "0 0", "210px 100px", "repeat"),
+      capa("linear-gradient(180deg, #15803d 0%, #166534 100%)"),
+    ],
+    cabeceraEstilo: "padding-bottom: 32px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(0,0,0,0.45);",
+    pie: [capa(JUGO, "left 0 top 0", "120px 18px", "repeat-x"), capa(HOJA_SI, "left -20px bottom -30px", "130px 130px"), capa(HOJA_ID, "right -20px bottom -30px", "130px 130px"), capa("linear-gradient(180deg, #14532d, #06200f)")],
+    pieEstilo: "border-top: none !important; padding-top: 30px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.3), transparent 55%)"), capa("linear-gradient(180deg, #bef264, #84cc16)")],
+    botonEstilo: "border: 1px solid #3f6212 !important; color: #14290a !important; box-shadow: 0 3px 8px rgba(0,0,0,0.35) !important; border-radius: 999px !important;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #3f6212 !important; color: #14290a !important; box-shadow: 0 4px 10px rgba(0,0,0,0.4) !important;",
+    panel: [capa(RODAJA_NARANJA, "right 6px top 6px", "22px 22px"), capa(VIDRIO_TROPICAL)],
+    panelEstilo: "border: 1px solid rgba(190,242,100,0.4) !important; box-shadow: 0 8px 18px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12) !important; backdrop-filter: blur(3px);",
+    modal: [capa(HOJA_SI, "left -30px top -30px", "110px 110px"), capa(HOJA_ID, "right -30px bottom -30px", "110px 110px"), capa("linear-gradient(170deg, #0f3d22 0%, #06200f 100%)")],
+    modalEstilo: "border: 1px solid rgba(190,242,100,0.5) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;",
+    tituloEstilo: "color: #ecfccb !important; border-bottom: 3px solid #fb923c; padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #14532d, #0d3b20)")],
+    pestanaEstilo: "border: 1px solid rgba(190,242,100,0.35) !important; color: #d9f99d !important;",
+    activa: [capa("linear-gradient(180deg, #fde047 0%, #fb923c 100%)")],
+    activaEstilo: "border-color: #c2410c !important; color: #3b1a03 !important; box-shadow: 0 0 16px rgba(251,146,60,0.5) !important;",
+    campoEstilo: "background: #04140c !important; border: 1px solid rgba(190,242,100,0.35) !important;",
+  });
+
+// =====================================================================
 // Catálogo
 // =====================================================================
 export const TEMATICOS = [
@@ -583,6 +798,51 @@ export const TEMATICOS = [
     muestra: `${PEZ_CORAL} right 12px top 10px / 34px 20px no-repeat, ${CONCHA_NACAR} right 54px bottom 10px / 22px 19px no-repeat, ${ESTRELLA_MAR} left 6px bottom 6px / 18px 18px no-repeat, ${OLA_FRENTE} left 0 top 0 / 60px 10px repeat-x, ${SUPERFICIE}, ${AGUA_PROFUNDA}`,
     escena: ESCENA_MARINO,
     css: marino,
+  },
+  {
+    id: "dragon",
+    rubro: "chifa",
+    nombre: "Dragón rojo",
+    descripcion: "Laca roja y oro, nubes, faroles y celosías",
+    paleta: { id: "tematico-dragon", nombre: "Dragón rojo", modo: "oscuro", principal: "#f5c542", secundario: "#ffe0b0", acento: "#ffd56b", botones: "#f5c542", fondo1: "#140404", fondo2: "#2e0b0b" },
+    muestra: `${FAROL} right 10px top 0 / 18px 32px no-repeat, ${GRECA} left 0 bottom 0 / 24px 10px repeat-x, ${NUBES_CHINAS} 0 0 / 60px 34px, ${LACA}`,
+    css: dragon,
+  },
+  {
+    id: "horno",
+    rubro: "pizzeria",
+    nombre: "Horno de leña",
+    descripcion: "Ladrillo, fuego, albahaca y tricolor italiano",
+    paleta: { id: "tematico-horno", nombre: "Horno de leña", modo: "oscuro", principal: "#ffcc80", secundario: "#ff6f5e", acento: "#8bd48f", botones: "#ffb74d", fondo1: "#140b07", fondo2: "#2d1810" },
+    muestra: `${TRICOLOR} left 0 bottom 0 / 100% 6px no-repeat, ${ALBAHACA} right 10px top 8px / 22px 19px no-repeat, radial-gradient(ellipse 80% 60% at 50% 120%, rgba(255,140,30,0.6), transparent 70%), ${LADRILLOS} 0 0 / 48px 24px, #5a2618`,
+    css: horno,
+  },
+  {
+    id: "pasteleria",
+    rubro: "panaderia",
+    nombre: "Pastelería",
+    descripcion: "Glaseado rosa, chispas de colores y cupcakes",
+    paleta: { id: "tematico-pasteleria", nombre: "Pastelería", modo: "claro", principal: "#be185d", secundario: "#8d5a4a", acento: "#b45309", botones: "#be185d", fondo1: "#fff9f2", fondo2: "#fbefe4" },
+    muestra: `${CUPCAKE} right 10px bottom 8px / 20px 22px no-repeat, ${GLASEADO} left 0 top 0 / 70px 18px repeat-x, ${CHISPAS} 0 0 / 60px 44px, linear-gradient(180deg, #fde4ef, #fff9f2)`,
+    css: pasteleria,
+  },
+  {
+    id: "cafe",
+    rubro: "cafeteria",
+    nombre: "Café de especialidad",
+    descripcion: "Espresso, granos de café, crema y cobre",
+    paleta: { id: "tematico-cafe", nombre: "Café de especialidad", modo: "oscuro", principal: "#e6c9a8", secundario: "#e0915e", acento: "#f2d0a4", botones: "#d9a066", fondo1: "#100906", fondo2: "#24160f" },
+    muestra: `${GRANO} right 12px top 14px / 14px 18px no-repeat, ${CREMA} left 0 top 0 / 70px 12px repeat-x, ${GRANOS} 0 0 / 70px 70px, ${ESPRESSO}`,
+    css: cafe,
+  },
+  {
+    id: "tropical",
+    rubro: "jugueria",
+    nombre: "Tropical",
+    descripcion: "Hojas tropicales, frutas y ola de jugo",
+    paleta: { id: "tematico-tropical", nombre: "Tropical", modo: "oscuro", principal: "#86efac", secundario: "#fb923c", acento: "#fde047", botones: "#bef264", fondo1: "#04140c", fondo2: "#0a2a19" },
+    muestra: `${JUGO} left 0 bottom 0 / 90px 14px repeat-x, ${HOJA_SI} left -20px top -20px / 80px 80px no-repeat, ${RODAJAS} 0 0 / 120px 56px, linear-gradient(180deg, #15803d, #0a2a19)`,
+    css: tropical,
   },
 ];
 
