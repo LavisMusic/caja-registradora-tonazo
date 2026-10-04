@@ -741,6 +741,252 @@ const tropical = (S) =>
   });
 
 // =====================================================================
+// HELADERÍA — "Helado artesanal" (claro)
+// =====================================================================
+const BOLAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='108' height='34'><g stroke-width='1.2'><path d='M0 34 V14 A18 16 0 0 1 36 14 V22 C33 22 33 30 30 30 C27 30 28 24 24 24 C20 24 21 32 17 32 C13 32 14 25 10 25 C6 25 7 34 0 34 Z' fill='#f9a8d4' stroke='#ec4899'/><path d='M36 34 V14 A18 16 0 0 1 72 14 V24 C69 24 69 31 66 31 C63 31 64 25 60 25 C56 25 57 33 53 33 C49 33 50 26 46 26 C42 26 43 34 36 34 Z' fill='#a7f3d0' stroke='#10b981'/><path d='M72 34 V14 A18 16 0 0 1 108 14 V22 C105 22 105 30 102 30 C99 30 100 25 96 25 C92 25 93 32 89 32 C85 32 86 26 82 26 C78 26 79 34 72 34 Z' fill='#fef3c7' stroke='#f59e0b'/></g><g fill='#fff' opacity='.6'><ellipse cx='12' cy='8' rx='5' ry='2.5'/><ellipse cx='48' cy='8' rx='5' ry='2.5'/><ellipse cx='84' cy='8' rx='5' ry='2.5'/></g></svg>`
+);
+// Cada textura de varias imágenes va como capas separadas (si no, las
+// posiciones/tamaños se corren contra las demás capas).
+const BARQUILLO = [
+  capa("repeating-linear-gradient(45deg, rgba(146,64,14,0.28) 0 2px, transparent 2px 13px)"),
+  capa("repeating-linear-gradient(-45deg, rgba(146,64,14,0.28) 0 2px, transparent 2px 13px)"),
+  capa("linear-gradient(180deg, #f8d29a, #eab676)"),
+];
+const CONFETI = [
+  capa("radial-gradient(circle, rgba(16,185,129,0.20) 2.5px, transparent 3px)", "0 0", "44px 44px", "repeat"),
+  capa("radial-gradient(circle, rgba(236,72,153,0.20) 2.5px, transparent 3px)", "22px 22px", "44px 44px", "repeat"),
+];
+const CONO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 32'><path d='M5 14 L12 31 L19 14 Z' fill='#eab676' stroke='#92400e' stroke-width='1'/><path d='M7 17 L15 25 M9 14 L17 21 M12 14 L18 18 M17 17 L9 25 M15 14 L7 21' stroke='#92400e' stroke-width='.7'/><circle cx='12' cy='10' r='7' fill='#f9a8d4' stroke='#ec4899' stroke-width='1'/><path d='M6 13 Q8 17 10 13 Q12 17 14 13 Q16 17 18 13' fill='#f9a8d4' stroke='#ec4899' stroke-width='.8'/><circle cx='12' cy='3' r='2' fill='#ef4444'/></svg>`
+);
+const DERRETIDO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='10'><path d='M0 0 H60 V3 C55 3 55 8 51 8 C47 8 48 4 44 4 C40 4 41 9 36 9 C31 9 32 3 27 3 C23 3 23 7 19 7 C15 7 16 3 11 3 C7 3 7 6 3 6 C1 6 0 4 0 3 Z' fill='#fbcfe8'/></svg>`
+);
+
+const helado = (S) =>
+  construir(S, {
+    raiz: [...CONFETI, capa("linear-gradient(180deg, #f4fbf8 0%, #e9f6f0 100%)")],
+    cabecera: [capa(BOLAS, "left 0 bottom 0", "108px 34px", "repeat-x"), ...CONFETI, capa("linear-gradient(180deg, #d1fae5 0%, #a7f3d0 100%)")],
+    cabeceraEstilo: "padding-bottom: 46px !important; border-bottom: none !important;",
+    pie: [capa(BOLAS, "left 0 top 0", "108px 34px", "repeat-x"), ...BARQUILLO],
+    pieEstilo: "border-top: none !important; padding-top: 44px !important;",
+    boton: [...BARQUILLO],
+    botonEstilo: "border: 1px solid #b45309 !important; color: #5b2c06 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 3px 8px rgba(146,64,14,0.2) !important; border-radius: 999px !important;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #b45309 !important; color: #5b2c06 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 4px 10px rgba(146,64,14,0.25) !important;",
+    panel: [capa(CONO, "right 8px top 12px", "18px 24px"), capa(DERRETIDO, "left 0 top 0", "60px 10px", "repeat-x"), capa("linear-gradient(180deg, #ffffff, #fbfffd)")],
+    panelEstilo: "border: 1px solid #c7eadb !important; box-shadow: 0 6px 16px rgba(15,118,110,0.10) !important;",
+    modal: [capa(DERRETIDO, "left 0 top 0", "60px 10px", "repeat-x"), ...CONFETI, capa("linear-gradient(180deg, #ffffff, #f4fbf8)")],
+    modalEstilo: "border: 1px solid #a7f3d0 !important; box-shadow: 0 20px 60px rgba(15,118,110,0.2) !important;",
+    tituloEstilo: "color: #0f766e !important; border-bottom: 2px dashed rgba(236,72,153,0.4); padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #ffffff, #ecfdf5)")],
+    pestanaEstilo: "border: 1px solid #a7f3d0 !important; color: #115e59 !important;",
+    activa: [capa("linear-gradient(180deg, #f472b6, #db2777)")],
+    activaEstilo: "border-color: #9d174d !important; color: #ffffff !important; box-shadow: 0 4px 14px rgba(219,39,119,0.35) !important;",
+    campoEstilo: "background: #ffffff !important; border: 1px solid #b7e4d3 !important;",
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 14px !important; }`,
+  });
+
+// =====================================================================
+// CARNICERÍA — "Carnicero"
+// =====================================================================
+const AZULEJOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='44' height='22'><rect width='44' height='22' fill='#d6cec2'/><rect x='1' y='1' width='20' height='9.5' rx='1.5' fill='#f6f2ea'/><rect x='23' y='1' width='20' height='9.5' rx='1.5' fill='#f3eee5'/><rect x='-10' y='12' width='20' height='9' rx='1.5' fill='#f3eee5'/><rect x='12' y='12' width='20' height='9' rx='1.5' fill='#f6f2ea'/><rect x='34' y='12' width='20' height='9' rx='1.5' fill='#f3eee5'/><g fill='rgba(255,255,255,0.7)'><rect x='3' y='2' width='10' height='1.5'/><rect x='14' y='13' width='10' height='1.5'/></g></svg>`
+);
+const BLOQUE = "repeating-conic-gradient(#5e3a21 0 25%, #4b2d18 0 50%)";
+const CUCHILLA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 24'><path d='M2 3 H24 V16 Q14 21 2 18 Z' fill='#d7dde3' stroke='#475569' stroke-width='1'/><path d='M2 16 Q13 20 24 15' stroke='#f8fafc' stroke-width='1.2' fill='none'/><circle cx='20' cy='7' r='1.8' fill='#475569'/><rect x='24' y='7' width='9' height='5' rx='2' fill='#7c2d12' stroke='#431407' stroke-width='.8'/></svg>`
+);
+
+const carnicero = (S) =>
+  construir(S, {
+    raiz: [capa("linear-gradient(180deg, rgba(20,12,10,0.94), rgba(14,8,7,0.97))"), trama(AZULEJOS, "44px 22px")],
+    cabecera: [capa("linear-gradient(180deg, #b91c1c, #991b1b)", "left 0 bottom 0", "100% 10px"), capa("linear-gradient(180deg, #ffffff, #ffffff)", "left 0 bottom 10px", "100% 3px"), trama(AZULEJOS, "44px 22px")],
+    cabeceraEstilo: "padding-bottom: 30px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(0,0,0,0.45);",
+    pie: [capa("linear-gradient(180deg, #b91c1c, #991b1b)", "left 0 top 0", "100% 10px"), trama(AZULEJOS, "44px 22px")],
+    pieEstilo: "border-top: none !important; padding-top: 26px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.18), transparent 55%)"), capa("linear-gradient(180deg, #c62828, #991b1b)")],
+    botonEstilo: "border: 1px solid #5f0f0f !important; color: #fff1e6 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.35) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #5f0f0f !important; color: #fff1e6 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.4) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
+    panel: [capa(CUCHILLA, "right 6px top 8px", "26px 18px"), capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.45))"), capa(BLOQUE, "0 0", "28px 28px", "repeat")],
+    panelEstilo: "border: 1px solid #2a170c !important; box-shadow: inset 0 0 0 1px rgba(255,220,180,0.08), 0 8px 18px rgba(0,0,0,0.45) !important;",
+    modal: [capa("linear-gradient(180deg, #b91c1c, #991b1b)", "left 0 top 0", "100% 8px"), capa("linear-gradient(170deg, #241310 0%, #160c0a 100%)")],
+    modalEstilo: "border: 1px solid #5f2a1c !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: "color: #fde8e8 !important; border-bottom: 2px solid rgba(239,68,68,0.6); padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #3a2318, #2a1810)")],
+    pestanaEstilo: "border: 1px solid #5c3a24 !important; color: #f1dcc8 !important;",
+    activa: [capa("linear-gradient(180deg, #dc2626, #991b1b)")],
+    activaEstilo: "border-color: #5f0f0f !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(220,38,38,0.45) !important;",
+    campoEstilo: "background: #120a08 !important; border: 1px solid #5c3a24 !important;",
+    extra: (S) => `
+${en(S, ".tz-header .tz-subtitle")} { color: #991b1b !important; text-shadow: none !important; }
+${en(S, ".tz-header .tz-conn-indicator")} { background: rgba(40,20,14,0.88) !important; }
+${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(60,30,20,0.4)) !important; }`,
+  });
+
+// =====================================================================
+// FRUTAS Y VERDURAS — "Mercado fresco"
+// =====================================================================
+const ARPILLERA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12'><path d='M0 3 H12 M0 9 H12' stroke='rgba(255,235,190,0.08)' stroke-width='2'/><path d='M3 0 V12 M9 0 V12' stroke='rgba(0,0,0,0.18)' stroke-width='2'/></svg>`
+);
+const VERDURAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='160' height='34'><g transform='translate(18 18)'><circle r='12' fill='#ef4444'/><ellipse cx='-4' cy='-4' rx='3' ry='2' fill='#fca5a5'/><path d='M-5 -12 L0 -8 L5 -12 L3 -7 L-3 -7 Z' fill='#16a34a'/></g><g transform='translate(52 18) rotate(30)'><path d='M-3 -14 Q0 -15 3 -14 L1 14 Q0 15 -1 14 Z' fill='#f97316'/><path d='M-2 -8 H2 M-2 -2 H2 M-1 5 H1' stroke='#c2410c' stroke-width='1'/><path d='M0 -14 L-5 -21 M0 -14 L0 -22 M0 -14 L5 -21' stroke='#16a34a' stroke-width='2.2' stroke-linecap='round'/></g><g transform='translate(90 19)'><ellipse rx='15' ry='12' fill='#4ade80'/><path d='M-12 -2 Q0 -12 12 -2 M-10 5 Q0 -4 10 5' stroke='#166534' stroke-width='1.5' fill='none'/></g><g transform='translate(128 18)'><path d='M-9 -6 Q-10 12 0 13 Q10 12 9 -6 Q0 -10 -9 -6 Z' fill='#eab308'/><path d='M0 -8 Q2 -13 5 -13' stroke='#15803d' stroke-width='2.4' fill='none' stroke-linecap='round'/></g></svg>`
+);
+const CAJON = "repeating-linear-gradient(180deg, #7a5230 0 20px, #2c1a0d 20px 24px)";
+const TOMATE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='-13 -15 26 28'><circle r='12' fill='#ef4444' stroke='#b91c1c' stroke-width='1'/><ellipse cx='-4' cy='-4' rx='3' ry='2' fill='#fca5a5'/><path d='M-6 -12 L0 -8 L6 -12 L3 -7 L-3 -7 Z' fill='#16a34a'/></svg>`
+);
+
+const mercado = (S) =>
+  construir(S, {
+    raiz: [trama(ARPILLERA, "12px 12px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(132,204,22,0.12), transparent 60%)"), capa("linear-gradient(180deg, #0f1c0d 0%, #0a140a 100%)")],
+    cabecera: [capa(VERDURAS, "left 0 bottom 6px", "160px 34px", "repeat-x"), capa(CAJON, "left 0 bottom 0", "100% 46px"), trama(ARPILLERA, "12px 12px"), capa("linear-gradient(180deg, #3f6212 0%, #365314 100%)")],
+    cabeceraEstilo: "padding-bottom: 56px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(0,0,0,0.45);",
+    pie: [capa(CAJON), trama(VETA, "160px 46px")],
+    pieEstilo: "border-top: 4px solid #2c1a0d !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.2), transparent 55%)"), capa("linear-gradient(180deg, #4d7c0f, #3f6212)")],
+    botonEstilo: "border: 1px solid #1a2e05 !important; color: #f7fee7 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.4) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #1a2e05 !important; color: #f7fee7 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.45) !important;",
+    panel: [capa(TOMATE, "right 6px top 6px", "20px 21px"), capa("linear-gradient(180deg, rgba(0,0,0,0.38), rgba(0,0,0,0.52))"), trama(VETA, "160px 46px"), capa(CAJON)],
+    panelEstilo: "border: 1px solid #2c1a0d !important; box-shadow: 0 8px 18px rgba(0,0,0,0.45) !important;",
+    modal: [trama(ARPILLERA, "12px 12px"), capa("linear-gradient(170deg, #1d2e16 0%, #0f1a0c 100%)")],
+    modalEstilo: "border: 1px solid #4d7c0f !important; box-shadow: 0 20px 60px rgba(0,0,0,0.65) !important;",
+    tituloEstilo: `color: #ecfccb !important; background: ${VERDURAS} left 0 bottom 0 / 110px 24px repeat-x !important; padding-bottom: 30px;`,
+    pestana: [capa("linear-gradient(180deg, #2d4a12, #1f3a0c)")],
+    pestanaEstilo: "border: 1px solid #4d7c0f !important; color: #d9f99d !important;",
+    activa: [capa("linear-gradient(180deg, #f87171, #dc2626)")],
+    activaEstilo: "border-color: #7f1d1d !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(239,68,68,0.45) !important;",
+    campoEstilo: "background: #0a140a !important; border: 1px solid #4d7c0f !important;",
+  });
+
+// =====================================================================
+// LICORERÍA — "Bodega de vinos"
+// =====================================================================
+const PIEDRA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='48'><rect width='80' height='48' fill='#1a1013'/><g fill='#2d1d21' stroke='#120a0c' stroke-width='1.5'><path d='M2 2 H34 L36 14 L32 22 H4 L1 12 Z'/><path d='M38 2 H78 V20 L74 22 H40 L37 12 Z'/><path d='M2 25 H22 L24 36 L20 46 H3 L1 36 Z'/><path d='M26 25 H56 L58 34 L54 46 H28 L25 35 Z'/><path d='M60 25 H78 V46 H62 L59 36 Z'/></g><g fill='rgba(255,255,255,0.04)'><path d='M6 4 H30 L31 8 H6 Z'/><path d='M42 4 H72 V8 H42 Z'/></g></svg>`
+);
+const PARRA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='30'><path d='M0 8 C20 2 30 14 60 8 S100 2 120 8' stroke='#6b4a2a' stroke-width='2.4' fill='none'/><g transform='translate(30 10)'><path d='M0 0 C-10 -4 -14 6 -6 8 C-10 14 2 16 2 8 C8 12 12 2 4 0 Z' fill='#4d7c0f'/></g><g transform='translate(84 9)'><path d='M0 0 C-10 -4 -14 6 -6 8 C-10 14 2 16 2 8 C8 12 12 2 4 0 Z' fill='#3f6212'/></g><g fill='#6d28d9'><circle cx='56' cy='14' r='3.4'/><circle cx='62' cy='14' r='3.4'/><circle cx='59' cy='19' r='3.4'/><circle cx='65' cy='19' r='3.2'/><circle cx='53' cy='19' r='3.2'/><circle cx='59' cy='24' r='3.2'/></g><g fill='rgba(255,255,255,0.35)'><circle cx='55' cy='13' r='1'/><circle cx='61' cy='13' r='1'/></g></svg>`
+);
+const UVAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 30'><path d='M12 6 Q12 1 16 1' stroke='#6b4a2a' stroke-width='1.6' fill='none'/><path d='M14 4 C20 1 23 7 18 9 Z' fill='#4d7c0f'/><g fill='#7c3aed' stroke='#4c1d95' stroke-width='.6'><circle cx='7' cy='10' r='3.6'/><circle cx='14' cy='10' r='3.6'/><circle cx='10.5' cy='15.5' r='3.6'/><circle cx='17.5' cy='15.5' r='3.4'/><circle cx='4' cy='15.5' r='3.2'/><circle cx='7' cy='21' r='3.4'/><circle cx='14' cy='21' r='3.4'/><circle cx='10.5' cy='26' r='3.2'/></g><g fill='rgba(255,255,255,0.4)'><circle cx='6' cy='9' r='1'/><circle cx='13' cy='9' r='1'/><circle cx='9.5' cy='14.5' r='1'/></g></svg>`
+);
+const DUELAS = "repeating-linear-gradient(90deg, #5e3b22 0 26px, #3b2414 26px 28px)";
+const ARO = "linear-gradient(180deg, #4a4a4a 0%, #8a8a8a 45%, #3a3a3a 100%)";
+
+const vinos = (S) =>
+  construir(S, {
+    raiz: [capa("radial-gradient(ellipse 900px 380px at 50% -10%, rgba(233,196,106,0.10), transparent 60%)"), trama(PIEDRA, "80px 48px"), capa("#120a0c")],
+    cabecera: [capa(PARRA, "left 0 bottom 2px", "120px 30px", "repeat-x"), capa("radial-gradient(ellipse 60% 70% at 50% 40%, rgba(122,20,44,0.45), transparent 70%)"), trama(PIEDRA, "80px 48px")],
+    cabeceraEstilo: "padding-bottom: 38px !important; border-bottom: 3px solid #e9c46a !important; box-shadow: 0 6px 18px rgba(0,0,0,0.55);",
+    pie: [capa(PARRA, "left 0 top 0", "120px 30px", "repeat-x"), trama(PIEDRA, "80px 48px")],
+    pieEstilo: "border-top: 3px solid #e9c46a !important; padding-top: 34px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.16), transparent 55%)"), capa("linear-gradient(180deg, #7a1730, #561021)")],
+    botonEstilo: "border: 1px solid #e9c46a !important; color: #f5d58a !important; box-shadow: 0 3px 8px rgba(0,0,0,0.5) !important;",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #e9c46a !important; color: #f5d58a !important; box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important;",
+    // Barrica: duelas verticales con dos aros de metal.
+    panel: [
+      capa(UVAS, "right 8px top 14px", "18px 22px"),
+      capa(ARO, "left 0 top 6px", "100% 5px"),
+      capa(ARO, "left 0 bottom 6px", "100% 5px"),
+      capa("linear-gradient(90deg, rgba(0,0,0,0.45) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.45) 100%)"),
+      capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.35))"),
+      capa(DUELAS, "0 0", "auto", "repeat"),
+    ],
+    panelEstilo: "border: 1px solid #2a170c !important; box-shadow: 0 8px 18px rgba(0,0,0,0.5) !important;",
+    modal: [capa(PARRA, "left 0 top 0", "120px 30px", "repeat-x"), capa("linear-gradient(170deg, #2a0d16 0%, #14070b 100%)")],
+    modalEstilo: "border: 1px solid #e9c46a !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important; padding-top: 38px !important;",
+    tituloEstilo: "color: #f5d58a !important; border-bottom: 1px solid rgba(233,196,106,0.55); padding-bottom: 8px; letter-spacing: 0.1em;",
+    pestana: [capa("linear-gradient(180deg, #3a1420, #260b14)")],
+    pestanaEstilo: "border: 1px solid rgba(233,196,106,0.4) !important; color: #f3dca8 !important;",
+    activa: [capa("linear-gradient(180deg, #f5d58a 0%, #e9c46a 50%, #c99a3a 100%)")],
+    activaEstilo: "border-color: #7a5a1a !important; color: #3a0a16 !important; box-shadow: 0 0 14px rgba(233,196,106,0.4) !important;",
+    campoEstilo: "background: #120a0c !important; border: 1px solid rgba(233,196,106,0.35) !important;",
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 16px !important; padding-bottom: 16px !important; }`,
+  });
+
+// =====================================================================
+// BAR Y DISCOTECA — "Club nocturno" (con escena: reflectores y destellos)
+// =====================================================================
+const NOTA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M9 18 V5 L20 3 V16' stroke='#f472b6' stroke-width='2' fill='none'/><circle cx='6.5' cy='18' r='3' fill='#f472b6'/><circle cx='17.5' cy='16' r='3' fill='#f472b6'/></svg>`
+);
+const LADRILLO_NOCHE = "linear-gradient(180deg, rgba(10,4,20,0.82), rgba(10,4,20,0.9))";
+const NOCHE = "linear-gradient(180deg, #0c0418 0%, #07020f 100%)";
+
+const club = (S) =>
+  construir(S, {
+    raiz: [capa("radial-gradient(ellipse 600px 300px at 20% 0%, rgba(244,114,182,0.18), transparent 60%)"), capa("radial-gradient(ellipse 600px 300px at 80% 0%, rgba(34,211,238,0.16), transparent 60%)"), capa(NOCHE)],
+    cabecera: [capa(LADRILLO_NOCHE), capa(LADRILLOS, "0 0", "64px 32px", "repeat")],
+    cabeceraEstilo:
+      "border-bottom: 3px solid #f472b6 !important; box-shadow: 0 0 12px rgba(244,114,182,0.9), 0 0 30px rgba(244,114,182,0.5), inset 0 -2px 0 #22d3ee !important; animation: tz-club-neon 2.6s ease-in-out infinite;",
+    pie: [capa(LADRILLO_NOCHE), capa(LADRILLOS, "0 0", "64px 32px", "repeat")],
+    pieEstilo: "border-top: 3px solid #22d3ee !important; box-shadow: 0 0 14px rgba(34,211,238,0.7);",
+    boton: [capa("rgba(10,4,20,0.85)")],
+    botonEstilo: "border: 2px solid #f472b6 !important; color: #fbcfe8 !important; box-shadow: 0 0 8px rgba(244,114,182,0.8), inset 0 0 8px rgba(244,114,182,0.35) !important; text-shadow: 0 0 6px rgba(244,114,182,0.9);",
+    botonPie: [capa("rgba(10,4,20,0.85)")],
+    botonPieEstilo: "border-radius: 10px !important; border: 2px solid #22d3ee !important; color: #cffafe !important; box-shadow: 0 0 10px rgba(34,211,238,0.8), inset 0 0 8px rgba(34,211,238,0.3) !important; text-shadow: 0 0 6px rgba(34,211,238,0.9);",
+    panel: [capa(NOTA, "right 8px top 8px", "18px 18px"), capa("linear-gradient(170deg, rgba(30,12,52,0.85) 0%, rgba(12,4,24,0.92) 100%)")],
+    panelEstilo: "border: 1.5px solid #22d3ee !important; box-shadow: 0 0 10px rgba(34,211,238,0.5), inset 0 0 14px rgba(34,211,238,0.12), 0 8px 20px rgba(0,0,0,0.5) !important; backdrop-filter: blur(4px);",
+    modal: [capa("radial-gradient(ellipse 80% 50% at 50% 0%, rgba(244,114,182,0.18), transparent 70%)"), capa("linear-gradient(170deg, #1a0b30 0%, #0a0414 100%)")],
+    modalEstilo: "border: 2px solid #f472b6 !important; box-shadow: 0 0 22px rgba(244,114,182,0.6), 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: "color: #fce7f3 !important; text-shadow: 0 0 8px #f472b6, 0 0 18px rgba(244,114,182,0.7); border-bottom: 2px solid #22d3ee; box-shadow: 0 6px 10px -8px #22d3ee; padding-bottom: 8px;",
+    pestana: [capa("rgba(10,4,20,0.85)")],
+    pestanaEstilo: "border: 1.5px solid rgba(167,139,250,0.7) !important; color: #ddd6fe !important; box-shadow: 0 0 6px rgba(167,139,250,0.4) !important;",
+    activa: [capa("linear-gradient(90deg, #f472b6, #a855f7)")],
+    activaEstilo: "border-color: #fbcfe8 !important; color: #ffffff !important; box-shadow: 0 0 18px rgba(244,114,182,0.8) !important; text-shadow: 0 0 6px rgba(255,255,255,0.6);",
+    campoEstilo: "background: rgba(10,4,20,0.9) !important; border: 1.5px solid rgba(167,139,250,0.6) !important;",
+    extra: (S) => `
+@keyframes tz-club-neon {
+  0%, 100% { box-shadow: 0 0 12px rgba(244,114,182,0.9), 0 0 30px rgba(244,114,182,0.5), inset 0 -2px 0 #22d3ee; }
+  48% { box-shadow: 0 0 12px rgba(244,114,182,0.9), 0 0 30px rgba(244,114,182,0.5), inset 0 -2px 0 #22d3ee; }
+  50% { box-shadow: 0 0 4px rgba(244,114,182,0.5), 0 0 10px rgba(244,114,182,0.25), inset 0 -2px 0 #22d3ee; }
+  53% { box-shadow: 0 0 12px rgba(244,114,182,0.9), 0 0 30px rgba(244,114,182,0.5), inset 0 -2px 0 #22d3ee; }
+}
+${en(S, ".tz-logo")} { filter: drop-shadow(0 0 14px rgba(244,114,182,0.7)) drop-shadow(0 0 26px rgba(34,211,238,0.35)) !important; }
+/* ---- Escena: reflectores que barren y destellos ---- */
+${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; background: ${NOCHE}; }
+${en(S, ".tz-esc-foco")} {
+  position: absolute; top: -12vh; left: var(--x);
+  width: 42vw; height: 140vh;
+  background: linear-gradient(180deg, var(--c) 0%, rgba(255,255,255,0.08) 60%, transparent 92%);
+  clip-path: polygon(45% 0, 55% 0, 100% 100%, 0 100%);
+  opacity: 0.42; mix-blend-mode: screen; filter: blur(2px);
+  transform-origin: 50% 0;
+  animation: tz-club-barrer var(--dur) ease-in-out var(--delay) infinite alternate;
+  will-change: transform;
+}
+${en(S, ".tz-esc-destello")} {
+  position: absolute; left: var(--x); top: var(--y);
+  width: var(--tam); height: var(--tam); border-radius: 50%;
+  background: radial-gradient(circle, #ffffff 0 20%, var(--c) 45%, transparent 70%);
+  animation: tz-club-titilar var(--dur) ease-in-out var(--delay) infinite;
+  will-change: opacity, transform;
+}
+@keyframes tz-club-barrer { from { transform: rotate(-28deg); } to { transform: rotate(28deg); } }
+@keyframes tz-club-titilar { 0%, 100% { opacity: 0; transform: scale(0.4); } 50% { opacity: 0.9; transform: scale(1); } }`,
+  });
+
+const ESCENA_CLUB = [
+  { clase: "tz-esc-foco", estilo: { "--x": "-8vw", "--c": "rgba(244,114,182,0.9)", "--dur": "7s", "--delay": "0s" } },
+  { clase: "tz-esc-foco", estilo: { "--x": "33vw", "--c": "rgba(34,211,238,0.9)", "--dur": "9s", "--delay": "-3s" } },
+  { clase: "tz-esc-foco", estilo: { "--x": "72vw", "--c": "rgba(167,139,250,0.9)", "--dur": "8s", "--delay": "-5s" } },
+  ...[
+    ["8%", "22%", "8px", "#f472b6", "3s", "0s"],
+    ["18%", "58%", "5px", "#22d3ee", "2.4s", "-1s"],
+    ["31%", "35%", "9px", "#a78bfa", "3.4s", "-2s"],
+    ["44%", "76%", "5px", "#f472b6", "2.8s", "-0.5s"],
+    ["57%", "28%", "6px", "#22d3ee", "3.1s", "-1.6s"],
+    ["66%", "63%", "10px", "#fde047", "3.6s", "-2.4s"],
+    ["78%", "41%", "5px", "#f472b6", "2.6s", "-0.8s"],
+    ["88%", "84%", "6px", "#a78bfa", "3.2s", "-1.9s"],
+    ["93%", "18%", "5px", "#22d3ee", "2.9s", "-2.7s"],
+    ["4%", "88%", "6px", "#fde047", "3.3s", "-1.2s"],
+  ].map(([x, y, tam, c, dur, delay]) => ({ clase: "tz-esc-destello", estilo: { "--x": x, "--y": y, "--tam": tam, "--c": c, "--dur": dur, "--delay": delay } })),
+];
+
+// =====================================================================
 // Catálogo
 // =====================================================================
 export const TEMATICOS = [
@@ -843,6 +1089,52 @@ export const TEMATICOS = [
     paleta: { id: "tematico-tropical", nombre: "Tropical", modo: "oscuro", principal: "#86efac", secundario: "#fb923c", acento: "#fde047", botones: "#bef264", fondo1: "#04140c", fondo2: "#0a2a19" },
     muestra: `${JUGO} left 0 bottom 0 / 90px 14px repeat-x, ${HOJA_SI} left -20px top -20px / 80px 80px no-repeat, ${RODAJAS} 0 0 / 120px 56px, linear-gradient(180deg, #15803d, #0a2a19)`,
     css: tropical,
+  },
+  {
+    id: "helado",
+    rubro: "heladeria",
+    nombre: "Helado artesanal",
+    descripcion: "Bolas de colores, barquillo y conos",
+    paleta: { id: "tematico-helado", nombre: "Helado artesanal", modo: "claro", principal: "#0f766e", secundario: "#db2777", acento: "#b45309", botones: "#92400e", fondo1: "#f4fbf8", fondo2: "#e9f6f0" },
+    muestra: `${CONO} right 12px top 10px / 18px 24px no-repeat, ${BOLAS} left 0 bottom 0 / 81px 26px repeat-x, linear-gradient(180deg, #d1fae5, #a7f3d0)`,
+    css: helado,
+  },
+  {
+    id: "carnicero",
+    rubro: "carniceria",
+    nombre: "Carnicero",
+    descripcion: "Azulejos, tabla de picar y cuchilla",
+    paleta: { id: "tematico-carnicero", nombre: "Carnicero", modo: "oscuro", principal: "#f5e6d3", secundario: "#fca5a5", acento: "#fecaca", botones: "#fee2e2", fondo1: "#0e0807", fondo2: "#1d110d" },
+    muestra: `${CUCHILLA} right 10px bottom 10px / 28px 20px no-repeat, linear-gradient(180deg, #b91c1c, #991b1b) left 0 top 46% / 100% 8px no-repeat, ${AZULEJOS} 0 0 / 33px 16px, #d6cec2`,
+    css: carnicero,
+  },
+  {
+    id: "mercado",
+    rubro: "frutas-verduras",
+    nombre: "Mercado fresco",
+    descripcion: "Arpillera, cajones de madera y verduras",
+    paleta: { id: "tematico-mercado", nombre: "Mercado fresco", modo: "oscuro", principal: "#bef264", secundario: "#fb923c", acento: "#facc15", botones: "#d9f99d", fondo1: "#0a140a", fondo2: "#1a2e12" },
+    muestra: `${VERDURAS} left 0 bottom 4px / 120px 26px repeat-x, ${CAJON} left 0 bottom 0 / 100% 34px no-repeat, ${ARPILLERA} 0 0 / 12px 12px, linear-gradient(180deg, #3f6212, #365314)`,
+    css: mercado,
+  },
+  {
+    id: "vinos",
+    rubro: "licoreria",
+    nombre: "Bodega de vinos",
+    descripcion: "Muro de piedra, barricas, parra y oro",
+    paleta: { id: "tematico-vinos", nombre: "Bodega de vinos", modo: "oscuro", principal: "#e9c46a", secundario: "#f4a7b9", acento: "#f5d58a", botones: "#e9c46a", fondo1: "#120a0c", fondo2: "#2a0d16" },
+    muestra: `${UVAS} right 12px top 10px / 18px 22px no-repeat, ${PARRA} left 0 bottom 2px / 100px 25px repeat-x, ${PIEDRA} 0 0 / 60px 36px, #120a0c`,
+    css: vinos,
+  },
+  {
+    id: "club",
+    rubro: "bar-discoteca",
+    nombre: "Club nocturno",
+    descripcion: "Reflectores, destellos y luces de neón",
+    paleta: { id: "tematico-club", nombre: "Club nocturno", modo: "oscuro", principal: "#22d3ee", secundario: "#f472b6", acento: "#c4b5fd", botones: "#f472b6", fondo1: "#07020f", fondo2: "#160a2b" },
+    muestra: `${NOTA} right 12px top 10px / 18px 18px no-repeat, linear-gradient(115deg, transparent 30%, rgba(244,114,182,0.35) 38%, transparent 46%), linear-gradient(65deg, transparent 52%, rgba(34,211,238,0.3) 60%, transparent 68%), ${NOCHE}`,
+    escena: ESCENA_CLUB,
+    css: club,
   },
 ];
 
