@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, Save, RotateCcw, Check, Moon, Sun, LogOut, Wallet, ShoppingCart } from "lucide-react";
+import { Loader2, Save, RotateCcw, Check, Moon, Sun, LogOut, Wallet, ShoppingCart, Sparkles } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { PRESETS_TEMA, TEMA_POR_DEFECTO, resolverPaleta, variablesTema } from "../lib/tema";
+import { tematicoDe, tematicosDelRubro } from "../lib/tematicos";
 import logoTonazo from "../assets/logo.webp";
 
 // Apartado "Tema" del Perfil del negocio: elegir una paleta armada (oscura
@@ -10,6 +11,8 @@ import logoTonazo from "../assets/logo.webp";
 // guardar. Cambia los colores de la caja (admin y cajero) y de la tienda
 // pública del negocio. Guarda con la RPC actualizar_tema_negocio
 // (migración 0096).
+// Arriba de todo, si su rubro tiene: "Temático de tu rubro" — temas
+// especiales con adornos (src/lib/tematicos.js, rubros.clave de 0097).
 const mismoTema = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
 
 function MuestraPaleta({ paleta, activa, onClick }) {
@@ -46,6 +49,26 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
+  const [rubro, setRubro] = useState({ clave: null, nombre: "" });
+
+  // Rubro del negocio (para sus temáticos). Consulta tolerante: sin la
+  // migración 0097 no hay clave y simplemente no se muestran temáticos.
+  useEffect(() => {
+    let vivo = true;
+    supabase
+      .from("negocios")
+      .select("rubro_id")
+      .eq("id", negocioId)
+      .maybeSingle()
+      .then(async ({ data }) => {
+        if (!data?.rubro_id) return;
+        const { data: r, error: err } = await supabase.from("rubros").select("clave, nombre").eq("id", data.rubro_id).maybeSingle();
+        if (vivo && !err && r) setRubro({ clave: r.clave || null, nombre: r.nombre || "" });
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [negocioId]);
 
   useEffect(() => {
     let vivo = true;
@@ -74,6 +97,8 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
   const vars = useMemo(() => variablesTema(tema), [tema]);
   const paleta = resolverPaleta(tema);
   const esLibre = !!tema?.principal;
+  const tematicoActual = tematicoDe(tema);
+  const tematicos = tematicosDelRubro(rubro.clave);
   const cambios = !mismoTema(tema, guardado || TEMA_POR_DEFECTO);
 
   const usarLibre = (color = colorLibre, modo = modoLibre) => setTema({ modo, principal: color });
@@ -105,16 +130,45 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
         Los colores de tu caja (admin y cajeros) y de tu tienda en línea. El texto siempre se ajusta para que se lea bien.
       </p>
 
+      {tematicos.length > 0 && (
+        <>
+          <label className="tz-field-label">
+            <Sparkles size={12} /> Temático de tu rubro ({rubro.nombre})
+          </label>
+          <div className="tz-tema-presets tz-tema-tematicos">
+            {tematicos.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`tz-tema-preset tz-tema-tematico ${tematicoActual?.id === t.id ? "tz-tema-preset-activa" : ""}`}
+                style={{ background: t.muestra }}
+                onClick={() => setTema({ tematico: t.id, rubro: t.rubro })}
+              >
+                <span className="tz-tema-preset-nombre" style={{ color: "#f4f2ff" }}>
+                  {t.nombre}
+                </span>
+                <span className="tz-tema-tematico-desc">{t.descripcion}</span>
+                {tematicoActual?.id === t.id && (
+                  <span className="tz-tema-preset-check">
+                    <Check size={12} />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
       <label className="tz-field-label">Paletas oscuras</label>
       <div className="tz-tema-presets">
         {PRESETS_TEMA.filter((p) => p.modo === "oscuro").map((p) => (
-          <MuestraPaleta key={p.id} paleta={p} activa={!esLibre && paleta.id === p.id} onClick={() => setTema({ preset: p.id })} />
+          <MuestraPaleta key={p.id} paleta={p} activa={!esLibre && !tematicoActual && paleta.id === p.id} onClick={() => setTema({ preset: p.id })} />
         ))}
       </div>
       <label className="tz-field-label">Paletas claras</label>
       <div className="tz-tema-presets">
         {PRESETS_TEMA.filter((p) => p.modo === "claro").map((p) => (
-          <MuestraPaleta key={p.id} paleta={p} activa={!esLibre && paleta.id === p.id} onClick={() => setTema({ preset: p.id })} />
+          <MuestraPaleta key={p.id} paleta={p} activa={!esLibre && !tematicoActual && paleta.id === p.id} onClick={() => setTema({ preset: p.id })} />
         ))}
       </div>
 
@@ -154,7 +208,8 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
       </div>
 
       <label className="tz-field-label">Vista previa</label>
-      <div className="tz-tema-preview" style={vars}>
+      {tematicoActual && <style>{tematicoActual.css([":root .tz-tema-preview.tz-tema-preview-tematico"])}</style>}
+      <div className={`tz-tema-preview ${tematicoActual ? "tz-tema-preview-tematico" : ""}`} style={vars}>
         <div className="tz-tema-preview-cabecera">
           <button type="button" className="tz-header-btn" tabIndex={-1}>
             <ShoppingCart size={15} />

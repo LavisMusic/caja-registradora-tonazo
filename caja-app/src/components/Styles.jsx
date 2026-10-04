@@ -6673,6 +6673,13 @@ export default function Styles() {
         display: flex; align-items: center; justify-content: center;
         background: var(--cyan); color: var(--on-cyan);
       }
+      .tz-tema-tematicos { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+      .tz-tema-tematico { min-height: 86px; justify-content: flex-end; padding-left: 30px; }
+      .tz-tema-tematico .tz-tema-preset-nombre { font-size: 14px; text-shadow: 0 1px 2px #000; }
+      .tz-tema-tematico-desc { font-size: 11px; color: #d5dbe1; text-shadow: 0 1px 2px #000; }
+      /* Dentro de la vista previa los botones/cabecera no ocupan todo
+         el ancho como en la app real. */
+      .tz-tema-preview .tz-header { border-radius: 0; }
       .tz-tema-libre { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; border: 1.5px solid rgba(var(--fg-rgb), 0.12); }
       .tz-tema-libre-activo { border-color: var(--cyan); }
       .tz-tema-libre input[type="color"] { width: 46px; height: 38px; border: none; background: none; padding: 0; cursor: pointer; flex-shrink: 0; }

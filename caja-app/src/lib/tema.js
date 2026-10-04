@@ -7,6 +7,8 @@
 // ≥ 4.5 para texto principal), así ni una paleta ni un color libre
 // pueden dejar algo ilegible.
 
+import { tematicoDe } from "./tematicos";
+
 // ---------- utilidades de color ----------
 function hexARgb(hex) {
   const h = String(hex || "").replace("#", "");
@@ -116,6 +118,8 @@ function paletaLibre(principal, modo) {
 }
 
 export function resolverPaleta(tema) {
+  const tematico = tematicoDe(tema);
+  if (tematico) return tematico.paleta;
   if (tema && tema.principal && /^#[0-9a-f]{6}$/i.test(tema.principal)) return paletaLibre(tema.principal, tema.modo);
   return PRESETS_TEMA.find((p) => p.id === tema?.preset) || PRESETS_TEMA[0];
 }
@@ -190,6 +194,7 @@ export function cssTema(tema) {
     .map(([k, v]) => `${k}: ${v};`)
     .join(" ");
   const claro = esTemaClaro(tema);
+  const tematico = tematicoDe(tema);
   // ":root .tz-root" (más específico que ".tz-root") para ganarle a
   // cualquier otra copia de <Styles /> que un modal monte más abajo.
   return `:root .tz-root, :root .tz-portal { ${vars} color-scheme: ${claro ? "light" : "dark"}; }
@@ -198,5 +203,6 @@ ${
     ? `:root .tz-root *, :root .tz-portal * { text-shadow: none !important; }
 :root .tz-root .tz-logo { filter: drop-shadow(0 4px 14px rgba(40, 30, 70, 0.18)); }`
     : ""
-}`;
+}
+${tematico ? tematico.css([":root .tz-root", ":root .tz-portal"]) : ""}`;
 }
