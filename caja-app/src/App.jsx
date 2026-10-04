@@ -10230,8 +10230,8 @@ export default function App() {
                 <Receipt size={17} /> Mis Ventas (Hoy)
               </h2>
               <p className="tz-stock-editor-sub">
-                Ventas de este turno (desde {formatDate(turnoCutoff)} ·{" "}
-                {formatTime(turnoCutoff)}). Anular repone el stock — úsalo solo para corregir
+                Ventas de este turno (
+                {turnoCutoff > 0 ? `desde ${formatDate(turnoCutoff)} · ${formatTime(turnoCutoff)}` : "desde el inicio, aún no hay cierres"}). Anular repone el stock — úsalo solo para corregir
                 un error de tipeo recién hecho.
               </p>
               {anularError && <p className="tz-error">{anularError}</p>}
@@ -12075,7 +12075,7 @@ export default function App() {
                     <div className="tz-receipt-header">
                       <span className="tz-receipt-title">Turno actual</span>
                       <span className="tz-receipt-date">
-                        Desde {formatDate(turnoCutoff)} · {formatTime(turnoCutoff)}
+                        {turnoCutoff > 0 ? `Desde ${formatDate(turnoCutoff)} · ${formatTime(turnoCutoff)}` : "Desde el inicio"}
                       </span>
                     </div>
                     <div className="tz-receipt-row">
@@ -12224,7 +12224,7 @@ export default function App() {
                     <div className="tz-receipt-header">
                       <span className="tz-receipt-title">Turno actual</span>
                       <span className="tz-receipt-date">
-                        Desde {formatDate(turnoCutoff)} · {formatTime(turnoCutoff)}
+                        {turnoCutoff > 0 ? `Desde ${formatDate(turnoCutoff)} · ${formatTime(turnoCutoff)}` : "Desde el inicio"}
                       </span>
                     </div>
                     <div className="tz-receipt-row">

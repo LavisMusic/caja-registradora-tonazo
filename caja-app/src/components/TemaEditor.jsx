@@ -144,10 +144,15 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
                 style={{ background: t.muestra }}
                 onClick={() => setTema({ tematico: t.id, rubro: t.rubro })}
               >
-                <span className="tz-tema-preset-nombre" style={{ color: "#f4f2ff" }}>
+                <span className="tz-tema-preset-nombre" style={{ color: t.paleta.modo === "claro" ? "#14111f" : "#f4f2ff", textShadow: t.paleta.modo === "claro" ? "none" : undefined }}>
                   {t.nombre}
                 </span>
-                <span className="tz-tema-tematico-desc">{t.descripcion}</span>
+                <span
+                  className="tz-tema-tematico-desc"
+                  style={t.paleta.modo === "claro" ? { color: "#3a3550", textShadow: "none" } : undefined}
+                >
+                  {t.descripcion}
+                </span>
                 {tematicoActual?.id === t.id && (
                   <span className="tz-tema-preset-check">
                     <Check size={12} />
