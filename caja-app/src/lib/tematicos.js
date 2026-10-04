@@ -987,6 +987,190 @@ const ESCENA_CLUB = [
 ];
 
 // =====================================================================
+// MATERIALES DE CONSTRUCCIÓN — "Obra"
+// =====================================================================
+const CONCRETO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='90' height='90'><g fill='rgba(255,255,255,0.05)'><circle cx='8' cy='12' r='1.3'/><circle cx='34' cy='6' r='0.9'/><circle cx='62' cy='22' r='1.6'/><circle cx='20' cy='44' r='1.1'/><circle cx='76' cy='58' r='1.2'/><circle cx='46' cy='72' r='0.8'/><circle cx='12' cy='80' r='1.4'/></g><g fill='rgba(0,0,0,0.22)'><circle cx='24' cy='20' r='1.2'/><circle cx='54' cy='40' r='1.5'/><circle cx='70' cy='12' r='0.9'/><circle cx='36' cy='60' r='1.3'/><circle cx='82' cy='84' r='1'/></g><path d='M10 60 L18 64 L22 72' stroke='rgba(0,0,0,0.18)' stroke-width='0.8' fill='none'/></svg>`
+);
+const OBRA_FRANJAS = "repeating-linear-gradient(-45deg, #f97316 0 14px, #f8fafc 14px 28px)";
+const CINTA_METRICA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='50' height='18'><rect width='50' height='18' fill='#facc15'/><g stroke='#1c1917' stroke-width='1'><path d='M0 0 V10'/><path d='M5 0 V4'/><path d='M10 0 V4'/><path d='M15 0 V4'/><path d='M20 0 V4'/><path d='M25 0 V7'/><path d='M30 0 V4'/><path d='M35 0 V4'/><path d='M40 0 V4'/><path d='M45 0 V4'/></g><rect y='17' width='50' height='1' fill='#a16207'/></svg>`
+);
+const CASCO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 22'><path d='M4 16 Q4 3 15 3 Q26 3 26 16 Z' fill='#facc15' stroke='#a16207' stroke-width='1.1'/><path d='M13 3.5 H17 V15 H13 Z' fill='#fde047' stroke='#a16207' stroke-width='.8'/><rect x='1' y='15' width='28' height='4' rx='2' fill='#eab308' stroke='#a16207' stroke-width='1'/><ellipse cx='10' cy='8' rx='3' ry='1.5' fill='rgba(255,255,255,0.5)'/></svg>`
+);
+const CEMENTO = "linear-gradient(170deg, #4b4f55 0%, #3a3e43 60%, #33363b 100%)";
+
+const obra = (S) =>
+  construir(S, {
+    raiz: [trama(CONCRETO, "90px 90px"), capa("linear-gradient(180deg, #1d1f22 0%, #151618 100%)")],
+    cabecera: [capa(CINTA_METRICA, "left 0 bottom 0", "50px 18px", "repeat-x"), trama(CONCRETO, "90px 90px"), capa(CEMENTO)],
+    cabeceraEstilo: `padding-bottom: 30px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.5);`,
+    pie: [trama(CONCRETO, "90px 90px"), capa(CEMENTO)],
+    pieEstilo: `border-top: 8px solid transparent !important; border-image: ${OBRA_FRANJAS} 1 !important;`,
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.22), transparent 55%)"), capa("linear-gradient(180deg, #fb923c, #ea580c)")],
+    botonEstilo: "border: 1px solid #9a3412 !important; color: #1c1917 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.45) !important; font-weight: 800;",
+    botonPieEstilo: "border-radius: 8px !important; border: 1px solid #9a3412 !important; color: #1c1917 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important;",
+    panel: [capa(CASCO, "right 6px top 7px", "26px 19px"), capa(OBRA_FRANJAS, "left 0 bottom 0", "100% 6px"), trama(CONCRETO, "90px 90px"), capa(CEMENTO)],
+    panelEstilo: "border: 1px solid #25272b !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 18px rgba(0,0,0,0.45) !important; padding-bottom: 14px !important;",
+    modal: [capa(OBRA_FRANJAS, "left 0 top 0", "100% 8px"), trama(CONCRETO, "90px 90px"), capa("linear-gradient(170deg, #34373c 0%, #222428 100%)")],
+    modalEstilo: "border: 1px solid #5a5f66 !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: `color: #fff7ed !important; background: ${CINTA_METRICA} left 0 bottom 0 / 50px 14px repeat-x !important; padding-bottom: 22px;`,
+    pestana: [capa(CEMENTO)],
+    pestanaEstilo: "border: 1px solid #5a5f66 !important; color: #e7e5e4 !important;",
+    activa: [capa("linear-gradient(180deg, #fb923c, #ea580c)")],
+    activaEstilo: "border-color: #9a3412 !important; color: #1c1917 !important; box-shadow: 0 0 14px rgba(249,115,22,0.45) !important;",
+    campoEstilo: "background: #18191b !important; border: 1px solid #5a5f66 !important;",
+  });
+
+// =====================================================================
+// ELECTRODOMÉSTICOS — "Tecno hogar"
+// =====================================================================
+const ENCHUFE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect x='3' y='3' width='18' height='18' rx='5' fill='#1e293b' stroke='#60a5fa' stroke-width='1.3'/><rect x='8' y='8' width='2.2' height='5' rx='1' fill='#93c5fd'/><rect x='13.8' y='8' width='2.2' height='5' rx='1' fill='#93c5fd'/><path d='M10 16 Q12 18 14 16' stroke='#93c5fd' stroke-width='1.3' fill='none'/></svg>`
+);
+const LEDS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='34' height='8'><circle cx='4' cy='4' r='2.6' fill='#22c55e'/><circle cx='14' cy='4' r='2.6' fill='#38bdf8'/><circle cx='24' cy='4' r='2.6' fill='#38bdf8' opacity='.35'/></svg>`
+);
+const INOX = "linear-gradient(180deg, #2b313a 0%, #1d222a 50%, #161a20 100%)";
+
+const tecno = (S) =>
+  construir(S, {
+    raiz: [capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(56,189,248,0.10), transparent 60%)"), capa(CEPILLADO, "0 0", "auto", "repeat"), capa("linear-gradient(180deg, #0f131a 0%, #0a0d12 100%)")],
+    cabecera: [capa(CEPILLADO, "0 0", "auto", "repeat"), capa(INOX)],
+    cabeceraEstilo: "border-bottom: 2px solid #38bdf8 !important; box-shadow: 0 2px 14px rgba(56,189,248,0.7), 0 8px 20px rgba(0,0,0,0.5) !important;",
+    pie: [capa(CEPILLADO, "0 0", "auto", "repeat"), capa(INOX)],
+    pieEstilo: "border-top: 2px solid #38bdf8 !important; box-shadow: 0 -2px 14px rgba(56,189,248,0.6);",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.10), transparent 55%)"), capa("linear-gradient(180deg, #1e293b, #111827)")],
+    botonEstilo: "border: 1px solid rgba(96,165,250,0.7) !important; color: #bfdbfe !important; box-shadow: 0 0 8px rgba(56,189,248,0.35), inset 0 1px 0 rgba(255,255,255,0.1) !important; border-radius: 10px !important;",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid rgba(96,165,250,0.7) !important; color: #bfdbfe !important; box-shadow: 0 0 10px rgba(56,189,248,0.4) !important;",
+    // Paneles = pantallas de vidrio negro con LEDs y un enchufe.
+    panel: [capa(ENCHUFE, "right 7px top 7px", "18px 18px"), capa(LEDS, "right 10px bottom 9px", "34px 8px"), capa("linear-gradient(160deg, rgba(255,255,255,0.07) 0%, transparent 38%)"), capa("linear-gradient(170deg, #121821 0%, #0b0f15 100%)")],
+    panelEstilo: "border: 1px solid rgba(96,165,250,0.45) !important; box-shadow: 0 0 0 1px #05070a, 0 0 12px rgba(56,189,248,0.18), 0 8px 18px rgba(0,0,0,0.5) !important;",
+    modal: [capa("linear-gradient(160deg, rgba(255,255,255,0.06) 0%, transparent 35%)"), capa("linear-gradient(170deg, #151b25 0%, #0b0f15 100%)")],
+    modalEstilo: "border: 1px solid rgba(96,165,250,0.55) !important; box-shadow: 0 0 24px rgba(56,189,248,0.25), 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: "color: #e0f2fe !important; border-bottom: 2px solid #38bdf8; box-shadow: 0 6px 10px -8px #38bdf8; padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #1e293b, #111827)")],
+    pestanaEstilo: "border: 1px solid rgba(96,165,250,0.4) !important; color: #cbd5e1 !important;",
+    activa: [capa("linear-gradient(180deg, #38bdf8, #2563eb)")],
+    activaEstilo: "border-color: #1e40af !important; color: #ffffff !important; box-shadow: 0 0 16px rgba(56,189,248,0.6) !important;",
+    campoEstilo: "background: #0b0f15 !important; border: 1px solid rgba(96,165,250,0.4) !important;",
+    extra: (S) => `${en(S, ".tz-logo")} { filter: drop-shadow(0 0 14px rgba(56,189,248,0.45)) drop-shadow(0 4px 10px rgba(0,0,0,0.6)) !important; }`,
+  });
+
+// =====================================================================
+// MUEBLERÍA — "Taller de madera"
+// =====================================================================
+const COLA_MILANO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='48' height='16'><rect width='48' height='16' fill='#4a2f1b'/><path d='M4 0 H20 L17 16 H7 Z' fill='#b07a4a'/><path d='M28 0 H44 L41 16 H31 Z' fill='#b07a4a'/><path d='M4 0 H20 L17 16 H7 Z M28 0 H44 L41 16 H31 Z' fill='none' stroke='#2a170b' stroke-width='1'/></svg>`
+);
+const SERRUCHO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 20'><path d='M2 12 L24 4 L26 10 L4 18 Z' fill='#cbd5e1' stroke='#475569' stroke-width='.9'/><path d='M4 18 l2 -2 l1 1.6 l2 -2.2 l1 1.6 l2 -2.2 l1 1.6 l2 -2.2 l1 1.6 l2 -2.2 l1 1.6 l2 -2.2' stroke='#475569' stroke-width='.8' fill='none'/><path d='M24 4 L31 2 Q33 6 30 10 L26 10 Z' fill='#92400e' stroke='#451a03' stroke-width='.9'/><circle cx='29.5' cy='6' r='1.5' fill='#451a03'/></svg>`
+);
+const ROBLE = "linear-gradient(170deg, #8a5a32 0%, #73492a 50%, #5f3b21 100%)";
+const NOGAL_OSC = "linear-gradient(170deg, #3d2615 0%, #2e1c0f 100%)";
+const TAPIZ = [
+  capa("radial-gradient(circle, rgba(0,0,0,0.45) 1.6px, rgba(255,255,255,0.12) 2.4px, transparent 3px)", "0 0", "16px 16px", "repeat"),
+  capa("linear-gradient(180deg, #2f5d4a 0%, #1f4334 100%)"),
+];
+
+const taller = (S) =>
+  construir(S, {
+    raiz: [trama(VETA, "160px 46px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(255,210,150,0.10), transparent 60%)"), capa("linear-gradient(180deg, #1c120a 0%, #140d08 100%)")],
+    cabecera: [capa(COLA_MILANO, "left 0 bottom 0", "48px 16px", "repeat-x"), trama(VETA, "160px 46px"), capa(ROBLE)],
+    cabeceraEstilo: "padding-bottom: 28px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.5);",
+    pie: [capa(COLA_MILANO, "left 0 top 0", "48px 16px", "repeat-x"), trama(VETA, "160px 46px"), capa(NOGAL_OSC)],
+    pieEstilo: "border-top: none !important; padding-top: 26px !important;",
+    // Botones tapizados: terciopelo verde con capitoné.
+    boton: TAPIZ,
+    botonEstilo: "border: 1px solid #0f2a1f !important; color: #f3e7c9 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 3px 8px rgba(0,0,0,0.45) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #0f2a1f !important; color: #f3e7c9 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 10px rgba(0,0,0,0.5) !important;",
+    // Paneles de roble con marco de nogal (marquetería) y un serrucho.
+    panel: [capa(SERRUCHO, "right 6px top 8px", "28px 16px"), trama(VETA, "160px 46px"), capa("linear-gradient(170deg, #6e4627 0%, #573620 100%)")],
+    panelEstilo: "border: 3px solid #2e1c0f !important; box-shadow: inset 0 0 0 1px rgba(255,220,170,0.25), 0 8px 18px rgba(0,0,0,0.45) !important;",
+    modal: [trama(VETA, "160px 46px"), capa("linear-gradient(170deg, #4a2f1b 0%, #2e1c0f 100%)")],
+    modalEstilo: "border: 6px solid #2e1c0f !important; box-shadow: inset 0 0 0 1px rgba(255,220,170,0.3), 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: `color: #fbe7c6 !important; background: ${COLA_MILANO} left 0 bottom 0 / 36px 12px repeat-x !important; padding-bottom: 20px;`,
+    pestana: [trama(VETA, "160px 46px"), capa(ROBLE)],
+    pestanaEstilo: "border: 1px solid #2e1c0f !important; color: #fbe7c6 !important;",
+    activa: [capa("linear-gradient(180deg, #f1d18a 0%, #d4a24c 50%, #a7772a 100%)")],
+    activaEstilo: "border-color: #5c3d10 !important; color: #2a1606 !important; box-shadow: 0 0 14px rgba(212,162,76,0.45) !important;",
+    campoEstilo: "background: #1c120a !important; border: 1px solid #6b4426 !important;",
+  });
+
+// =====================================================================
+// BOTICA Y FARMACIA — "Botica" (claro)
+// =====================================================================
+const CRUCES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='56' height='56'><path d='M10 6 h4 v4 h4 v4 h-4 v4 h-4 v-4 h-4 v-4 h4 Z' fill='rgba(4,120,87,0.08)'/><path d='M38 34 h4 v4 h4 v4 h-4 v4 h-4 v-4 h-4 v-4 h4 Z' fill='rgba(4,120,87,0.08)'/></svg>`
+);
+const CAPSULAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='96' height='24'><g transform='translate(14 12) rotate(-25)'><rect x='-10' y='-4.5' width='20' height='9' rx='4.5' fill='#ffffff' stroke='#94a3b8' stroke-width='.8'/><path d='M0 -4.5 H5.5 A4.5 4.5 0 0 1 5.5 4.5 H0 Z' fill='#10b981'/></g><g transform='translate(42 12)'><circle r='6' fill='#ffffff' stroke='#94a3b8' stroke-width='.8'/><path d='M-4 0 H4' stroke='#94a3b8' stroke-width='.9'/></g><g transform='translate(70 12) rotate(20)'><rect x='-10' y='-4.5' width='20' height='9' rx='4.5' fill='#ffffff' stroke='#94a3b8' stroke-width='.8'/><path d='M0 -4.5 H5.5 A4.5 4.5 0 0 1 5.5 4.5 H0 Z' fill='#3b82f6'/></g><g transform='translate(88 13)'><ellipse rx='5' ry='4' fill='#fde68a' stroke='#d97706' stroke-width='.8'/></g></svg>`
+);
+const FRASCO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 28'><rect x='5' y='1' width='10' height='5' rx='1.5' fill='#f8fafc' stroke='#64748b' stroke-width='.8'/><path d='M3 8 Q3 6 5 6 H15 Q17 6 17 8 V25 Q17 27 15 27 H5 Q3 27 3 25 Z' fill='#d97706' stroke='#92400e' stroke-width='.9'/><rect x='5' y='12' width='10' height='9' rx='1' fill='#fffbeb'/><path d='M9 14 h2 v2 h2 v2 h-2 v2 h-2 v-2 h-2 v-2 h2 Z' fill='#059669'/><rect x='4.5' y='8' width='2' height='16' rx='1' fill='rgba(255,255,255,0.3)'/></svg>`
+);
+
+const botica = (S) =>
+  construir(S, {
+    raiz: [trama(CRUCES, "56px 56px"), capa("linear-gradient(180deg, #f7fcfa 0%, #ebf6f1 100%)")],
+    cabecera: [capa(CAPSULAS, "left 0 bottom 4px", "96px 24px", "repeat-x"), trama(CRUCES, "56px 56px"), capa("linear-gradient(180deg, #ffffff 0%, #e3f5ec 100%)")],
+    cabeceraEstilo: "padding-bottom: 36px !important; border-bottom: 4px solid #059669 !important; box-shadow: 0 6px 14px rgba(4,120,87,0.10);",
+    pie: [capa(CAPSULAS, "left 0 top 6px", "96px 24px", "repeat-x"), capa("linear-gradient(180deg, #e3f5ec, #ffffff)")],
+    pieEstilo: "border-top: 4px solid #059669 !important; padding-top: 38px !important;",
+    boton: [capa("linear-gradient(180deg, #ffffff, #f0fdf7)")],
+    botonEstilo: "border: 1.5px solid #10b981 !important; color: #047857 !important; box-shadow: 0 2px 6px rgba(4,120,87,0.12) !important;",
+    botonPieEstilo: "border-radius: 10px !important; border: 1.5px solid #10b981 !important; color: #047857 !important; box-shadow: 0 3px 8px rgba(4,120,87,0.14) !important;",
+    panel: [capa(FRASCO, "right 7px top 7px", "16px 22px"), capa("linear-gradient(90deg, #10b981 0 4px, transparent 4px)"), capa("linear-gradient(180deg, #ffffff, #fbfefd)")],
+    panelEstilo: "border: 1px solid #cdeee0 !important; box-shadow: 0 4px 12px rgba(4,120,87,0.08) !important;",
+    modal: [capa("linear-gradient(180deg, #059669 0 6px, transparent 6px)"), trama(CRUCES, "56px 56px"), capa("linear-gradient(180deg, #ffffff, #f4fbf8)")],
+    modalEstilo: "border: 1px solid #a7e3c9 !important; box-shadow: 0 20px 60px rgba(4,120,87,0.18) !important;",
+    tituloEstilo: "color: #065f46 !important; border-bottom: 2px solid #a7e3c9; padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #ffffff, #f0fdf7)")],
+    pestanaEstilo: "border: 1px solid #b7e6d1 !important; color: #065f46 !important;",
+    activa: [capa("linear-gradient(180deg, #10b981, #047857)")],
+    activaEstilo: "border-color: #064e3b !important; color: #ffffff !important; box-shadow: 0 4px 14px rgba(4,120,87,0.3) !important;",
+    campoEstilo: "background: #ffffff !important; border: 1px solid #b7e6d1 !important;",
+  });
+
+// =====================================================================
+// VETERINARIA Y PET SHOP — "Huellitas" (claro)
+// =====================================================================
+const huella = (color) =>
+  `<g fill='${color}'><ellipse cx='0' cy='4' rx='5.5' ry='4.6'/><ellipse cx='-6' cy='-3' rx='2.2' ry='2.8'/><ellipse cx='-2' cy='-6.5' rx='2.2' ry='2.8'/><ellipse cx='2.6' cy='-6.5' rx='2.2' ry='2.8'/><ellipse cx='6.6' cy='-3' rx='2.2' ry='2.8'/></g>`;
+const HUELLAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='90' height='90'><g transform='translate(18 20) rotate(-20)'>${huella("rgba(14,116,144,0.08)")}</g><g transform='translate(42 44) rotate(10)'>${huella("rgba(14,116,144,0.08)")}</g><g transform='translate(70 70) rotate(-10)'>${huella("rgba(194,65,12,0.07)")}</g></svg>`
+);
+const JUGUETES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='26'><g transform='translate(20 13)'><path d='M-12 -3 a3.5 3.5 0 1 1 3 -3 h18 a3.5 3.5 0 1 1 3 3 v6 a3.5 3.5 0 1 1 -3 3 h-18 a3.5 3.5 0 1 1 -3 -3 Z' fill='#fff7ed' stroke='#c2410c' stroke-width='1'/></g><g transform='translate(54 13)'><circle r='8' fill='#facc15' stroke='#a16207' stroke-width='1'/><path d='M-8 0 Q0 -5 8 0 M-8 0 Q0 5 8 0' stroke='#fff' stroke-width='1.4' fill='none'/></g><g transform='translate(84 13)'>${huella("#0e7490")}</g><g transform='translate(108 13)'><circle r='8' fill='#38bdf8' stroke='#0369a1' stroke-width='1'/><path d='M-5 -5 L5 5 M-5 5 L5 -5' stroke='#fff' stroke-width='1.3'/></g></svg>`
+);
+const PLACA_COLLAR = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 26'><path d='M2 4 Q12 10 22 4' stroke='#c2410c' stroke-width='3' fill='none' stroke-linecap='round'/><circle cx='12' cy='8.5' r='1.6' fill='none' stroke='#a16207' stroke-width='1.2'/><path d='M12 10 l6 4 v4 a6 6 0 0 1 -12 0 v-4 Z' fill='#facc15' stroke='#a16207' stroke-width='1'/><g transform='translate(12 17.2) scale(0.42)'>${huella("#a16207")}</g></svg>`
+);
+
+const huellitas = (S) =>
+  construir(S, {
+    raiz: [trama(HUELLAS, "90px 90px"), capa("linear-gradient(180deg, #f5fbfd 0%, #e8f5f9 100%)")],
+    cabecera: [capa(JUGUETES, "left 0 bottom 4px", "120px 26px", "repeat-x"), trama(HUELLAS, "90px 90px"), capa("linear-gradient(180deg, #fef9c3 0%, #fde68a 100%)")],
+    cabeceraEstilo: "padding-bottom: 38px !important; border-bottom: 4px solid #0e7490 !important; box-shadow: 0 6px 14px rgba(14,116,144,0.12);",
+    pie: [capa(JUGUETES, "left 0 top 6px", "120px 26px", "repeat-x"), capa("linear-gradient(180deg, #fde68a, #fef9c3)")],
+    pieEstilo: "border-top: 4px solid #0e7490 !important; padding-top: 40px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.25), transparent 55%)"), capa("linear-gradient(180deg, #0891b2, #0e7490)")],
+    botonEstilo: "border: 1px solid #155e75 !important; color: #ffffff !important; box-shadow: 0 3px 8px rgba(14,116,144,0.3) !important; border-radius: 999px !important;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #155e75 !important; color: #ffffff !important; box-shadow: 0 4px 10px rgba(14,116,144,0.3) !important;",
+    panel: [capa(PLACA_COLLAR, "right 6px top 6px", "20px 22px"), trama(HUELLAS, "90px 90px"), capa("linear-gradient(180deg, #ffffff, #fbfeff)")],
+    panelEstilo: "border: 2px dashed #a5d8e6 !important; box-shadow: 0 4px 12px rgba(14,116,144,0.08) !important;",
+    modal: [trama(HUELLAS, "90px 90px"), capa("linear-gradient(180deg, #fef3c7 0 54px, #ffffff 54px)")],
+    modalEstilo: "border: 2px solid #67c5dc !important; box-shadow: 0 20px 60px rgba(14,116,144,0.2) !important;",
+    tituloEstilo: "color: #155e75 !important; border-bottom: 2px dashed #f59e0b; padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #ffffff, #f0f9fc)")],
+    pestanaEstilo: "border: 1px solid #b4e0ec !important; color: #155e75 !important;",
+    activa: [capa("linear-gradient(180deg, #fb923c, #ea580c)")],
+    activaEstilo: "border-color: #9a3412 !important; color: #ffffff !important; box-shadow: 0 4px 14px rgba(234,88,12,0.35) !important;",
+    campoEstilo: "background: #ffffff !important; border: 1px solid #b4e0ec !important;",
+  });
+
+// =====================================================================
 // Catálogo
 // =====================================================================
 export const TEMATICOS = [
@@ -1135,6 +1319,51 @@ export const TEMATICOS = [
     muestra: `${NOTA} right 12px top 10px / 18px 18px no-repeat, linear-gradient(115deg, transparent 30%, rgba(244,114,182,0.35) 38%, transparent 46%), linear-gradient(65deg, transparent 52%, rgba(34,211,238,0.3) 60%, transparent 68%), ${NOCHE}`,
     escena: ESCENA_CLUB,
     css: club,
+  },
+  {
+    id: "obra",
+    rubro: "materiales-construccion",
+    nombre: "Obra",
+    descripcion: "Concreto, franjas de obra, cinta métrica y casco",
+    paleta: { id: "tematico-obra", nombre: "Obra", modo: "oscuro", principal: "#fb923c", secundario: "#fdba74", acento: "#facc15", botones: "#fb923c", fondo1: "#151618", fondo2: "#2a2c30" },
+    muestra: `${CASCO} right 10px top 8px / 26px 19px no-repeat, ${CINTA_METRICA} left 0 bottom 0 / 40px 14px repeat-x, ${CONCRETO} 0 0 / 70px 70px, ${CEMENTO}`,
+    css: obra,
+  },
+  {
+    id: "tecno",
+    rubro: "electrodomesticos",
+    nombre: "Tecno hogar",
+    descripcion: "Acero inoxidable, vidrio negro y luces LED",
+    paleta: { id: "tematico-tecno", nombre: "Tecno hogar", modo: "oscuro", principal: "#60a5fa", secundario: "#93c5fd", acento: "#38bdf8", botones: "#bfdbfe", fondo1: "#0a0d12", fondo2: "#161b24" },
+    muestra: `${ENCHUFE} right 10px top 10px / 18px 18px no-repeat, ${LEDS} right 12px bottom 10px / 34px 8px no-repeat, linear-gradient(180deg, transparent 0 calc(100% - 2px), #38bdf8 calc(100% - 2px)), ${INOX}`,
+    css: tecno,
+  },
+  {
+    id: "taller",
+    rubro: "muebleria",
+    nombre: "Taller de madera",
+    descripcion: "Roble, ensambles, tapizado y herramientas",
+    paleta: { id: "tematico-taller", nombre: "Taller de madera", modo: "oscuro", principal: "#e8c39e", secundario: "#f0a35e", acento: "#ffd8a8", botones: "#f3e7c9", fondo1: "#140d08", fondo2: "#2a1b10" },
+    muestra: `${SERRUCHO} right 10px top 10px / 28px 16px no-repeat, ${COLA_MILANO} left 0 bottom 0 / 36px 12px repeat-x, ${VETA} 0 0 / 120px 34px, ${ROBLE}`,
+    css: taller,
+  },
+  {
+    id: "botica",
+    rubro: "botica",
+    nombre: "Botica",
+    descripcion: "Blanco clínico, cruz verde, cápsulas y frascos",
+    paleta: { id: "tematico-botica", nombre: "Botica", modo: "claro", principal: "#047857", secundario: "#0369a1", acento: "#b45309", botones: "#047857", fondo1: "#f7fcfa", fondo2: "#ebf6f1" },
+    muestra: `${FRASCO} right 12px top 10px / 16px 22px no-repeat, ${CAPSULAS} left 0 bottom 4px / 80px 20px repeat-x, ${CRUCES} 0 0 / 46px 46px, linear-gradient(180deg, #ffffff, #e3f5ec)`,
+    css: botica,
+  },
+  {
+    id: "huellitas",
+    rubro: "veterinaria",
+    nombre: "Huellitas",
+    descripcion: "Patitas, huesitos, pelotas y collar con placa",
+    paleta: { id: "tematico-huellitas", nombre: "Huellitas", modo: "claro", principal: "#0e7490", secundario: "#c2410c", acento: "#7c3aed", botones: "#0e7490", fondo1: "#f5fbfd", fondo2: "#e8f5f9" },
+    muestra: `${PLACA_COLLAR} right 10px top 8px / 20px 22px no-repeat, ${JUGUETES} left 0 bottom 4px / 100px 22px repeat-x, ${HUELLAS} 0 0 / 70px 70px, linear-gradient(180deg, #fef9c3, #fde68a)`,
+    css: huellitas,
   },
 ];
 
