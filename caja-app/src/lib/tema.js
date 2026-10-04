@@ -205,5 +205,6 @@ ${
 :root .tz-root .tz-logo { filter: drop-shadow(0 4px 14px rgba(40, 30, 70, 0.18)); }`
     : ""
 }
-${tematico ? tematico.css([":root .tz-root", ":root .tz-portal"]) : ""}`;
+${tematico ? tematico.css([":root .tz-root", ":root .tz-portal"]) : ""}
+${tematico?.escena ? ":root .tz-root { background: transparent !important; }" : ""}`;
 }

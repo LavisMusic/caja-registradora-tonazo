@@ -6,6 +6,9 @@
 // 0097; la RPC actualizar_tema_negocio lo verifica). Uno por rubro (con
 // el tiempo un rubro puede tener varios).
 // Se guarda como { tematico: "metal", rubro: "ferreteria" }.
+// `escena` (opcional): elementos animados que TemaNegocio dibuja en una
+// capa FIJA detrás de todo el contenido (peces, burbujas…) — solo se
+// mueven con transform/opacity, lo más liviano para el celular.
 //
 // css(S): S es la lista de selectores "raíz" donde aplica (la caja y la
 // tienda: ":root .tz-root" y ":root .tz-portal"; en la vista previa del
@@ -301,45 +304,226 @@ ${en(S, ".tz-logo")} { filter: drop-shadow(0 0 16px rgba(255,120,20,0.55)) !impo
 
 // =====================================================================
 // CEVICHERÍA — "Marino"
+// Agua con profundidad (turquesa → azul profundo), rayos de luz y
+// cáusticas en movimiento; peces nadando, burbujas y algas meciéndose
+// en una ESCENA fija detrás del contenido (ver `escena` en el catálogo
+// y TemaNegocio.jsx). Cabecera = cubierta de barco (soga, ancla,
+// salvavidas) con olas en capas animadas; pie = fondo marino de arena
+// con algas, estrellas de mar y conchas; tarjetas con concha nacarada y
+// perla; títulos con collar de perlas.
 // =====================================================================
-const RED_PESCA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><path d='M0 14 L14 0 L28 14 L14 28 Z' fill='none' stroke='rgba(220,255,250,0.13)' stroke-width='1.2'/></svg>`
-);
-const OLAS = (color, espuma) =>
+const pez = (cuerpo, aleta, franja) =>
   svg(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='16'><path d='M0 8 C10 0 20 0 30 8 S50 16 60 8 S75 2 80 6 V16 H0Z' fill='${color}'/><path d='M0 8 C10 0 20 0 30 8 S50 16 60 8 S75 2 80 6' fill='none' stroke='${espuma}' stroke-width='1.5'/></svg>`
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 36'><defs><linearGradient id='c' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='${cuerpo}'/><stop offset='1' stop-color='${aleta}'/></linearGradient></defs><path d='M44 18 L58 6 L55 18 L58 30 Z' fill='${aleta}'/><path d='M30 6 Q36 1 40 8 Z' fill='${aleta}' opacity='.85'/><ellipse cx='26' cy='18' rx='20' ry='12' fill='url(#c)'/><path d='M22 6.5 Q18 18 22 29.5' stroke='${franja}' stroke-width='3.2' fill='none' opacity='.9'/><path d='M32 7.5 Q29 18 32 28.5' stroke='${franja}' stroke-width='2.4' fill='none' opacity='.75'/><path d='M27 22 Q31 26 36 23' stroke='${aleta}' stroke-width='2' fill='none'/><circle cx='12.5' cy='15.5' r='3' fill='#fff'/><circle cx='11.8' cy='15.5' r='1.7' fill='#0b1d2a'/><ellipse cx='20' cy='12' rx='7' ry='2.2' fill='#fff' opacity='.25'/></svg>`
   );
-const OLAS_ABAJO = OLAS("#0b5a7a", "rgba(230,255,252,0.7)");
-const OLAS_ARRIBA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='16'><path d='M0 8 C10 16 20 16 30 8 S50 0 60 8 S75 14 80 10 V0 H0Z' fill='#0b5a7a'/><path d='M0 8 C10 16 20 16 30 8 S50 0 60 8 S75 14 80 10' fill='none' stroke='rgba(230,255,252,0.7)' stroke-width='1.5'/></svg>`
+const PEZ_CORAL = pez("#ff8fa3", "#e5486a", "#ffffff");
+const PEZ_PAYASO = pez("#ffa24c", "#e2630f", "#ffffff");
+const PEZ_AMARILLO = pez("#fde047", "#eab308", "#1d4ed8");
+const PEZ_TURQUESA = pez("#7ff5e3", "#14b8a6", "#0e7490");
+
+const ALGA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 120'><g fill='none' stroke-linecap='round'><path d='M14 120 C4 96 24 82 12 60 C2 40 20 26 12 4' stroke='#1f9d55' stroke-width='7'/><path d='M14 120 C4 96 24 82 12 60 C2 40 20 26 12 4' stroke='#4ade80' stroke-width='2.2' opacity='.6'/><path d='M32 120 C42 98 24 84 36 62 C46 44 30 30 40 12' stroke='#15803d' stroke-width='8'/><path d='M32 120 C42 98 24 84 36 62 C46 44 30 30 40 12' stroke='#86efac' stroke-width='2.2' opacity='.5'/><path d='M50 120 C44 104 56 92 48 76' stroke='#22c55e' stroke-width='6'/></g></svg>`
 );
-const CONCHA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 21 L3 9 Q12 0 21 9 Z' fill='rgba(253,224,200,0.75)' stroke='rgba(251,113,133,0.8)' stroke-width='1'/><g stroke='rgba(251,113,133,0.7)' stroke-width='0.9'><path d='M12 21 L7 6'/><path d='M12 21 L12 4'/><path d='M12 21 L17 6'/></g></svg>`
+const ESTRELLA_MAR = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><defs><radialGradient id='e' cx='.5' cy='.45' r='.6'><stop offset='0' stop-color='#ffb38a'/><stop offset='1' stop-color='#f0603a'/></radialGradient></defs><path d='M20 2 L24.6 14.4 L37.8 15.2 L27.4 23.4 L30.9 36.2 L20 28.9 L9.1 36.2 L12.6 23.4 L2.2 15.2 L15.4 14.4 Z' fill='url(#e)' stroke='#c2410c' stroke-width='1.2' stroke-linejoin='round'/><g fill='#ffe4d1'><circle cx='20' cy='9' r='1'/><circle cx='20' cy='14' r='1'/><circle cx='29' cy='17' r='1'/><circle cx='11' cy='17' r='1'/><circle cx='25' cy='26' r='1'/><circle cx='15' cy='26' r='1'/><circle cx='20' cy='20' r='1.3'/></g></svg>`
 );
-const CAUSTICAS =
-  "radial-gradient(ellipse 500px 260px at 20% 10%, rgba(94,234,212,0.12), transparent 65%), radial-gradient(ellipse 600px 300px at 85% 30%, rgba(103,232,249,0.08), transparent 65%)";
+const CONCHA_PERLA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 34'><defs><linearGradient id='n' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#fff1f2'/><stop offset='.5' stop-color='#fbcfe8'/><stop offset='1' stop-color='#f9a8d4'/></linearGradient><radialGradient id='p' cx='.35' cy='.3' r='.7'><stop offset='0' stop-color='#ffffff'/><stop offset='.6' stop-color='#eef2ff'/><stop offset='1' stop-color='#c7d2fe'/></radialGradient></defs><path d='M20 32 L3 13 Q20 -6 37 13 Z' fill='url(#n)' stroke='#db2777' stroke-width='1.1' stroke-linejoin='round'/><g stroke='#ec4899' stroke-width='.9' opacity='.7'><path d='M20 32 L8 9'/><path d='M20 32 L14 5'/><path d='M20 32 L20 3.5'/><path d='M20 32 L26 5'/><path d='M20 32 L32 9'/></g><path d='M14 32 H26 L23 29 H17 Z' fill='#f9a8d4' stroke='#db2777' stroke-width='.9'/><circle cx='20' cy='20' r='4.6' fill='url(#p)' stroke='#a5b4fc' stroke-width='.6'/><circle cx='18.6' cy='18.6' r='1.3' fill='#fff'/></svg>`
+);
+const PERLAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='16' height='12'><defs><radialGradient id='p' cx='.35' cy='.3' r='.7'><stop offset='0' stop-color='#ffffff'/><stop offset='.65' stop-color='#eef2ff'/><stop offset='1' stop-color='#a5b4fc'/></radialGradient></defs><path d='M0 6 H16' stroke='rgba(253,230,138,0.6)' stroke-width='1'/><circle cx='8' cy='6' r='4.6' fill='url(#p)'/><circle cx='6.6' cy='4.6' r='1.1' fill='#fff'/></svg>`
+);
+const ANCLA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 46'><g fill='none' stroke='#e2e8f0' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'><circle cx='20' cy='6.5' r='4'/><path d='M20 10.5 V42'/><path d='M11 17 H29'/><path d='M5 30 Q8 42 20 42 Q32 42 35 30'/><path d='M2 33 L5 29 L9 32'/><path d='M38 33 L35 29 L31 32'/></g></svg>`
+);
+const SALVAVIDAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'><circle cx='22' cy='22' r='16' fill='none' stroke='#ffffff' stroke-width='9'/><g stroke='#ef4444' stroke-width='9' fill='none'><path d='M22 6 A16 16 0 0 1 33.3 10.7'/><path d='M38 22 A16 16 0 0 1 33.3 33.3'/><path d='M22 38 A16 16 0 0 1 10.7 33.3'/><path d='M6 22 A16 16 0 0 1 10.7 10.7'/></g><circle cx='22' cy='22' r='20.5' fill='none' stroke='rgba(0,0,0,0.25)' stroke-width='1'/><path d='M22 1.5 Q2 2 1.5 22' stroke='#d9b382' stroke-width='1.6' fill='none' stroke-dasharray='3 2'/></svg>`
+);
+const SOGA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='20' height='10'><rect width='20' height='10' fill='#b98a52'/><path d='M-2 10 L8 0 M8 10 L18 0 M18 10 L28 0' stroke='#e7c48f' stroke-width='3.2'/><path d='M-2 10 L8 0 M8 10 L18 0 M18 10 L28 0' stroke='#7a5530' stroke-width='0.8' transform='translate(2.4 0)'/></svg>`
+);
+// Olas en 3 capas (fondo oscuro, medio turquesa, espuma al frente).
+const ola = (ancho, alto, fill, espuma) =>
+  svg(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${ancho}' height='${alto}' preserveAspectRatio='none'><path d='M0 ${alto * 0.45} C${ancho * 0.25} ${alto * 0.05} ${ancho * 0.25} ${alto * 0.05} ${ancho * 0.5} ${alto * 0.45} S${ancho * 0.75} ${alto * 0.85} ${ancho} ${alto * 0.45} V${alto} H0 Z' fill='${fill}'/>${
+      espuma
+        ? `<path d='M0 ${alto * 0.45} C${ancho * 0.25} ${alto * 0.05} ${ancho * 0.25} ${alto * 0.05} ${ancho * 0.5} ${alto * 0.45} S${ancho * 0.75} ${alto * 0.85} ${ancho} ${alto * 0.45}' fill='none' stroke='${espuma}' stroke-width='2.2' stroke-linecap='round'/>`
+        : ""
+    }</svg>`
+  );
+const OLA_FONDO = ola(220, 26, "#0b4f6c", null);
+const OLA_MEDIA = ola(160, 22, "#0e7490", "rgba(165,243,252,0.55)");
+const OLA_FRENTE = ola(120, 16, "#0c3b55", "rgba(240,253,250,0.9)");
+const RED_PESCA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><path d='M0 14 L14 0 L28 14 L14 28 Z' fill='none' stroke='rgba(220,255,250,0.12)' stroke-width='1.2'/><circle cx='14' cy='0' r='1.3' fill='rgba(220,255,250,0.18)'/></svg>`
+);
+const CAUSTICAS_SVG = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><defs><filter id='b' x='-10%' y='-10%' width='120%' height='120%'><feGaussianBlur stdDeviation='2.2'/></filter></defs><g fill='none' stroke='rgba(190,255,248,0.6)' stroke-width='4' stroke-linecap='round' filter='url(#b)'><path d='M10 40 Q40 10 70 38 T130 36 T190 44 T240 30'/><path d='M0 110 Q30 80 64 104 T120 112 T182 96 T240 116'/><path d='M14 180 Q44 150 80 176 T140 184 T200 166 T240 186'/><path d='M40 0 Q20 40 46 70 T44 130 T60 190 T40 240'/><path d='M120 0 Q140 36 116 72 T128 140 T112 200 T128 240'/><path d='M196 0 Q176 44 204 80 T190 150 T208 210 T194 240'/></g></svg>`
+);
+const ARENA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='40'><g fill='none' stroke='rgba(150,110,60,0.35)' stroke-width='1.4' stroke-linecap='round'><path d='M4 10 Q30 4 56 10 T110 10'/><path d='M14 24 Q40 18 66 24 T120 22'/><path d='M0 36 Q24 30 50 36 T100 35'/></g><g fill='rgba(255,255,255,0.35)'><circle cx='20' cy='16' r='.8'/><circle cx='78' cy='30' r='.9'/><circle cx='98' cy='14' r='.7'/></g></svg>`
+);
+const ARENA_COLOR = "linear-gradient(180deg, #ecd6a6 0%, #dcbc85 100%)";
+const AGUA_PROFUNDA = "linear-gradient(180deg, #0f7491 0%, #0a5574 22%, #073b5a 50%, #04253d 78%, #021a2c 100%)";
+const RAYOS =
+  "linear-gradient(100deg, transparent 0 16%, rgba(190,255,250,0.07) 19%, transparent 25%), linear-gradient(80deg, transparent 0 52%, rgba(190,255,250,0.06) 55%, transparent 61%), linear-gradient(95deg, transparent 0 72%, rgba(190,255,250,0.05) 74%, transparent 79%)";
+const SUPERFICIE = "radial-gradient(ellipse 130% 45% at 50% -12%, rgba(140,245,235,0.38), transparent 62%)";
+const VIDRIO_MAR = "linear-gradient(170deg, rgba(14,116,144,0.62) 0%, rgba(6,53,82,0.82) 100%)";
 
 const marino = (S) =>
   construir(S, {
-    raiz: [capa(CAUSTICAS), capa("linear-gradient(180deg, #032235 0%, #021a29 50%, #04314a 100%)")],
-    cabecera: [capa(OLAS_ABAJO, "left 0 bottom 0", "80px 16px", "repeat-x"), trama(RED_PESCA, "28px 28px"), capa("linear-gradient(180deg, #0a3d5a 0%, #06405c 100%)")],
-    cabeceraEstilo: "padding-bottom: 30px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(0,0,0,0.35);",
-    pie: [capa(OLAS_ARRIBA, "0 0", "80px 16px", "repeat-x"), trama(RED_PESCA, "28px 28px"), capa("linear-gradient(180deg, #06405c, #032235)")],
-    pieEstilo: "padding-top: 30px !important; border-top: none !important;",
-    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.22), transparent 55%)"), capa("linear-gradient(180deg, #0f6f86, #0a4d63)")],
-    botonEstilo: "border: 1px solid rgba(94,234,212,0.7) !important; color: #c9fbf3 !important; box-shadow: 0 0 12px rgba(94,234,212,0.25) !important; border-radius: 999px !important;",
-    botonPieEstilo: "border: 1px solid rgba(94,234,212,0.7) !important; color: #c9fbf3 !important; box-shadow: 0 0 14px rgba(94,234,212,0.3) !important;",
-    panel: [capa(CONCHA, "right 8px top 8px", "18px 18px"), trama(RED_PESCA, "28px 28px"), capa("linear-gradient(170deg, rgba(10,77,99,0.75) 0%, rgba(3,34,53,0.9) 100%)")],
-    panelEstilo: "border: 1px solid rgba(94,234,212,0.35) !important; box-shadow: 0 6px 16px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08) !important;",
-    modal: [capa(OLAS_ABAJO, "left 0 bottom 0", "80px 16px", "repeat-x"), capa(CAUSTICAS), capa("linear-gradient(170deg, #0a3d5a 0%, #032235 100%)")],
-    modalEstilo: "border: 1px solid rgba(94,234,212,0.5) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important; padding-bottom: 34px !important;",
-    tituloEstilo: "color: #e6fffb !important; border-bottom: 2px solid rgba(94,234,212,0.5); padding-bottom: 8px;",
-    pestana: [capa("linear-gradient(180deg, #0c566e, #083d50)")],
-    pestanaEstilo: "border: 1px solid rgba(94,234,212,0.35) !important; color: #c9fbf3 !important;",
-    activa: [capa("linear-gradient(180deg, #fb7185, #e11d48)")],
-    activaEstilo: "border-color: #9f1239 !important; color: #ffffff !important; box-shadow: 0 0 16px rgba(251,113,133,0.5) !important;",
-    campoEstilo: "background: rgba(2,26,41,0.85) !important; border: 1px solid rgba(94,234,212,0.35) !important;",
+    // En la app real el agua la dibuja la ESCENA (fija, detrás de todo);
+    // este fondo queda para la vista previa del Perfil.
+    raiz: [capa(SUPERFICIE), capa(RAYOS), capa(CAUSTICAS_SVG, "0 0", "240px 240px", "repeat"), capa(AGUA_PROFUNDA)],
+    cabecera: [
+      capa(SOGA, "left 0 top 0", "20px 10px", "repeat-x"),
+      capa(ANCLA, "left 4% bottom 26px", "30px 34px"),
+      capa(SALVAVIDAS, "right 4% bottom 24px", "38px 38px"),
+      capa(OLA_FRENTE, "left 0 bottom 0", "120px 16px", "repeat-x"),
+      capa(OLA_MEDIA, "left 0 bottom 6px", "160px 22px", "repeat-x"),
+      capa(OLA_FONDO, "left 0 bottom 12px", "220px 26px", "repeat-x"),
+      trama(RED_PESCA, "28px 28px"),
+      capa("linear-gradient(180deg, rgba(8,58,86,0.88) 0%, rgba(11,90,122,0.78) 100%)"),
+    ],
+    cabeceraEstilo:
+      "padding-top: 26px !important; padding-bottom: 46px !important; border-bottom: none !important; animation: tz-mar-olas 9s linear infinite;",
+    pie: [
+      capa(ESTRELLA_MAR, "left 8% bottom 10px", "30px 30px"),
+      capa(CONCHA_PERLA, "right 10% bottom 8px", "30px 26px"),
+      capa(ESTRELLA_MAR, "right 22% bottom 14px", "20px 20px"),
+      capa(ALGA, "left 0 bottom 0", "46px 92px"),
+      capa(ALGA, "right 0 bottom 0", "46px 92px"),
+      capa(ARENA, "left 0 bottom 0", "120px 40px", "repeat-x"),
+      capa(ARENA, "left 60px bottom 36px", "120px 40px", "repeat-x"),
+      capa(ARENA_COLOR, "left 0 bottom 0", "100% 46%"),
+      capa("linear-gradient(180deg, rgba(4,37,61,0.0) 0%, rgba(4,37,61,0.55) 50%)", "left 0 top 0", "100% 60%"),
+    ],
+    pieEstilo: "border-top: none !important; padding-bottom: calc(46px + env(safe-area-inset-bottom, 0px)) !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.24), transparent 55%)"), capa("linear-gradient(180deg, #0f7a92, #0a5068)")],
+    botonEstilo:
+      "border: 2px dashed rgba(231,196,143,0.9) !important; color: #e6fffb !important; border-radius: 999px !important; box-shadow: 0 0 0 2px rgba(10,80,104,0.9), 0 0 14px rgba(94,234,212,0.3) !important; text-shadow: 0 1px 2px rgba(0,0,0,0.6);",
+    botonPie: [capa("linear-gradient(180deg, rgba(255,255,255,0.22), transparent 55%)"), capa("linear-gradient(180deg, #0f7a92, #0a5068)")],
+    botonPieEstilo:
+      "border: 2px dashed rgba(231,196,143,0.9) !important; color: #e6fffb !important; box-shadow: 0 0 0 2px rgba(10,80,104,0.9), 0 6px 14px rgba(0,0,0,0.4) !important; text-shadow: 0 1px 2px rgba(0,0,0,0.6);",
+    panel: [
+      capa(CONCHA_PERLA, "right 6px top 6px", "26px 22px"),
+      capa(ALGA, "left 2px bottom 0", "16px 32px"),
+      trama(RED_PESCA, "28px 28px"),
+      capa(VIDRIO_MAR),
+    ],
+    panelEstilo:
+      "border: 1px solid rgba(125,245,230,0.4) !important; box-shadow: 0 8px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.12) !important; backdrop-filter: blur(3px);",
+    modal: [
+      capa(ESTRELLA_MAR, "left 10px top 10px", "26px 26px"),
+      capa(ALGA, "left 0 bottom 0", "40px 80px"),
+      capa(ALGA, "right 0 bottom 0", "40px 80px"),
+      capa(SUPERFICIE),
+      capa(CAUSTICAS_SVG, "0 0", "240px 240px", "repeat"),
+      capa(AGUA_PROFUNDA),
+    ],
+    modalEstilo: "border: 1px solid rgba(125,245,230,0.55) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6), inset 0 0 40px rgba(94,234,212,0.08) !important;",
+    tituloEstilo:
+      `color: #f0fffd !important; background: ${PERLAS} left 0 bottom 0 / 16px 12px repeat-x !important; padding-bottom: 18px; text-shadow: 0 1px 3px rgba(0,0,0,0.5);`,
+    pestana: [capa("linear-gradient(180deg, rgba(255,255,255,0.14), transparent 60%)"), capa("linear-gradient(180deg, #0c5f78, #083d55)")],
+    pestanaEstilo: "border: 1px solid rgba(125,245,230,0.4) !important; color: #c9fbf3 !important;",
+    activa: [capa(PERLAS, "left 0 bottom 3px", "16px 12px", "repeat-x"), capa("linear-gradient(180deg, #ff8fa3, #f43f5e)")],
+    activaEstilo: "border-color: #9f1239 !important; color: #ffffff !important; box-shadow: 0 0 18px rgba(251,113,133,0.55) !important; text-shadow: 0 1px 2px rgba(0,0,0,0.35);",
+    campoEstilo: "background: rgba(2,26,41,0.85) !important; border: 1px solid rgba(125,245,230,0.4) !important;",
+    extra: (S) => `
+@keyframes tz-mar-olas {
+  from { background-position: left 0 top 0, left 4% bottom 26px, right 4% bottom 24px, left 0 bottom 0, left 0 bottom 6px, left 0 bottom 12px, 0 0, 0 0; }
+  to { background-position: left 0 top 0, left 4% bottom 26px, right 4% bottom 24px, left -120px bottom 0, left 160px bottom 6px, left -220px bottom 12px, 0 0, 0 0; }
+}
+${en(S, ".tz-logo")} { filter: drop-shadow(0 0 16px rgba(94,234,212,0.45)) drop-shadow(0 4px 10px rgba(0,0,0,0.5)) !important; }
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 30px !important; }
+${en(S, ".tz-table-wrap")} { background: ${VIDRIO_MAR}; border: 1px solid rgba(125,245,230,0.3); border-radius: 14px; backdrop-filter: blur(4px); }
+/* ---- Escena (solo en la app real; TemaNegocio la dibuja) ---- */
+${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+${en(S, ".tz-esc-agua")} { position: absolute; inset: 0; background: ${SUPERFICIE}, ${RAYOS}, ${AGUA_PROFUNDA}; }
+${en(S, ".tz-esc-rayos")} {
+  position: absolute; inset: -10% -20%;
+  background: linear-gradient(100deg, transparent 0 30%, rgba(200,255,250,0.10) 34%, transparent 42%), linear-gradient(78deg, transparent 0 58%, rgba(200,255,250,0.08) 61%, transparent 68%);
+  animation: tz-mar-rayos 12s ease-in-out infinite alternate;
+}
+${en(S, ".tz-esc-causticas")} {
+  position: absolute; inset: -240px;
+  background: ${CAUSTICAS_SVG} 0 0 / 240px 240px repeat;
+  opacity: 0.28; mix-blend-mode: screen;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
+  animation: tz-mar-causticas 26s linear infinite;
+}
+${en(S, ".tz-esc-pez")} {
+  position: absolute; left: 0; top: var(--y);
+  width: var(--tam); height: calc(var(--tam) * 0.6);
+  background: var(--img) center / contain no-repeat;
+  opacity: var(--op, 0.85);
+  animation: tz-mar-nadar var(--dur) linear var(--delay) infinite;
+  will-change: transform;
+}
+${en(S, ".tz-esc-burbuja")} {
+  position: absolute; bottom: -24px; left: var(--x);
+  width: var(--tam); height: var(--tam); border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, rgba(255,255,255,0.95) 0 14%, rgba(200,255,250,0.35) 16% 55%, rgba(200,255,250,0.12) 70%, rgba(255,255,255,0.5) 100%);
+  box-shadow: inset 0 0 2px rgba(255,255,255,0.6);
+  animation: tz-mar-subir var(--dur) linear var(--delay) infinite;
+  will-change: transform;
+}
+${en(S, ".tz-esc-alga")} {
+  position: absolute; bottom: -6px; width: var(--tam); height: calc(var(--tam) * 2);
+  background: ${ALGA} center bottom / contain no-repeat;
+  transform-origin: 50% 100%;
+  animation: tz-mar-mecer var(--dur) ease-in-out var(--delay) infinite alternate;
+  opacity: 0.9;
+}
+${en(S, ".tz-esc-alga-izq")} { left: var(--x); }
+${en(S, ".tz-esc-alga-der")} { right: var(--x); }
+@keyframes tz-mar-rayos { from { transform: translateX(-3%) skewX(-2deg); opacity: 0.7; } to { transform: translateX(3%) skewX(2deg); opacity: 1; } }
+@keyframes tz-mar-causticas { from { transform: translate(0, 0); } to { transform: translate(240px, 240px); } }
+@keyframes tz-mar-nadar {
+  0% { transform: translate(110vw, 0) scaleX(1); }
+  25% { transform: translate(75vw, -14px); }
+  50% { transform: translate(40vw, 6px); }
+  75% { transform: translate(5vw, -10px); }
+  100% { transform: translate(-25vw, 0); }
+}
+@keyframes tz-mar-subir {
+  0% { transform: translate(0, 0); opacity: 0; }
+  10% { opacity: 0.9; }
+  50% { transform: translate(14px, -55vh); }
+  90% { opacity: 0.8; }
+  100% { transform: translate(-6px, -112vh); opacity: 0; }
+}
+@keyframes tz-mar-mecer { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }`,
   });
+
+// Elementos de la escena de Marino (TemaNegocio los dibuja como <div>).
+const ESCENA_MARINO = [
+  { clase: "tz-esc-agua" },
+  { clase: "tz-esc-rayos" },
+  { clase: "tz-esc-causticas" },
+  { clase: "tz-esc-pez", estilo: { "--y": "18%", "--tam": "58px", "--dur": "34s", "--delay": "-4s", "--img": PEZ_CORAL } },
+  { clase: "tz-esc-pez", estilo: { "--y": "36%", "--tam": "40px", "--dur": "26s", "--delay": "-17s", "--img": PEZ_AMARILLO, "--op": 0.75 } },
+  { clase: "tz-esc-pez", estilo: { "--y": "55%", "--tam": "72px", "--dur": "44s", "--delay": "-28s", "--img": PEZ_PAYASO } },
+  { clase: "tz-esc-pez", estilo: { "--y": "68%", "--tam": "34px", "--dur": "22s", "--delay": "-9s", "--img": PEZ_TURQUESA, "--op": 0.7 } },
+  { clase: "tz-esc-pez", estilo: { "--y": "82%", "--tam": "50px", "--dur": "38s", "--delay": "-21s", "--img": PEZ_CORAL, "--op": 0.65 } },
+  { clase: "tz-esc-pez", estilo: { "--y": "27%", "--tam": "30px", "--dur": "20s", "--delay": "-12s", "--img": PEZ_TURQUESA, "--op": 0.6 } },
+  ...[
+    ["6%", "9px", "14s", "-2s"],
+    ["11%", "6px", "11s", "-7s"],
+    ["23%", "12px", "17s", "-11s"],
+    ["37%", "7px", "12s", "-4s"],
+    ["49%", "10px", "15s", "-9s"],
+    ["61%", "6px", "10s", "-1s"],
+    ["72%", "11px", "16s", "-13s"],
+    ["84%", "8px", "13s", "-6s"],
+    ["93%", "9px", "15s", "-3s"],
+  ].map(([x, tam, dur, delay]) => ({ clase: "tz-esc-burbuja", estilo: { "--x": x, "--tam": tam, "--dur": dur, "--delay": delay } })),
+  { clase: "tz-esc-alga tz-esc-alga-izq", estilo: { "--x": "-6px", "--tam": "70px", "--dur": "4.5s", "--delay": "0s" } },
+  { clase: "tz-esc-alga tz-esc-alga-izq", estilo: { "--x": "40px", "--tam": "46px", "--dur": "3.8s", "--delay": "-1.2s" } },
+  { clase: "tz-esc-alga tz-esc-alga-der", estilo: { "--x": "-4px", "--tam": "64px", "--dur": "5s", "--delay": "-2s" } },
+  { clase: "tz-esc-alga tz-esc-alga-der", estilo: { "--x": "46px", "--tam": "40px", "--dur": "4.2s", "--delay": "-0.6s" } },
+];
 
 // =====================================================================
 // Catálogo
@@ -394,9 +578,10 @@ export const TEMATICOS = [
     id: "marino",
     rubro: "cevicheria",
     nombre: "Marino",
-    descripcion: "Mar turquesa, olas, redes de pesca y conchas",
+    descripcion: "Mar profundo, peces, barco, arena, conchas y perlas",
     paleta: { id: "tematico-marino", nombre: "Marino", modo: "oscuro", principal: "#5eead4", secundario: "#fb7185", acento: "#fde68a", botones: "#67e8f9", fondo1: "#031b2b", fondo2: "#06334d" },
-    muestra: `${OLAS_ABAJO} 0 bottom / 60px 12px repeat-x, ${CONCHA} right 8px top 8px / 18px 18px no-repeat, ${RED_PESCA} 0 0 / 22px 22px, linear-gradient(180deg, #0a3d5a, #032235)`,
+    muestra: `${PEZ_CORAL} right 12px top 10px / 34px 20px no-repeat, ${CONCHA_PERLA} right 54px bottom 10px / 22px 19px no-repeat, ${ESTRELLA_MAR} left 6px bottom 6px / 18px 18px no-repeat, ${OLA_FRENTE} left 0 top 0 / 60px 10px repeat-x, ${SUPERFICIE}, ${AGUA_PROFUNDA}`,
+    escena: ESCENA_MARINO,
     css: marino,
   },
 ];
