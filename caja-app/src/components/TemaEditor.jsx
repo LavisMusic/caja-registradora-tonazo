@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Save, RotateCcw, Check, Moon, Sun, LogOut, Wallet, ShoppingCart, Sparkles } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { PRESETS_TEMA, TEMA_POR_DEFECTO, resolverPaleta, variablesTema } from "../lib/tema";
@@ -51,47 +51,84 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
   const [ok, setOk] = useState("");
   const [rubro, setRubro] = useState({ clave: null, nombre: "" });
 
+  const [aviso, setAviso] = useState("");
+  // Para comparar en el callback de tiempo real sin re-suscribirse.
+  const estado = useRef({ guardado: null, tema: TEMA_POR_DEFECTO, rubroId: null });
+  estado.current.guardado = guardado;
+  estado.current.tema = tema;
+
   // Rubro del negocio (para sus temáticos). Consulta tolerante: sin la
   // migración 0097 no hay clave y simplemente no se muestran temáticos.
-  useEffect(() => {
-    let vivo = true;
-    supabase
-      .from("negocios")
-      .select("rubro_id")
-      .eq("id", negocioId)
-      .maybeSingle()
-      .then(async ({ data }) => {
-        if (!data?.rubro_id) return;
-        const { data: r, error: err } = await supabase.from("rubros").select("clave, nombre").eq("id", data.rubro_id).maybeSingle();
-        if (vivo && !err && r) setRubro({ clave: r.clave || null, nombre: r.nombre || "" });
-      });
-    return () => {
-      vivo = false;
-    };
-  }, [negocioId]);
+  const cargarRubro = async (rubroId) => {
+    estado.current.rubroId = rubroId;
+    if (!rubroId) return null;
+    const { data: r, error: err } = await supabase.from("rubros").select("clave, nombre").eq("id", rubroId).maybeSingle();
+    if (err || !r) return null;
+    const nuevo = { clave: r.clave || null, nombre: r.nombre || "" };
+    setRubro(nuevo);
+    return nuevo;
+  };
+
+  const aplicarGuardado = (t, { forzar = false } = {}) => {
+    const sinCambiosPropios = mismoTema(estado.current.tema, estado.current.guardado || TEMA_POR_DEFECTO);
+    setGuardado(t);
+    // Si el admin estaba probando otro tema sin guardar, no se le pisa
+    // la selección (salvo que el tema guardado lo cambie la base).
+    if (forzar || sinCambiosPropios) setTema(t || TEMA_POR_DEFECTO);
+    if (t?.principal) {
+      setColorLibre(t.principal);
+      setModoLibre(t.modo || "oscuro");
+    }
+  };
 
   useEffect(() => {
     let vivo = true;
     supabase
       .from("negocios")
-      .select("tema")
+      .select("tema, rubro_id")
       .eq("id", negocioId)
       .maybeSingle()
-      .then(({ data, error: err }) => {
+      .then(async ({ data, error: err }) => {
         if (!vivo) return;
         if (err) setError("Para usar temas falta correr la migración 0096 en Supabase.");
-        const t = data?.tema || null;
-        setGuardado(t);
-        setTema(t || TEMA_POR_DEFECTO);
-        if (t?.principal) {
-          setColorLibre(t.principal);
-          setModoLibre(t.modo || "oscuro");
-        }
-        setCargando(false);
+        aplicarGuardado(data?.tema || null, { forzar: true });
+        await cargarRubro(data?.rubro_id || null);
+        if (vivo) setCargando(false);
       });
+
+    // TIEMPO REAL: si el super admin cambia el rubro (o el tema vuelve al
+    // original porque era un temático del rubro anterior — migración
+    // 0098), la pestaña se actualiza sola, sin cerrar el Perfil.
+    const canal = supabase
+      .channel(`tema-negocio-${negocioId}-${Math.random().toString(36).slice(2, 10)}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "negocios", filter: `id=eq.${negocioId}` },
+        async ({ new: fila }) => {
+          if (!vivo || !fila) return;
+          const cambioRubro = "rubro_id" in fila && fila.rubro_id !== estado.current.rubroId;
+          const teniaTematico = !!tematicoDe(estado.current.guardado);
+          if ("tema" in fila && !mismoTema(fila.tema || null, estado.current.guardado || null)) {
+            aplicarGuardado(fila.tema || null, { forzar: cambioRubro });
+          }
+          if (cambioRubro) {
+            const nuevo = await cargarRubro(fila.rubro_id);
+            if (!vivo || !nuevo) return;
+            const cantidad = tematicosDelRubro(nuevo.clave).length;
+            setAviso(
+              `Tu rubro ahora es ${nuevo.nombre}.` +
+                (teniaTematico && !tematicoDe(fila.tema) ? " Tu tema temático era del rubro anterior: volviste al tema original." : "") +
+                (cantidad > 0 ? ` Tienes ${cantidad === 1 ? "un tema temático" : `${cantidad} temas temáticos`} para tu rubro.` : "")
+            );
+          }
+        }
+      )
+      .subscribe();
     return () => {
       vivo = false;
+      supabase.removeChannel(canal);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [negocioId]);
 
   const vars = useMemo(() => variablesTema(tema), [tema]);
@@ -126,6 +163,7 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
 
   return (
     <div className="tz-add-entry">
+      {aviso && <p className="tz-success" style={{ margin: 0 }}>{aviso}</p>}
       <p className="tz-stock-editor-sub" style={{ margin: 0 }}>
         Los colores de tu caja (admin y cajeros) y de tu tienda en línea. El texto siempre se ajusta para que se lea bien.
       </p>

@@ -142,6 +142,12 @@ export default function CatalogPage() {
             const next = { ...(prev || {}), ...fila };
             return { ...next, plan_estado: calcularEstadoPlan(next) };
           });
+          // Tema y descripciones (Perfil) también en vivo: si el negocio
+          // cambia de tema o de rubro, el cliente lo ve sin recargar.
+          if ("tema" in fila) setTemaTienda(fila.tema || null);
+          if (Array.isArray(fila.descripciones)) {
+            setPerfilPublico((prev) => ({ ...prev, descripciones: fila.descripciones }));
+          }
         }
       )
       .subscribe();
