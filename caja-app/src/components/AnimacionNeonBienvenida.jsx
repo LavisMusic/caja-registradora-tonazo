@@ -962,6 +962,11 @@ export default function AnimacionNeonBienvenida({
               -webkit-background-clip: text;
               background-clip: text;
               color: transparent;
+              /* El relleno de las letras es SIEMPRE el degradado: la regla
+                 general ".tz-root h1 { color: var(--text) }" (Styles.jsx)
+                 le gana a "color: transparent" por especificidad, y con un
+                 tema claro --text es oscuro → el nombre salía negro. */
+              -webkit-text-fill-color: transparent;
               /* Bug de diseño reportado: "glow central... cortes en los
                  bordes" — filter:drop-shadow() sobre un elemento con
                  background-clip:text hace que varios navegadores

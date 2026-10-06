@@ -82,6 +82,18 @@ ${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { ${fondo([capa(img, `${x} bot
 ${en(S, ".tz-header + .tz-admin-filterbar")} { ${fondo([capa(img, `${x} top ${-enCabecera}px`, tam), ...(d.barra || d.panel)])} border-top-color: transparent !important; }`;
 }
 
+// Tarjetas SIN objetos temáticos (zapatillas, cupcakes, anillos…): las
+// de producto, el saldo del cliente en la tienda, las de "Mis ventas" y
+// las del gestor de usuarios. Conservan el material (madera, jean,
+// terciopelo…) pero sin los dibujos sueltos de las esquinas.
+const SIN_OBJETOS = (S) =>
+  [".tz-card", ".tz-receipt", ".tz-history-row", ".tz-filtrobar-saldo .tz-stat-chip"].map((c) => en(S, c)).join(", ");
+const esObjeto = (c) => c.img.startsWith('url("data:image/svg') && (c.rep || "no-repeat") === "no-repeat";
+const sinObjetos = (capas) => {
+  const quedan = capas.filter((c) => !esObjeto(c));
+  return quedan.length ? quedan : capas;
+};
+
 function construir(S, d) {
   return `
 ${en(S)} { ${fondo(d.raiz)} }
@@ -92,6 +104,7 @@ ${BOTONES(S)} { ${fondo(d.boton)} ${d.botonEstilo || ""} }
 ${en(S, ".tz-header-btn:hover")}, ${en(S, ".tz-scan-btn:not(.tz-payment-save):hover")} { filter: brightness(1.12); }
 ${en(S, ".tz-footer-btn")} { ${fondo(d.botonPie || d.boton)} ${d.botonPieEstilo || d.botonEstilo || ""} }
 ${PANELES(S)} { ${fondo(d.panel)} ${d.panelEstilo || ""} }
+${SIN_OBJETOS(S)} { ${fondo(sinObjetos(d.panel))} }
 ${en(S, ".tz-modal")} { ${fondo(velar(d.modal || d.panel))} ${d.modalEstilo || d.panelEstilo || ""} }
 ${en(S, ".tz-table-wrap")} { background: rgba(var(--base-rgb), 0.8) !important; backdrop-filter: blur(3px); box-shadow: 0 8px 22px rgba(0,0,0,0.28); }
 ${en(S, ".tz-modal h2")} { ${d.tituloEstilo || ""} }
@@ -946,7 +959,6 @@ const tropical = (S) =>
       capa(JUGO, "left 0 bottom 0", "120px 18px", "repeat-x"),
       capa("radial-gradient(ellipse 260px 150px at 50% 45%, rgba(21,101,52,0.95) 0%, rgba(21,101,52,0.75) 55%, transparent 100%)"),
       capa("linear-gradient(180deg, rgba(21,128,61,0.55), rgba(22,101,52,0.55))"),
-      capa(BAYAS, "105px 50px", "210px 100px", "repeat"),
       capa(RODAJAS, "0 0", "210px 100px", "repeat"),
       capa("linear-gradient(180deg, #15803d 0%, #166534 100%)"),
     ],
@@ -957,9 +969,6 @@ const tropical = (S) =>
     botonEstilo: "border: 1px solid #3f6212 !important; color: #14290a !important; box-shadow: 0 3px 8px rgba(0,0,0,0.35) !important; border-radius: 999px !important;",
     botonPieEstilo: "border-radius: 999px !important; border: 1px solid #3f6212 !important; color: #14290a !important; box-shadow: 0 4px 10px rgba(0,0,0,0.4) !important;",
     panel: [capa(FRUTOS_ESQUINA, "right 6px top 6px", "30px 26px"), capa(VIDRIO_TROPICAL)],
-    // Los frutos de la barra de filtros van montados sobre su borde.
-    barra: [capa(VIDRIO_TROPICAL)],
-    puente: { img: FRUTOS_ESQUINA, ancho: 44, alto: 39, enCabecera: 20 },
     panelEstilo: "border: 1px solid rgba(190,242,100,0.4) !important; box-shadow: 0 8px 18px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12) !important; backdrop-filter: blur(3px);",
     modal: [capa(HOJA_SI, "left -30px top -30px", "110px 110px"), capa(HOJA_ID, "right -30px bottom -30px", "110px 110px"), capa(FRUTOS_ESQUINA, "left 12px bottom 12px", "34px 30px"), capa("linear-gradient(170deg, #0f3d22 0%, #06200f 100%)")],
     modalEstilo: "border: 1px solid rgba(190,242,100,0.5) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;",
@@ -969,6 +978,16 @@ const tropical = (S) =>
     activa: [capa("linear-gradient(180deg, #fde047 0%, #fb923c 100%)")],
     activaEstilo: "border-color: #c2410c !important; color: #3b1a03 !important; box-shadow: 0 0 16px rgba(251,146,60,0.5) !important;",
     campoEstilo: "background: #04140c !important; border: 1px solid rgba(190,242,100,0.35) !important;",
+    // La ola de jugo queda MONTADA sobre el borde de arriba de la barra de
+    // filtros (pegada a la cabecera): la cabecera muestra la franja y la
+    // barra el chorreado, sin tapar "Localidad" / "Sucursal". La barra va
+    // sin frutas adentro.
+    extra: (S) => `
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: left 0 bottom -9px, 0 0, 0 0, 0 0, 0 0 !important; padding-bottom: 26px !important; }
+${en(S, ".tz-header + .tz-admin-filterbar")} {
+  ${fondo([capa(JUGO, "left 0 top -9px", "120px 18px", "repeat-x"), capa(VIDRIO_TROPICAL)])}
+  border-top-color: transparent !important; padding-top: 20px !important;
+}`,
   });
 
 // =====================================================================
