@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Save, RotateCcw, Check, Moon, Sun, LogOut, Wallet, ShoppingCart, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "../supabaseClient";
+import { useAuth } from "../contexts/AuthContext";
 import { PRESETS_TEMA, TEMA_POR_DEFECTO, resolverPaleta, variablesTema } from "../lib/tema";
 import { TEMATICOS, tematicoDe } from "../lib/tematicos";
 import logoTonazo from "../assets/logo.webp";
@@ -15,6 +16,9 @@ import logoTonazo from "../assets/logo.webp";
 // (src/lib/tematicos.js). Son LIBRES (migración 0099): cualquier negocio
 // usa el de cualquier rubro. Se muestran 3 (primero el de su rubro) y
 // "Ver más" despliega todos agrupados por rubro, de 3 en 3.
+// Un toque = vista previa; DOBLE toque/clic en cualquier tarjeta (temas
+// por rubros y paletas) = se guarda al instante y se cierra el Perfil
+// para ver la caja con el tema nuevo (onCerrar).
 const mismoTema = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
 
 function TarjetaTematico({ t, activa, onClick }) {
@@ -66,7 +70,13 @@ function MuestraPaleta({ paleta, activa, onClick }) {
   );
 }
 
-export default function TemaEditor({ negocioId, nombre, logoUrl }) {
+// Doble toque propio (no el dblclick del navegador): en algunos celulares
+// el doble toque hace zoom en vez de disparar dblclick.
+const DOBLE_TOQUE_MS = 350;
+
+export default function TemaEditor({ negocioId, nombre, logoUrl, onCerrar }) {
+  const { aplicarTemaNegocio } = useAuth();
+  const ultimoToque = useRef({ clave: null, t: 0 });
   const [cargando, setCargando] = useState(true);
   const [guardado, setGuardado] = useState(null);
   const [tema, setTema] = useState(TEMA_POR_DEFECTO);
@@ -173,10 +183,27 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
     const valor = nuevo === null || mismoTema(nuevo, TEMA_POR_DEFECTO) ? null : nuevo;
     const { error: err } = await supabase.rpc("actualizar_tema_negocio", { p_tema: valor });
     setGuardando(false);
-    if (err) return setError(err.message || "No se pudo guardar el tema.");
+    if (err) {
+      setError(err.message || "No se pudo guardar el tema.");
+      return false;
+    }
     setGuardado(valor);
     setTema(valor || TEMA_POR_DEFECTO);
+    aplicarTemaNegocio?.(valor);
     setOk(valor ? "Tema guardado: ya se ve en tu caja y en tu tienda." : "Volviste al tema original.");
+    return true;
+  };
+
+  // Toque en una tarjeta: vista previa; el segundo toque seguido sobre
+  // la misma tarjeta guarda ese tema y cierra el Perfil.
+  const elegir = async (nuevo, clave) => {
+    const ahora = Date.now();
+    const doble = ultimoToque.current.clave === clave && ahora - ultimoToque.current.t < DOBLE_TOQUE_MS;
+    ultimoToque.current = doble ? { clave: null, t: 0 } : { clave, t: ahora };
+    setTema(nuevo);
+    if (!doble || guardando) return;
+    const yaGuardado = mismoTema(nuevo, guardado || TEMA_POR_DEFECTO);
+    if (yaGuardado || (await guardar(nuevo))) onCerrar?.();
   };
 
   if (cargando) {
@@ -196,10 +223,11 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
       <label className="tz-field-label">
         <Sparkles size={12} /> Temas por rubros
       </label>
+      <p className="tz-tema-pista">Toca para ver la vista previa · doble toque para guardarlo al instante</p>
       {!verTodos ? (
         <div className="tz-tema-presets tz-tema-tematicos">
           {destacados.map((t) => (
-            <TarjetaTematico key={t.id} t={t} activa={tematicoActual?.id === t.id} onClick={() => setTema({ tematico: t.id, rubro: t.rubro })} />
+            <TarjetaTematico key={t.id} t={t} activa={tematicoActual?.id === t.id} onClick={() => elegir({ tematico: t.id, rubro: t.rubro }, `t-${t.id}`)} />
           ))}
         </div>
       ) : (
@@ -211,7 +239,7 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
                 {g.rubro === rubro.clave ? " · tu rubro" : ""}
               </span>
               {g.temas.map((t) => (
-                <TarjetaTematico key={t.id} t={t} activa={tematicoActual?.id === t.id} onClick={() => setTema({ tematico: t.id, rubro: t.rubro })} />
+                <TarjetaTematico key={t.id} t={t} activa={tematicoActual?.id === t.id} onClick={() => elegir({ tematico: t.id, rubro: t.rubro }, `t-${t.id}`)} />
               ))}
             </div>
           ))}
@@ -232,13 +260,13 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
       <label className="tz-field-label">Paletas oscuras</label>
       <div className="tz-tema-presets">
         {PRESETS_TEMA.filter((p) => p.modo === "oscuro").map((p) => (
-          <MuestraPaleta key={p.id} paleta={p} activa={!esLibre && !tematicoActual && paleta.id === p.id} onClick={() => setTema({ preset: p.id })} />
+          <MuestraPaleta key={p.id} paleta={p} activa={!esLibre && !tematicoActual && paleta.id === p.id} onClick={() => elegir({ preset: p.id }, `p-${p.id}`)} />
         ))}
       </div>
       <label className="tz-field-label">Paletas claras</label>
       <div className="tz-tema-presets">
         {PRESETS_TEMA.filter((p) => p.modo === "claro").map((p) => (
-          <MuestraPaleta key={p.id} paleta={p} activa={!esLibre && !tematicoActual && paleta.id === p.id} onClick={() => setTema({ preset: p.id })} />
+          <MuestraPaleta key={p.id} paleta={p} activa={!esLibre && !tematicoActual && paleta.id === p.id} onClick={() => elegir({ preset: p.id }, `p-${p.id}`)} />
         ))}
       </div>
 

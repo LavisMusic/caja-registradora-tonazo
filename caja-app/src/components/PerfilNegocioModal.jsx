@@ -345,7 +345,7 @@ export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos" 
               )}
 
               {apartado === "tema" && (
-                <TemaEditor negocioId={negocioId} nombre={nombre} logoUrl={logoPreview || negocio?.logo_url} />
+                <TemaEditor negocioId={negocioId} nombre={nombre} logoUrl={logoPreview || negocio?.logo_url} onCerrar={onClose} />
               )}
 
               {apartado === "horarios" &&

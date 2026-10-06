@@ -635,8 +635,11 @@ const LUNARES = "radial-gradient(circle, rgba(236,72,153,0.10) 3px, transparent 
 const CHISPAS = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' width='70' height='50'><g stroke-width='3' stroke-linecap='round'><path d='M8 10 l6 3' stroke='#f472b6'/><path d='M30 6 l2 6' stroke='#60a5fa'/><path d='M52 12 l6 -2' stroke='#facc15'/><path d='M18 30 l-2 6' stroke='#34d399'/><path d='M40 28 l6 4' stroke='#f97316'/><path d='M60 36 l-4 5' stroke='#a78bfa'/><path d='M10 44 l6 0' stroke='#facc15'/><path d='M34 44 l3 -5' stroke='#f472b6'/></g></svg>`
 );
+// Glaseado que chorrea (repeat-x): empieza y termina a la misma altura
+// (y = 8) para que la unión entre repeticiones no se note; el contorno
+// rosa va solo por el borde del chorreado.
 const GLASEADO = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='90' height='22'><path d='M0 0 H90 V6 C84 6 84 18 78 18 C72 18 73 8 66 8 C60 8 61 14 54 14 C47 14 48 6 40 6 C33 6 34 20 26 20 C19 20 20 7 12 7 C6 7 6 12 0 12 Z' fill='#f9a8d4'/><path d='M0 0 H90 V6 C84 6 84 18 78 18 C72 18 73 8 66 8 C60 8 61 14 54 14 C47 14 48 6 40 6 C33 6 34 20 26 20 C19 20 20 7 12 7 C6 7 6 12 0 12' fill='none' stroke='#ec4899' stroke-width='1'/><g fill='#fff' opacity='.7'><ellipse cx='25' cy='15' rx='1.5' ry='2.5'/><ellipse cx='77' cy='13' rx='1.4' ry='2.2'/></g></svg>`
+  `<svg xmlns='http://www.w3.org/2000/svg' width='90' height='22'><path d='M0 0 H90 V8 C86 8 85 18 79 18 C73 18 74 9 67 9 C61 9 62 15 55 15 C48 15 49 7 41 7 C34 7 35 20 27 20 C20 20 21 8 13 8 C8 8 5 8 0 8 Z' fill='#f9a8d4'/><path d='M90 8 C86 8 85 18 79 18 C73 18 74 9 67 9 C61 9 62 15 55 15 C48 15 49 7 41 7 C34 7 35 20 27 20 C20 20 21 8 13 8 C8 8 5 8 0 8' fill='none' stroke='#ec4899' stroke-width='1'/><g fill='#fff' opacity='.7'><ellipse cx='27' cy='15' rx='1.5' ry='2.5'/><ellipse cx='79' cy='13' rx='1.4' ry='2.2'/></g></svg>`
 );
 const CUPCAKE = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 30'><path d='M6 16 H22 L20 28 H8 Z' fill='#f59e0b' stroke='#b45309' stroke-width='1'/><path d='M10 16 L11 28 M14 16 V28 M18 16 L17 28' stroke='#b45309' stroke-width='.8'/><path d='M4 16 Q4 8 10 8 Q12 3 16 5 Q22 4 23 10 Q26 12 24 16 Z' fill='#f9a8d4' stroke='#db2777' stroke-width='1'/><circle cx='15' cy='4' r='2.4' fill='#ef4444'/><g stroke-width='1.5' stroke-linecap='round'><path d='M9 12 l2 1' stroke='#60a5fa'/><path d='M16 10 l1 2' stroke='#facc15'/><path d='M20 13 l2 -1' stroke='#34d399'/></g></svg>`

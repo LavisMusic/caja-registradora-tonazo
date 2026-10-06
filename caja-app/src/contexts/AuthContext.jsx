@@ -369,6 +369,9 @@ export function AuthProvider({ children }) {
     negocioLogoUrl,
     negocioPlan,
     negocioTema,
+    // Para que el tema recién guardado se vea al instante en la caja,
+    // sin esperar el aviso en tiempo real (TemaEditor).
+    aplicarTemaNegocio: setNegocioTema,
     loading,
     isAdmin: profile?.role === "admin",
     isCliente: profile?.role === "cliente",

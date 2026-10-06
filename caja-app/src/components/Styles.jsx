@@ -6665,6 +6665,7 @@ export default function Styles() {
         font-family: inherit;
         text-align: left;
       }
+      .tz-tema-preset { touch-action: manipulation; user-select: none; -webkit-user-select: none; }
       .tz-tema-preset-activa { border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(var(--cyan-rgb), 0.35); }
       .tz-tema-preset-puntos { display: flex; gap: 4px; }
       .tz-tema-preset-puntos i { width: 14px; height: 14px; border-radius: 50%; display: block; box-shadow: 0 0 0 1px rgba(0,0,0,0.25); }
@@ -6687,6 +6688,7 @@ export default function Styles() {
       .tz-tema-tematico { min-height: 92px; justify-content: flex-end; padding-left: 26px; min-width: 0; }
       .tz-tema-tematico .tz-tema-preset-nombre { font-size: 13px; text-shadow: 0 1px 2px #000; }
       .tz-tema-tematico-desc { font-size: 10.5px; line-height: 1.25; color: #d5dbe1; text-shadow: 0 1px 2px #000; }
+      .tz-tema-pista { margin: -4px 0 0; font-size: 11px; text-align: center; color: var(--text-dim); }
       .tz-tema-ver-mas {
         align-self: center; display: inline-flex; align-items: center; gap: 6px;
         padding: 7px 16px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700;
