@@ -79,7 +79,7 @@ function puente(S, d) {
   const tam = `${ancho}px ${alto}px`;
   return `
 ${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { ${fondo([capa(img, `${x} bottom ${enCabecera - alto}px`, tam), ...d.cabecera])} }
-${en(S, ".tz-header + .tz-admin-filterbar")} { ${fondo([capa(img, `${x} top ${-enCabecera}px`, tam), ...(d.barra || d.panel)])} }`;
+${en(S, ".tz-header + .tz-admin-filterbar")} { ${fondo([capa(img, `${x} top ${-enCabecera}px`, tam), ...(d.barra || d.panel)])} border-top-color: transparent !important; }`;
 }
 
 function construir(S, d) {
@@ -1707,6 +1707,338 @@ const vitrina = (S) =>
   });
 
 // =====================================================================
+// JOYERÍA Y ACCESORIOS — "Joyero" (terciopelo burdeos, oro, perlas,
+// anillos y diamantes; destellos que titilan)
+// =====================================================================
+const diamante = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M8 2 H26 L33 10 L17 29 L1 10 Z' fill='#dff3fb' stroke='#5fb4d0' stroke-width='.8'/><path d='M1 10 H33' stroke='#7cc7df' stroke-width='.8'/><path d='M8 2 L12 10 L17 29 M26 2 L22 10 L17 29 M12 10 L17 2 L22 10' stroke='#7cc7df' stroke-width='.8' fill='none'/><path d='M12 10 L17 2 L22 10 Z' fill='#ffffff'/><path d='M1 10 L12 10 L17 29 Z' fill='#b9e3f2'/><path d='M22 10 L33 10 L17 29 Z' fill='#cdeef8'/></g>`;
+const DIAMANTE = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 30'>${diamante(0, 0)}</svg>`);
+const ANILLO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 32'><ellipse cx='14' cy='21' rx='10' ry='9' fill='none' stroke='#b8901f' stroke-width='4'/><ellipse cx='14' cy='21' rx='10' ry='9' fill='none' stroke='#f5d78e' stroke-width='2'/><path d='M10 11 L14 13 L18 11' stroke='#b8901f' stroke-width='2' fill='none'/>${diamante(7, 0, 0.42)}</svg>`
+);
+// Collar de perlas que cuelga (repeat-x; sube y baja igual en las puntas).
+const PERLAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='22'><defs><radialGradient id='p' cx='.35' cy='.35' r='.7'><stop offset='0' stop-color='#ffffff'/><stop offset='.6' stop-color='#f3eee4'/><stop offset='1' stop-color='#c9bfae'/></radialGradient></defs>${Array.from({ length: 12 }, (_, i) => {
+    const x = 3 + i * 6;
+    const y = 5 + 9 * Math.sin((Math.PI * (x - 3)) / 72);
+    return `<circle cx='${x}' cy='${y.toFixed(1)}' r='3.2' fill='url(#p)'/>`;
+  }).join("")}</svg>`
+);
+// Destellos dorados y blancos que titilan (SMIL, sin JS).
+const destello = (x, y, r, c, dur, delay) =>
+  `<path d='M${x} ${y - r} L${x + r * 0.22} ${y - r * 0.22} L${x + r} ${y} L${x + r * 0.22} ${y + r * 0.22} L${x} ${y + r} L${x - r * 0.22} ${y + r * 0.22} L${x - r} ${y} L${x - r * 0.22} ${y - r * 0.22} Z' fill='${c}'><animate attributeName='opacity' values='0.15;1;0.15' dur='${dur}s' begin='${delay}s' repeatCount='indefinite'/></path>`;
+const DESTELLOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'>${destello(18, 22, 5, "#f5d78e", 2.6, 0)}${destello(78, 14, 3.5, "#ffffff", 3.1, 0.8)}${destello(52, 66, 4.5, "#f5d78e", 2.2, 1.4)}${destello(104, 84, 3, "#ffffff", 2.8, 0.4)}${destello(24, 100, 3.5, "#fbcfe8", 3.4, 1.9)}</svg>`
+);
+// Terciopelo: brillo + tela (dos capas separadas, una imagen por capa).
+const TERCIOPELO = [
+  capa("radial-gradient(ellipse 120% 80% at 30% 0%, rgba(255,180,210,0.10), transparent 60%)"),
+  capa("linear-gradient(170deg, #4a0f24 0%, #33091a 55%, #240612 100%)"),
+];
+const ESTUCHE = "linear-gradient(170deg, #3a0b1d 0%, #270714 100%)";
+
+const joyero = (S) =>
+  construir(S, {
+    raiz: [trama(DESTELLOS, "120px 120px"), capa("radial-gradient(ellipse 900px 420px at 50% -10%, rgba(245,215,142,0.10), transparent 60%)"), capa("linear-gradient(180deg, #1a0710 0%, #12050b 100%)")],
+    // Cabecera de terciopelo con un collar de perlas abajo y diamantes
+    // en las esquinas de abajo.
+    cabecera: [
+      capa(DIAMANTE, "left 2.5% bottom 26px", "30px 26px"),
+      capa(PERLAS, "left 0 bottom 4px", "72px 22px", "repeat-x"),
+      capa("linear-gradient(90deg, #a8841f, #f5d78e, #a8841f)", "left 0 bottom 0", "100% 2px"),
+      trama(DESTELLOS, "120px 120px"),
+      ...TERCIOPELO,
+    ],
+    cabeceraEstilo: "padding-bottom: 40px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.55);",
+    pie: [capa(PERLAS, "left 0 top 4px", "72px 22px", "repeat-x"), trama(DESTELLOS, "120px 120px"), ...TERCIOPELO],
+    pieEstilo: "border-top: 2px solid #d4af37 !important; padding-top: 34px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.35), transparent 50%)"), capa("linear-gradient(180deg, #f5d78e 0%, #d4af37 55%, #a8841f 100%)")],
+    botonEstilo: "border: 1px solid #7a5c10 !important; color: #2a0614 !important; box-shadow: 0 3px 10px rgba(0,0,0,0.45) !important; font-weight: 800;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #7a5c10 !important; color: #2a0614 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important; font-weight: 800;",
+    // Paneles = interior de estuche con un anillo en la esquina.
+    panel: [capa(ANILLO, "right 8px top 6px", "22px 25px"), capa("linear-gradient(155deg, rgba(255,255,255,0.06) 0%, transparent 35%)"), capa(ESTUCHE)],
+    panelEstilo: "border: 1px solid #d4af37 !important; box-shadow: inset 0 0 0 3px #270714, inset 0 0 0 4px rgba(212,175,55,0.35), 0 8px 18px rgba(0,0,0,0.5) !important;",
+    barra: [capa("linear-gradient(155deg, rgba(255,255,255,0.06) 0%, transparent 35%)"), capa(ESTUCHE)],
+    puente: { img: DIAMANTE, ancho: 36, alto: 32, enCabecera: 14 },
+    modal: [capa(DIAMANTE, "left 12px bottom 12px", "26px 23px"), capa(DIAMANTE, "right 12px bottom 12px", "26px 23px"), trama(DESTELLOS, "120px 120px"), ...TERCIOPELO],
+    modalEstilo: "border: 1px solid #d4af37 !important; box-shadow: inset 0 0 0 5px #240612, inset 0 0 0 6px rgba(212,175,55,0.4), 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: `color: #f5d78e !important; letter-spacing: 0.14em; background: ${PERLAS} left 0 bottom 0 / 54px 16px repeat-x !important; padding-bottom: 20px;`,
+    pestana: [capa(ESTUCHE)],
+    pestanaEstilo: "border: 1px solid rgba(212,175,55,0.5) !important; color: #f3dfa8 !important;",
+    activa: [capa("linear-gradient(180deg, #f5d78e 0%, #d4af37 55%, #a8841f 100%)")],
+    activaEstilo: "border-color: #7a5c10 !important; color: #2a0614 !important; box-shadow: 0 0 14px rgba(245,215,142,0.45) !important;",
+    campoEstilo: "background: #1a0710 !important; border: 1px solid rgba(212,175,55,0.45) !important;",
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !important; }`,
+  });
+
+// =====================================================================
+// CELULARES Y TECNOLOGÍA — "Circuito" (placa con pistas por las que
+// corren pulsos de luz, chips, señal y batería)
+// =====================================================================
+// Pistas que empalman en los 4 bordes (la trama no muestra cortes).
+const PISTAS = "M0 20 H40 L50 30 H120 M20 0 V50 L30 60 V80 L20 90 V120 M60 120 V90 L70 80 H120 M0 80 H10 M0 100 H30 L40 90 V70 M110 100 H120 M90 0 V40 L100 50 H108 M90 110 V120 M60 0 V10";
+const pistas = (color, ancho) => `<path d='${PISTAS}' stroke='${color}' stroke-width='${ancho}' fill='none'/>`;
+const PADS = [[40, 20], [50, 30], [30, 60], [70, 80], [10, 80], [40, 70], [100, 50], [108, 50], [90, 110], [60, 10], [110, 100], [30, 100]]
+  .map(([x, y]) => `<circle cx='${x}' cy='${y}' r='2.6' fill='none' stroke='rgba(56,189,248,0.35)' stroke-width='1.2'/>`)
+  .join("");
+const CIRCUITO = svg(`<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'>${pistas("rgba(56,189,248,0.16)", 1.6)}${PADS}<rect x='64' y='36' width='16' height='12' rx='1.5' fill='rgba(56,189,248,0.08)' stroke='rgba(56,189,248,0.25)'/></svg>`);
+// Mismas pistas + pulsos de luz que corren por ellas (SMIL).
+const CIRCUITO_VIVO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'>${pistas("rgba(56,189,248,0.22)", 1.6)}${PADS}<path d='${PISTAS}' stroke='#7dd3fc' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-dasharray='5 75'><animate attributeName='stroke-dashoffset' from='0' to='-160' dur='3.2s' repeatCount='indefinite'/></path><path d='${PISTAS}' stroke='#a78bfa' stroke-width='2' fill='none' stroke-linecap='round' stroke-dasharray='4 116' stroke-dashoffset='40'><animate attributeName='stroke-dashoffset' from='40' to='-200' dur='4.6s' repeatCount='indefinite'/></path></svg>`
+);
+const CHIP = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'><g stroke='#7dd3fc' stroke-width='1.4'><path d='M8 1 V5 M13 1 V5 M18 1 V5 M8 21 V25 M13 21 V25 M18 21 V25 M1 8 H5 M1 13 H5 M1 18 H5 M21 8 H25 M21 13 H25 M21 18 H25'/></g><rect x='5' y='5' width='16' height='16' rx='2' fill='#0f1a2b' stroke='#38bdf8' stroke-width='1.2'/><rect x='9' y='9' width='8' height='8' rx='1' fill='#38bdf8' opacity='.35'/></svg>`
+);
+const BATERIA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 22'><rect x='1.5' y='2' width='36' height='18' rx='4' fill='#0b1220' stroke='#e2e8f0' stroke-width='2'/><rect x='38.5' y='7' width='4' height='8' rx='1.5' fill='#e2e8f0'/><g fill='#34d399'><rect x='5' y='5.5' width='6' height='11' rx='1.2'/><rect x='13' y='5.5' width='6' height='11' rx='1.2'/><rect x='21' y='5.5' width='6' height='11' rx='1.2'><animate attributeName='opacity' values='1;0.2;1' dur='1.6s' repeatCount='indefinite'/></rect></g><path d='M31 4 L27 12 H31 L29 19 L35 9 H31 Z' fill='#facc15' stroke='#0b1220' stroke-width='.6'/></svg>`
+);
+const SENAL = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 22'><g fill='#38bdf8'><rect x='1' y='15' width='4' height='6' rx='1'/><rect x='7' y='11' width='4' height='10' rx='1'/><rect x='13' y='7' width='4' height='14' rx='1'/><rect x='19' y='3' width='4' height='18' rx='1' opacity='.4'/></g><g fill='none' stroke='#a78bfa' stroke-width='2' stroke-linecap='round'><path d='M27 9 Q32 4 37 9'/><path d='M29.5 12.5 Q32 10 34.5 12.5'/></g><circle cx='32' cy='16.5' r='1.8' fill='#a78bfa'/></svg>`
+);
+const VIDRIO_NEGRO = "linear-gradient(160deg, rgba(30,41,59,0.92) 0%, rgba(11,18,32,0.96) 100%)";
+
+const circuito = (S) =>
+  construir(S, {
+    raiz: [trama(CIRCUITO, "120px 120px"), capa("radial-gradient(ellipse 900px 420px at 50% -10%, rgba(56,189,248,0.12), transparent 60%)"), capa("linear-gradient(180deg, #08101d 0%, #060b14 100%)")],
+    // Cabecera = placa viva: pulsos de luz por las pistas y señal + wifi
+    // abajo a la izquierda (la batería cargando va montada en la barra).
+    cabecera: [
+      capa(SENAL, "left 2.5% bottom 12px", "44px 24px"),
+      capa("linear-gradient(90deg, transparent, #38bdf8 20%, #a78bfa 80%, transparent)", "left 0 bottom 0", "100% 2px"),
+      trama(CIRCUITO_VIVO, "120px 120px"),
+      capa("linear-gradient(180deg, #0b1626 0%, #0a1322 100%)"),
+    ],
+    cabeceraEstilo: "padding-bottom: 42px !important; border-bottom: none !important; box-shadow: 0 6px 22px rgba(56,189,248,0.18);",
+    pie: [capa("linear-gradient(90deg, transparent, #38bdf8 20%, #a78bfa 80%, transparent)", "left 0 top 0", "100% 2px"), trama(CIRCUITO_VIVO, "120px 120px"), capa("linear-gradient(180deg, #0a1322, #060b14)")],
+    pieEstilo: "border-top: none !important;",
+    boton: [capa("linear-gradient(180deg, rgba(125,211,252,0.18), transparent 60%)"), capa(VIDRIO_NEGRO)],
+    botonEstilo: "border: 1px solid rgba(56,189,248,0.7) !important; color: #e0f2fe !important; box-shadow: 0 0 12px rgba(56,189,248,0.25), 0 3px 8px rgba(0,0,0,0.5) !important;",
+    botonPieEstilo: "border-radius: 12px !important; border: 1px solid rgba(56,189,248,0.7) !important; color: #e0f2fe !important; box-shadow: 0 0 14px rgba(56,189,248,0.3), 0 4px 10px rgba(0,0,0,0.5) !important;",
+    // Paneles de vidrio negro con un chip y pistas en la esquina.
+    panel: [capa(CHIP, "right 8px top 8px", "20px 20px"), capa(CIRCUITO, "right -60px bottom -60px", "120px 120px"), capa(VIDRIO_NEGRO)],
+    panelEstilo: "border: 1px solid rgba(56,189,248,0.35) !important; box-shadow: inset 0 1px 0 rgba(125,211,252,0.12), 0 8px 18px rgba(0,0,0,0.5) !important;",
+    barra: [capa(CIRCUITO, "right -60px bottom -60px", "120px 120px"), capa(VIDRIO_NEGRO)],
+    puente: { img: BATERIA, ancho: 50, alto: 25, enCabecera: 12 },
+    modal: [capa(CHIP, "right 14px bottom 14px", "24px 24px"), trama(CIRCUITO, "120px 120px"), capa("linear-gradient(170deg, #0f1a2b 0%, #070d18 100%)")],
+    modalEstilo: "border: 1px solid rgba(56,189,248,0.55) !important; box-shadow: 0 0 40px rgba(56,189,248,0.15), 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: "color: #e0f2fe !important; border-bottom: 2px solid; border-image: linear-gradient(90deg, #38bdf8, #a78bfa) 1; padding-bottom: 8px;",
+    pestana: [capa(VIDRIO_NEGRO)],
+    pestanaEstilo: "border: 1px solid rgba(56,189,248,0.4) !important; color: #bae6fd !important;",
+    activa: [capa("linear-gradient(135deg, #38bdf8 0%, #818cf8 100%)")],
+    activaEstilo: "border-color: #0369a1 !important; color: #06101f !important; box-shadow: 0 0 16px rgba(56,189,248,0.5) !important;",
+    campoEstilo: "background: #070d18 !important; border: 1px solid rgba(56,189,248,0.4) !important;",
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 32px !important; }`,
+  });
+
+// =====================================================================
+// CABINAS E IMPRESIONES — "Imprenta" (claro: papel continuo con
+// perforaciones, colores CMYK, marcas de registro, clips)
+// =====================================================================
+const CMYK = "linear-gradient(90deg, #06b6d4 0 25%, #ec4899 25% 50%, #facc15 50% 75%, #111827 75%)";
+const AGUJEROS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='16' height='22'><circle cx='8' cy='11' r='3.6' fill='#e7e5e0' stroke='#c9c5bc' stroke-width='1'/></svg>`
+);
+const REGISTRO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><g stroke='#111827' stroke-width='1.2' fill='none'><circle cx='12' cy='12' r='6'/><path d='M12 1 V23 M1 12 H23'/></g><circle cx='12' cy='12' r='2.4' fill='#111827'/></svg>`
+);
+const CLIP = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 36'><path d='M5 30 V8 Q5 3 9 3 Q13 3 13 8 V27 Q13 33 8 33 Q3 33 3 27 V12' stroke='#64748b' stroke-width='2.2' fill='none' stroke-linecap='round'/><path d='M5 30 V8 Q5 3 9 3' stroke='#cbd5e1' stroke-width='.8' fill='none'/></svg>`
+);
+// Semitono CMYK (puntitos que se agrandan hacia un lado).
+const SEMITONO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='160' height='40'>${Array.from({ length: 16 }, (_, i) =>
+    Array.from({ length: 4 }, (_, j) => {
+      const r = 0.6 + (i / 15) * 2.6;
+      const c = ["#06b6d4", "#ec4899", "#facc15", "#111827"][(i + j) % 4];
+      return `<circle cx='${5 + i * 10}' cy='${5 + j * 10}' r='${r.toFixed(2)}' fill='${c}' opacity='.28'/>`;
+    }).join("")
+  ).join("")}</svg>`
+);
+const IMPRESORA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 34'><rect x='10' y='2' width='20' height='10' fill='#ffffff' stroke='#94a3b8'/><rect x='2' y='10' width='36' height='14' rx='3' fill='#334155'/><rect x='6' y='14' width='4' height='2' fill='#34d399'/><rect x='9' y='20' width='22' height='12' fill='#ffffff' stroke='#94a3b8'><animate attributeName='height' values='2;12;12;2' keyTimes='0;0.5;0.85;1' dur='3s' repeatCount='indefinite'/></rect><rect x='11' y='24' width='5' height='2' fill='#06b6d4'/><rect x='17' y='24' width='5' height='2' fill='#ec4899'/><rect x='23' y='24' width='5' height='2' fill='#facc15'/></svg>`
+);
+const PAPEL = "linear-gradient(180deg, #ffffff 0%, #fbfbf8 100%)";
+const CUADRICULA = [
+  capa("linear-gradient(rgba(6,182,212,0.07) 1px, transparent 1px)", "0 0", "22px 22px", "repeat"),
+  capa("linear-gradient(90deg, rgba(6,182,212,0.07) 1px, transparent 1px)", "0 0", "22px 22px", "repeat"),
+];
+// Esquina doblada (oreja) arriba a la derecha.
+const OREJA = "linear-gradient(225deg, #f1f0eb 0 13px, #cfccc3 13px 14px, transparent 14px)";
+
+const imprenta = (S) =>
+  construir(S, {
+    raiz: [...CUADRICULA, capa("linear-gradient(180deg, #f7f7f4 0%, #efeee9 100%)")],
+    // Cabecera = papel continuo: perforaciones a los costados, semitono
+    // CMYK, marcas de registro, una impresora imprimiendo y la franja
+    // CMYK abajo.
+    cabecera: [
+      capa(CMYK, "left 0 bottom 0", "100% 6px"),
+      capa(IMPRESORA, "left 3.5% bottom 14px", "40px 34px"),
+      capa(REGISTRO, "right 3.5% bottom 18px", "22px 22px"),
+      capa(AGUJEROS, "left 4px top 0", "16px 22px", "repeat-y"),
+      capa(AGUJEROS, "right 4px top 0", "16px 22px", "repeat-y"),
+      capa("linear-gradient(90deg, transparent 0 24px, rgba(148,163,184,0.5) 24px 25px, transparent 25px calc(100% - 25px), rgba(148,163,184,0.5) calc(100% - 25px) calc(100% - 24px), transparent calc(100% - 24px))"),
+      capa(SEMITONO, "right 30px top 10px", "160px 40px"),
+      capa(PAPEL),
+    ],
+    cabeceraEstilo: "padding-bottom: 46px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(15,23,42,0.12);",
+    pie: [capa(CMYK, "left 0 top 0", "100% 6px"), capa(AGUJEROS, "left 4px top 0", "16px 22px", "repeat-y"), capa(AGUJEROS, "right 4px top 0", "16px 22px", "repeat-y"), capa(PAPEL)],
+    pieEstilo: "border-top: none !important;",
+    // Botones de papel con la franja CMYK abajo.
+    boton: [capa(CMYK, "left 0 bottom 0", "100% 3px"), capa("linear-gradient(180deg, #ffffff, #f1f5f9)")],
+    botonEstilo: "border: 1px solid #cbd5e1 !important; color: #0f172a !important; box-shadow: 0 2px 6px rgba(15,23,42,0.12) !important; font-weight: 800;",
+    botonPieEstilo: "border-radius: 8px !important; border: 1px solid #cbd5e1 !important; color: #0f172a !important; box-shadow: 0 3px 8px rgba(15,23,42,0.15) !important; font-weight: 800;",
+    // Paneles = hojas con la esquina doblada y un clip.
+    panel: [capa(OREJA, "right 0 top 0", "22px 22px"), capa(CLIP, "right 26px top -4px", "12px 28px"), capa(PAPEL)],
+    panelEstilo: "border: 1px solid #e2e0d8 !important; box-shadow: 0 1px 0 #d6d3c9, 0 6px 14px rgba(15,23,42,0.10) !important;",
+    barra: [capa(PAPEL)],
+    puente: { img: CLIP, ancho: 14, alto: 32, enCabecera: 14, x: "right 30px" },
+    modal: [capa(REGISTRO, "left 10px bottom 10px", "18px 18px"), capa(REGISTRO, "right 10px bottom 10px", "18px 18px"), capa(CMYK, "left 0 top 0", "100% 5px"), capa(PAPEL)],
+    modalEstilo: "border: 1px solid #d6d3c9 !important; box-shadow: 0 20px 60px rgba(15,23,42,0.22) !important;",
+    tituloEstilo: "color: #0f172a !important; border-bottom: 2px dashed #94a3b8; padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #ffffff, #f1f5f9)")],
+    pestanaEstilo: "border: 1px solid #cbd5e1 !important; color: #334155 !important;",
+    activa: [capa("linear-gradient(180deg, #22d3ee, #0891b2)")],
+    activaEstilo: "border-color: #0e7490 !important; color: #ffffff !important; box-shadow: 0 4px 12px rgba(8,145,178,0.35) !important;",
+    campoEstilo: "background: #ffffff !important; border: 1px solid #cbd5e1 !important;",
+    extra: (S) => `
+${en(S, ".tz-header .tz-subtitle")} { color: #0e7490 !important; text-shadow: none !important; }
+${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 6px rgba(15,23,42,0.15); }
+${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(15,23,42,0.25)) !important; }
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 40px !important; }`,
+  });
+
+// =====================================================================
+// REPUESTOS Y LUBRICANTES — "Motor" (fibra de carbono, engranajes que
+// giran, aceite que chorrea, bujías y pistones)
+// =====================================================================
+const engranaje = (color, dur, sentido) =>
+  svg(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='-20 -20 40 40'><g><animateTransform attributeName='transform' type='rotate' from='0' to='${sentido * 360}' dur='${dur}s' repeatCount='indefinite'/>${Array.from({ length: 10 }, (_, i) => `<rect x='-3' y='-19' width='6' height='7' rx='1' fill='${color}' transform='rotate(${i * 36})'/>`).join("")}<circle r='13.5' fill='${color}'/><circle r='9' fill='none' stroke='rgba(0,0,0,0.3)' stroke-width='2'/><circle r='4.5' fill='#0b0c0e'/>${Array.from({ length: 5 }, (_, i) => `<circle cx='0' cy='-7' r='1.6' fill='#0b0c0e' transform='rotate(${i * 72})'/>`).join("")}</g></svg>`
+  );
+const ENGRANAJE = engranaje("#9ca3af", 9, 1);
+const ENGRANAJE_ROJO = engranaje("#b91c1c", 6, -1);
+const ACEITE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='18'><defs><linearGradient id='a' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='#fbbf24'/><stop offset='1' stop-color='#b45309'/></linearGradient></defs><path d='M0 0 H80 V6 C74 6 74 15 70 15 C66 15 67 7 60 7 C54 7 55 11 49 11 C43 11 44 6 37 6 C31 6 32 17 26 17 C20 17 21 7 14 7 C8 7 6 6 0 6 Z' fill='url(#a)'/><g fill='rgba(255,255,255,0.5)'><ellipse cx='26' cy='13' rx='1.2' ry='2'/><ellipse cx='70' cy='11' rx='1.1' ry='1.8'/></g></svg>`
+);
+const GOTA_ACEITE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 32'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#fcd34d'/><stop offset='1' stop-color='#b45309'/></linearGradient></defs><path d='M12 1 C12 1 3 14 3 21 A9 9 0 0 0 21 21 C21 14 12 1 12 1 Z' fill='url(#g)' stroke='#78350f' stroke-width='1'/><ellipse cx='8.5' cy='20' rx='2' ry='3.5' fill='rgba(255,255,255,0.55)'/></svg>`
+);
+const BUJIA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 36'><rect x='4' y='0' width='4' height='4' rx='1' fill='#cbd5e1'/><path d='M3 4 H9 L10 16 H2 Z' fill='#f8fafc' stroke='#94a3b8' stroke-width='.6'/><path d='M3 7 H9 M3 10 H9 M2.5 13 H9.5' stroke='#cbd5e1' stroke-width='.6'/><path d='M1 16 H11 V21 H1 Z' fill='#9ca3af' stroke='#4b5563' stroke-width='.6'/><rect x='3' y='21' width='6' height='9' fill='#d1d5db'/><path d='M3 23 H9 M3 25 H9 M3 27 H9 M3 29 H9' stroke='#6b7280' stroke-width='.6'/><path d='M6 30 V33 H9' stroke='#6b7280' stroke-width='1.2' fill='none'/></svg>`
+);
+const CARBONO = "repeating-conic-gradient(from 45deg, #1b1e23 0 25%, #121418 0 50%)";
+const BRILLO_CARBONO = "linear-gradient(160deg, rgba(255,255,255,0.07) 0%, transparent 40%, rgba(255,255,255,0.03) 60%, transparent 100%)";
+
+const motor = (S) =>
+  construir(S, {
+    raiz: [capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(239,68,68,0.10), transparent 60%)"), capa("linear-gradient(180deg, rgba(11,12,14,0.55), rgba(11,12,14,0.8))"), capa(CARBONO, "0 0", "10px 10px", "repeat"), capa("#0b0c0e")],
+    // Cabecera de fibra de carbono con dos engranajes girando abajo a
+    // cada lado y el aceite chorreando por el borde.
+    cabecera: [
+      capa(ENGRANAJE, "left 2% bottom 14px", "56px 56px"),
+      capa(ENGRANAJE_ROJO, "left calc(2% + 46px) bottom 8px", "36px 36px"),
+      capa(ENGRANAJE, "right 2% bottom 14px", "56px 56px"),
+      capa(ENGRANAJE_ROJO, "right calc(2% + 46px) bottom 8px", "36px 36px"),
+      capa(ACEITE, "left 0 bottom 0", "80px 18px", "repeat-x"),
+      capa(BRILLO_CARBONO),
+      capa(CARBONO, "0 0", "10px 10px", "repeat"),
+    ],
+    cabeceraEstilo: "padding-bottom: 34px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6);",
+    pie: [capa(ACEITE, "left 0 top 0", "80px 18px", "repeat-x"), capa(BRILLO_CARBONO), capa(CARBONO, "0 0", "10px 10px", "repeat")],
+    pieEstilo: "border-top: none !important; padding-top: 28px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.2), transparent 55%)"), capa("linear-gradient(180deg, #dc2626, #991b1b)")],
+    botonEstilo: "border: 1px solid #450a0a !important; color: #ffffff !important; box-shadow: 0 3px 8px rgba(0,0,0,0.5) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5); font-weight: 800;",
+    botonPieEstilo: "border-radius: 8px !important; border: 1px solid #450a0a !important; color: #ffffff !important; box-shadow: 0 4px 10px rgba(0,0,0,0.55) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5); font-weight: 800;",
+    // Paneles de carbono con franja roja de carrera y una bujía.
+    panel: [capa(BUJIA, "right 10px top 6px", "9px 28px"), capa("linear-gradient(180deg, #dc2626, #991b1b)", "left 0 top 0", "4px 100%"), capa(BRILLO_CARBONO), capa("linear-gradient(rgba(18,20,24,0.55), rgba(18,20,24,0.55))"), capa(CARBONO, "0 0", "10px 10px", "repeat")],
+    panelEstilo: "border: 1px solid #2a2d33 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 18px rgba(0,0,0,0.55) !important;",
+    barra: [capa(BRILLO_CARBONO), capa("linear-gradient(rgba(18,20,24,0.55), rgba(18,20,24,0.55))"), capa(CARBONO, "0 0", "10px 10px", "repeat")],
+    puente: { img: GOTA_ACEITE, ancho: 24, alto: 32, enCabecera: 13, x: "right 12%" },
+    modal: [capa(ENGRANAJE, "left 10px bottom 10px", "30px 30px"), capa(ENGRANAJE_ROJO, "right 10px bottom 10px", "26px 26px"), capa(BRILLO_CARBONO), capa("linear-gradient(rgba(18,20,24,0.7), rgba(18,20,24,0.7))"), capa(CARBONO, "0 0", "10px 10px", "repeat")],
+    modalEstilo: "border: 1px solid #dc2626 !important; box-shadow: 0 20px 60px rgba(0,0,0,0.75) !important;",
+    tituloEstilo: "color: #ffffff !important; font-style: italic; border-bottom: 3px solid #dc2626; padding-bottom: 8px;",
+    pestana: [capa(CARBONO, "0 0", "10px 10px", "repeat")],
+    pestanaEstilo: "border: 1px solid #3f444d !important; color: #e5e7eb !important;",
+    activa: [capa("linear-gradient(180deg, #fbbf24, #d97706)")],
+    activaEstilo: "border-color: #78350f !important; color: #1c0f02 !important; box-shadow: 0 0 14px rgba(251,191,36,0.45) !important;",
+    campoEstilo: "background: #0b0c0e !important; border: 1px solid #3f444d !important;",
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 28px !important; padding-left: 16px !important; }`,
+  });
+
+// =====================================================================
+// TALLER MECÁNICO — "Garaje" (pared de herramientas, piso de concreto
+// con manchas de aceite, cajón de herramientas rojo y llanta)
+// =====================================================================
+const PEGBOARD = svg(`<svg xmlns='http://www.w3.org/2000/svg' width='18' height='18'><rect width='18' height='18' fill='#8f7049'/><circle cx='9' cy='9' r='2.1' fill='#3b2a18'/></svg>`);
+const llaveInglesa = (x, y, r) =>
+  `<g transform='translate(${x} ${y}) rotate(${r})'><rect x='-2.4' y='-2' width='4.8' height='30' rx='2.2' fill='#cbd5e1' stroke='#64748b' stroke-width='.7'/><path d='M-7 -4 A7 7 0 1 1 7 -4 L3 -4 L3 -9 L-3 -9 L-3 -4 Z' fill='#cbd5e1' stroke='#64748b' stroke-width='.7'/><circle cx='0' cy='26' r='4.5' fill='none' stroke='#cbd5e1' stroke-width='2.6'/></g>`;
+const destornillador = (x, y, c) =>
+  `<g transform='translate(${x} ${y})'><rect x='-3.5' y='0' width='7' height='14' rx='2.5' fill='${c}'/><path d='M-3.5 4 H3.5 M-3.5 8 H3.5' stroke='rgba(0,0,0,0.3)' stroke-width='1'/><rect x='-1' y='14' width='2' height='16' fill='#cbd5e1'/><path d='M-1 30 L0 33 L1 30 Z' fill='#94a3b8'/></g>`;
+const martillo = (x, y) =>
+  `<g transform='translate(${x} ${y})'><rect x='-2' y='4' width='4' height='28' rx='1.5' fill='#a16207'/><path d='M-10 0 H8 Q11 0 11 3 V6 H-10 Z' fill='#6b7280' stroke='#374151' stroke-width='.7'/><path d='M8 0 Q13 -2 14 3' stroke='#6b7280' stroke-width='2' fill='none'/></g>`;
+const alicate = (x, y) =>
+  `<g transform='translate(${x} ${y})'><path d='M-2 0 L-3 12 L-6 32 M2 0 L3 12 L6 32' stroke='#9ca3af' stroke-width='2.6' fill='none' stroke-linecap='round'/><path d='M-3.5 16 L-6.5 32 M3.5 16 L6.5 32' stroke='#dc2626' stroke-width='4' stroke-linecap='round'/><circle cx='0' cy='11' r='2' fill='#4b5563'/></g>`;
+// Fila de herramientas colgadas de la pared perforada (repeat-x).
+const HERRAMIENTAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='44'>${llaveInglesa(18, 9, 0)}${destornillador(48, 4, "#dc2626")}${martillo(80, 6)}${destornillador(108, 4, "#facc15")}${alicate(136, 4)}${llaveInglesa(168, 9, 0)}<g fill='#3b2a18'><circle cx='18' cy='3' r='1.6'/><circle cx='48' cy='2' r='1.6'/><circle cx='80' cy='3' r='1.6'/><circle cx='108' cy='2' r='1.6'/><circle cx='136' cy='2' r='1.6'/><circle cx='168' cy='3' r='1.6'/></g></svg>`
+);
+const LLANTA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='-20 -20 40 40'><circle r='19' fill='#1f2937'/><circle r='19' fill='none' stroke='#0b0f14' stroke-width='3.5' stroke-dasharray='3 2.6'/><circle r='11.5' fill='#9ca3af'/><circle r='11.5' fill='none' stroke='#e5e7eb' stroke-width='1'/>${Array.from({ length: 5 }, (_, i) => `<rect x='-1.6' y='-10' width='3.2' height='7' rx='1' fill='#6b7280' transform='rotate(${i * 72})'/>`).join("")}<circle r='3.4' fill='#4b5563'/>${Array.from({ length: 5 }, (_, i) => `<circle cx='0' cy='-5.6' r='1' fill='#e5e7eb' transform='rotate(${i * 72 + 36})'/>`).join("")}</svg>`
+);
+const LLAVE_ICONO = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 18'><g transform='translate(10 9) rotate(-90)'>${llaveInglesa(0, 0, 0)}</g></svg>`);
+const MANCHAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='320' height='320'><g fill='rgba(0,0,0,0.32)'><ellipse cx='70' cy='80' rx='46' ry='26' transform='rotate(-14 70 80)'/><ellipse cx='96' cy='96' rx='16' ry='9'/><ellipse cx='240' cy='220' rx='56' ry='30' transform='rotate(20 240 220)'/><ellipse cx='200' cy='250' rx='14' ry='8'/></g><g fill='none' stroke='rgba(120,90,200,0.10)' stroke-width='2'><ellipse cx='70' cy='80' rx='40' ry='21' transform='rotate(-14 70 80)'/><ellipse cx='240' cy='220' rx='49' ry='25' transform='rotate(20 240 220)'/></g></svg>`
+);
+const HUELLA_LLANTA = "repeating-linear-gradient(90deg, transparent 0 4px, rgba(0,0,0,0.25) 4px 9px)";
+const CONCRETO_TALLER = "linear-gradient(180deg, #2a2d31 0%, #202326 100%)";
+const CAJON_ROJO = "linear-gradient(180deg, #8b1a1a 0%, #6d1212 100%)";
+const MANIJA = "linear-gradient(180deg, #f1f5f9 0%, #94a3b8 50%, #e2e8f0 100%)";
+
+const garaje = (S) =>
+  construir(S, {
+    raiz: [
+      trama(MANCHAS, "320px 320px"),
+      capa(HUELLA_LLANTA, "left 12% top 0", "26px 100%"),
+      capa(HUELLA_LLANTA, "right 12% top 0", "26px 100%"),
+      capa(CONCRETO, "0 0", "70px 70px", "repeat"),
+      capa(CONCRETO_TALLER),
+    ],
+    // Cabecera = pared perforada con herramientas colgadas abajo y un
+    // riel cromado.
+    cabecera: [
+      capa(MANIJA, "left 0 bottom 0", "100% 5px"),
+      capa(HERRAMIENTAS, "left 0 bottom 7px", "200px 44px", "repeat-x"),
+      capa("linear-gradient(180deg, rgba(20,14,8,0.25), rgba(20,14,8,0.45))"),
+      capa(PEGBOARD, "0 0", "18px 18px", "repeat"),
+    ],
+    cabeceraEstilo: "padding-bottom: 58px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.55);",
+    pie: [capa(MANIJA, "left 0 top 0", "100% 5px"), capa(MANCHAS, "0 0", "320px 320px", "repeat"), capa(CONCRETO, "0 0", "70px 70px", "repeat"), capa(CONCRETO_TALLER)],
+    pieEstilo: "border-top: none !important;",
+    // Botones = manijas cromadas.
+    boton: [capa(MANIJA)],
+    botonEstilo: "border: 1px solid #475569 !important; color: #0f172a !important; box-shadow: inset 0 1px 0 #ffffff, 0 3px 8px rgba(0,0,0,0.45) !important; font-weight: 800;",
+    botonPieEstilo: "border-radius: 8px !important; border: 1px solid #475569 !important; color: #0f172a !important; box-shadow: inset 0 1px 0 #ffffff, 0 4px 10px rgba(0,0,0,0.5) !important; font-weight: 800;",
+    // Paneles = cajones del cajón de herramientas rojo, con manija.
+    panel: [capa(LLAVE_ICONO, "right 8px top 8px", "32px 14px"), capa(MANIJA, "left 50% bottom 6px", "40% 4px"), capa("linear-gradient(180deg, rgba(255,255,255,0.10), transparent 30%)"), capa(CAJON_ROJO)],
+    panelEstilo: "border: 1px solid #3f0a0a !important; box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25), 0 8px 18px rgba(0,0,0,0.5) !important;",
+    barra: [capa("linear-gradient(180deg, rgba(255,255,255,0.10), transparent 30%)"), capa(CAJON_ROJO)],
+    puente: { img: LLANTA, ancho: 40, alto: 40, enCabecera: 18 },
+    modal: [capa(LLANTA, "right 12px bottom 12px", "30px 30px"), trama(MANCHAS, "320px 320px"), capa("linear-gradient(170deg, #2a1a1a 0%, #171010 100%)")],
+    modalEstilo: "border: 2px solid #8b1a1a !important; box-shadow: inset 0 0 0 3px #171010, inset 0 0 0 4px rgba(226,232,240,0.3), 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: "color: #f1f5f9 !important; border-bottom: 3px solid #dc2626; padding-bottom: 8px;",
+    pestana: [capa(CAJON_ROJO)],
+    pestanaEstilo: "border: 1px solid #3f0a0a !important; color: #fde2e2 !important;",
+    activa: [capa(MANIJA)],
+    activaEstilo: "border-color: #475569 !important; color: #0f172a !important; box-shadow: 0 0 12px rgba(226,232,240,0.35) !important;",
+    campoEstilo: "background: #141618 !important; border: 1px solid #4b5563 !important;",
+    extra: (S) => `
+${en(S, ".tz-header .tz-subtitle")} { color: #fde68a !important; background: rgba(20,14,8,0.75); padding: 2px 10px; border-radius: 999px; }
+${en(S, ".tz-header .tz-conn-indicator")} { background: rgba(20,14,8,0.85) !important; }
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 40px !important; padding-bottom: 16px !important; }`,
+  });
+
+// =====================================================================
 // Catálogo
 // =====================================================================
 export const TEMATICOS = [
@@ -1946,6 +2278,51 @@ export const TEMATICOS = [
     paleta: { id: "tematico-vitrina", nombre: "Sneakers", modo: "oscuro", principal: "#ffd166", secundario: "#ff6b6b", acento: "#7dd3fc", botones: "#f8fafc", fondo1: "#0b0d12", fondo2: "#1a1d26" },
     muestra: `${LAZO} right 8px top 6px / 26px 24px no-repeat, ${PARED_ZAP} left 0 bottom 6px / 160px 25px repeat-x, linear-gradient(180deg, #ffd166, #ffd166) left 0 bottom 0 / 100% 4px no-repeat, ${PERFORADO} 0 0 / 12px 12px, linear-gradient(170deg, #1d2130, #141722)`,
     css: vitrina,
+  },
+  {
+    id: "joyero",
+    rubro: "joyeria",
+    nombre: "Joyero",
+    descripcion: "Terciopelo burdeos, oro, perlas, anillos y diamantes que destellan",
+    paleta: { id: "tematico-joyero", nombre: "Joyero", modo: "oscuro", principal: "#f5d78e", secundario: "#f9a8d4", acento: "#bae6fd", botones: "#f5d78e", fondo1: "#12050b", fondo2: "#2a0a18" },
+    muestra: `${DIAMANTE} right 12px top 10px / 24px 21px no-repeat, ${PERLAS} left 0 bottom 4px / 54px 16px repeat-x, ${DESTELLOS} 0 0 / 90px 90px, linear-gradient(170deg, #4a0f24, #240612)`,
+    css: joyero,
+  },
+  {
+    id: "circuito",
+    rubro: "celulares-tecnologia",
+    nombre: "Circuito",
+    descripcion: "Placa con pulsos de luz, chips, señal y batería",
+    paleta: { id: "tematico-circuito", nombre: "Circuito", modo: "oscuro", principal: "#38bdf8", secundario: "#a78bfa", acento: "#34d399", botones: "#7dd3fc", fondo1: "#060b14", fondo2: "#0f1a2b" },
+    muestra: `${BATERIA} right 10px top 10px / 34px 17px no-repeat, ${SENAL} left 10px top 10px / 30px 17px no-repeat, ${CIRCUITO_VIVO} 0 0 / 90px 90px, linear-gradient(180deg, #0b1626, #060b14)`,
+    css: circuito,
+  },
+  {
+    id: "imprenta",
+    rubro: "cabinas-impresiones",
+    nombre: "Imprenta",
+    descripcion: "Papel continuo, colores CMYK, marcas de registro y clips",
+    paleta: { id: "tematico-imprenta", nombre: "Imprenta", modo: "claro", principal: "#0e7490", secundario: "#be185d", acento: "#a16207", botones: "#0f172a", fondo1: "#f7f7f4", fondo2: "#efeee9" },
+    muestra: `${CMYK} left 0 bottom 0 / 100% 6px no-repeat, ${IMPRESORA} right 10px top 8px / 30px 26px no-repeat, ${AGUJEROS} left 2px top 0 / 12px 17px repeat-y, linear-gradient(180deg, #ffffff, #f3f2ee)`,
+    css: imprenta,
+  },
+  {
+    id: "motor",
+    rubro: "repuestos",
+    nombre: "Motor",
+    descripcion: "Fibra de carbono, engranajes que giran, aceite y bujías",
+    paleta: { id: "tematico-motor", nombre: "Motor", modo: "oscuro", principal: "#f87171", secundario: "#fbbf24", acento: "#e5e7eb", botones: "#fca5a5", fondo1: "#0b0c0e", fondo2: "#17191d" },
+    muestra: `${ENGRANAJE} right 10px top 8px / 30px 30px no-repeat, ${ENGRANAJE_ROJO} right 34px top 26px / 20px 20px no-repeat, ${ACEITE} left 0 top 0 / 60px 14px repeat-x, ${CARBONO} 0 0 / 10px 10px, #0b0c0e`,
+    css: motor,
+  },
+  {
+    id: "garaje",
+    rubro: "taller-mecanico",
+    nombre: "Garaje",
+    descripcion: "Pared de herramientas, cajón rojo, llanta y manchas de aceite",
+    paleta: { id: "tematico-garaje", nombre: "Garaje", modo: "oscuro", principal: "#93c5fd", secundario: "#fca5a5", acento: "#fde68a", botones: "#e2e8f0", fondo1: "#0e1013", fondo2: "#1c2026" },
+    muestra: `${LLANTA} right 8px bottom 8px / 30px 30px no-repeat, ${HERRAMIENTAS} left 0 top 4px / 140px 31px repeat-x, ${PEGBOARD} 0 0 / 14px 14px`,
+    css: garaje,
   },
 ];
 
