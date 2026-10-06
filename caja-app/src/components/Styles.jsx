@@ -6675,10 +6675,29 @@ export default function Styles() {
         display: flex; align-items: center; justify-content: center;
         background: var(--cyan); color: var(--on-cyan);
       }
-      .tz-tema-tematicos { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
-      .tz-tema-tematico { min-height: 86px; justify-content: flex-end; padding-left: 30px; }
-      .tz-tema-tematico .tz-tema-preset-nombre { font-size: 14px; text-shadow: 0 1px 2px #000; }
-      .tz-tema-tematico-desc { font-size: 11px; color: #d5dbe1; text-shadow: 0 1px 2px #000; }
+      /* Temas por rubros: de 3 en 3 (los destacados y, con "Ver más",
+         todos agrupados por rubro). */
+      .tz-tema-tematicos, .tz-tema-grupos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .tz-tema-grupos { display: grid; gap: 10px 8px; }
+      .tz-tema-grupo { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+      .tz-tema-grupo-rubro {
+        font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+        color: var(--cyan); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      .tz-tema-tematico { min-height: 92px; justify-content: flex-end; padding-left: 26px; min-width: 0; }
+      .tz-tema-tematico .tz-tema-preset-nombre { font-size: 13px; text-shadow: 0 1px 2px #000; }
+      .tz-tema-tematico-desc { font-size: 10.5px; line-height: 1.25; color: #d5dbe1; text-shadow: 0 1px 2px #000; }
+      .tz-tema-ver-mas {
+        align-self: center; display: inline-flex; align-items: center; gap: 6px;
+        padding: 7px 16px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700;
+        background: rgba(var(--cyan-rgb), 0.1); color: var(--cyan); border: 1.5px solid rgba(var(--cyan-rgb), 0.4);
+      }
+      .tz-tema-ver-mas:hover { background: rgba(var(--cyan-rgb), 0.18); }
+      @media (max-width: 520px) {
+        .tz-tema-tematico { min-height: 78px; padding: 8px 6px 8px 14px; gap: 4px; }
+        .tz-tema-tematico .tz-tema-preset-nombre { font-size: 11.5px; }
+        .tz-tema-tematico-desc { display: none; }
+      }
       /* Dentro de la vista previa los botones/cabecera no ocupan todo
          el ancho como en la app real. */
       .tz-tema-preview .tz-header { border-radius: 0; }

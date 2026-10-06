@@ -60,6 +60,16 @@ const PESTANAS = (S) => `${en(S, ".tz-tab")}, ${en(S, ".tz-gasto-tipo-btn")}`;
 const ACTIVAS = (S) => `${en(S, ".tz-tab-active")}, ${en(S, ".tz-gasto-tipo-active")}`;
 const CAMPOS = (S) => `${en(S, ".tz-text-input")}, ${en(S, ".tz-admin-filter-select")}, ${en(S, ".tz-amount-input")}`;
 
+// VELO de las ventanas: una capa del color de fondo semitransparente
+// justo ENCIMA de la trama (debajo de los adornos de esquina y bordes),
+// para que la trama quede apagada detrás del texto de los formularios.
+const VELO = "linear-gradient(rgba(var(--base-rgb), 0.74), rgba(var(--base-rgb), 0.74))";
+function velar(capas) {
+  const i = capas.findIndex((c) => c.rep === "repeat");
+  if (i < 0) return capas;
+  return [...capas.slice(0, i), capa(VELO), ...capas.slice(i)];
+}
+
 function construir(S, d) {
   return `
 ${en(S)} { ${fondo(d.raiz)} }
@@ -70,7 +80,8 @@ ${BOTONES(S)} { ${fondo(d.boton)} ${d.botonEstilo || ""} }
 ${en(S, ".tz-header-btn:hover")}, ${en(S, ".tz-scan-btn:not(.tz-payment-save):hover")} { filter: brightness(1.12); }
 ${en(S, ".tz-footer-btn")} { ${fondo(d.botonPie || d.boton)} ${d.botonPieEstilo || d.botonEstilo || ""} }
 ${PANELES(S)} { ${fondo(d.panel)} ${d.panelEstilo || ""} }
-${en(S, ".tz-modal")} { ${fondo(d.modal || d.panel)} ${d.modalEstilo || d.panelEstilo || ""} }
+${en(S, ".tz-modal")} { ${fondo(velar(d.modal || d.panel))} ${d.modalEstilo || d.panelEstilo || ""} }
+${en(S, ".tz-table-wrap")} { background: rgba(var(--base-rgb), 0.8) !important; backdrop-filter: blur(3px); box-shadow: 0 8px 22px rgba(0,0,0,0.28); }
 ${en(S, ".tz-modal h2")} { ${d.tituloEstilo || ""} }
 ${PESTANAS(S)} { ${fondo(d.pestana)} ${d.pestanaEstilo || ""} }
 ${ACTIVAS(S)} { ${fondo(d.activa)} ${d.activaEstilo || ""} }
@@ -565,7 +576,8 @@ const dragon = (S) =>
     botonEstilo: "border: 1.5px solid #d4a017 !important; color: #f5c542 !important; box-shadow: inset 0 0 0 2px rgba(86,12,12,0.9), inset 0 0 0 3px rgba(245,197,66,0.35), 0 3px 8px rgba(0,0,0,0.45) !important;",
     botonPieEstilo: "border-radius: 10px !important; border: 1.5px solid #d4a017 !important; color: #f5c542 !important; box-shadow: inset 0 0 0 2px rgba(86,12,12,0.9), inset 0 0 0 3px rgba(245,197,66,0.35), 0 4px 10px rgba(0,0,0,0.5) !important;",
     // Celosía dorada en 3 esquinas (arriba a la izquierda van los títulos).
-    panel: [capa(CEL_SD, "right 4px top 4px", "14px 14px"), capa(CEL_ID, "right 4px bottom 4px", "14px 14px"), capa(CEL_II, "left 4px bottom 4px", "14px 14px"), trama(NUBES_CHINAS, "72px 40px"), capa(LACA_OSCURA)],
+    // Paneles lisos (sin nubes) para que el texto se lea limpio.
+    panel: [capa(CEL_SD, "right 4px top 4px", "14px 14px"), capa(CEL_ID, "right 4px bottom 4px", "14px 14px"), capa(CEL_II, "left 4px bottom 4px", "14px 14px"), capa(LACA_OSCURA)],
     panelEstilo: "border: 1px solid #d4a017 !important; box-shadow: inset 0 0 0 3px rgba(86,12,12,0.85), inset 0 0 0 4px rgba(245,197,66,0.45), 0 8px 18px rgba(0,0,0,0.45) !important;",
     modal: [capa(CEL_SI, "left 8px top 8px", "18px 18px"), capa(CEL_SD, "right 8px top 8px", "18px 18px"), capa(CEL_ID, "right 8px bottom 8px", "18px 18px"), capa(CEL_II, "left 8px bottom 8px", "18px 18px"), trama(NUBES_CHINAS, "72px 40px"), capa("linear-gradient(170deg, #4a0d0d 0%, #2a0606 100%)")],
     modalEstilo: "border: 2px solid #d4a017 !important; box-shadow: inset 0 0 0 4px rgba(42,6,6,0.9), inset 0 0 0 5px rgba(245,197,66,0.4), 0 20px 60px rgba(0,0,0,0.7) !important;",
@@ -650,45 +662,224 @@ const pasteleria = (S) =>
     activa: [capa("linear-gradient(180deg, #f472b6, #db2777)")],
     activaEstilo: "border-color: #9d174d !important; color: #ffffff !important; box-shadow: 0 4px 14px rgba(219,39,119,0.35) !important;",
     campoEstilo: "background: #ffffff !important; border: 1px solid #f5c2d8 !important;",
+    // Sobre el glaseado rosa la etiqueta "En línea" va en una pastilla
+    // blanca sólida, con verde vivo, para que se lea de lejos.
+    extra: (S) => `
+${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 8px rgba(190,24,93,0.22); }
+${en(S, ".tz-header .tz-conn-online")} { color: #15803d !important; border-color: #4ade80 !important; }
+${en(S, ".tz-header .tz-conn-online .tz-conn-dot")} { background: #22c55e !important; box-shadow: 0 0 6px rgba(34,197,94,0.9) !important; }
+${en(S, ".tz-header .tz-conn-offline")} { color: #b91c1c !important; border-color: #f87171 !important; }
+${en(S, ".tz-header .tz-subtitle")} { color: #9d174d !important; text-shadow: none !important; background: rgba(255,255,255,0.85); padding: 2px 10px; border-radius: 999px; }`,
   });
 
 // =====================================================================
-// CAFETERÍA — "Café de especialidad"
+// CAFETERÍA — "Cafetal" (el campo: cielo, colinas sembradas, cafetos
+// con cerezas, neblina y hojas que caen; paneles de madera de tronco)
 // =====================================================================
-const GRANOS = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='80'><g fill='rgba(200,140,90,0.10)'><ellipse cx='16' cy='18' rx='7' ry='10' transform='rotate(-30 16 18)'/><ellipse cx='58' cy='30' rx='6' ry='9' transform='rotate(25 58 30)'/><ellipse cx='30' cy='62' rx='7' ry='10' transform='rotate(60 30 62)'/></g><g fill='none' stroke='rgba(20,10,5,0.35)' stroke-width='1.5'><path d='M13 11 Q19 18 15 26' transform='rotate(-30 16 18)'/><path d='M56 23 Q61 30 57 38' transform='rotate(25 58 30)'/><path d='M27 55 Q33 62 29 70' transform='rotate(60 30 62)'/></g></svg>`
+// Hoja de cafeto: nace en (x, y) y apunta al ángulo `ang` (largo l).
+const hojaCafe = (x, y, l, w, ang, fill, nervio = "#1b4d1e") =>
+  `<g transform='translate(${x} ${y}) rotate(${ang})'><path d='M0 0 Q${l * 0.35} ${-w} ${l} 0 Q${l * 0.35} ${w} 0 0 Z' fill='${fill}'/><path d='M1 0 Q${l * 0.5} ${-w * 0.12} ${l - 1} 0' stroke='${nervio}' stroke-width='0.8' fill='none'/></g>`;
+const cereza = (x, y, r, c) =>
+  `<circle cx='${x}' cy='${y}' r='${r}' fill='${c}' stroke='rgba(60,0,0,0.35)' stroke-width='0.6'/><circle cx='${x - r * 0.35}' cy='${y - r * 0.35}' r='${r * 0.3}' fill='rgba(255,255,255,0.55)'/>`;
+
+const HOJA_CAIDA = (fill, nervio) =>
+  svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 20'>${hojaCafe(2, 10, 40, 9, 0, fill, nervio)}</svg>`);
+const HOJA_VERDE = HOJA_CAIDA("#2f7d32", "#1b4d1e");
+const HOJA_CLARA = HOJA_CAIDA("#6aa84f", "#2f5d22");
+const HOJA_SECA = HOJA_CAIDA("#c08a2e", "#7a4f12");
+
+const CEREZAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 32'><path d='M18 1 V11' stroke='#5a3a1f' stroke-width='1.6'/>${hojaCafe(18, 7, 18, 6, -160, "#2f7d32")}${hojaCafe(18, 7, 17, 6, -20, "#3a8f3a")}${cereza(12, 16, 5, "#c1121f")}${cereza(20, 15, 5.2, "#d62828")}${cereza(27, 18, 4.6, "#9d0208")}${cereza(16, 24, 4.8, "#e85d04")}${cereza(24, 25, 4.5, "#c1121f")}</svg>`
 );
-const GRANO = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 26'><ellipse cx='10' cy='13' rx='8' ry='11.5' fill='#6b3f22' stroke='#3b2112' stroke-width='1'/><path d='M8 3 Q13 13 9 23' stroke='#2a170c' stroke-width='1.8' fill='none'/><ellipse cx='7' cy='8' rx='2' ry='3.5' fill='rgba(255,220,180,0.25)'/></svg>`
+
+// Mata de café entera (sale de abajo y se mece en la escena).
+const MATA_CAFE = (() => {
+  let s = `<path d='M45 180 Q43 120 46 60 Q47 30 45 6' stroke='#5a3a1f' stroke-width='3.5' fill='none'/>`;
+  [[150, 1], [118, -1], [86, 1], [56, -1], [30, 1]].forEach(([y, d], i) => {
+    const t = 1 - i * 0.12;
+    s += `<path d='M45 ${y} Q${45 + d * 15} ${y - 6} ${45 + d * 34 * t} ${y - 12}' stroke='#5a3a1f' stroke-width='2' fill='none'/>`;
+    s += hojaCafe(45 + d * 6 * t, y - 2, 26 * t, 8, d > 0 ? -70 : -110, "#2f7d32");
+    s += hojaCafe(45 + d * 14 * t, y - 5, 28 * t, 8.5, d > 0 ? -35 : -145, "#2a6e2c");
+    s += hojaCafe(45 + d * 22 * t, y - 8, 28 * t, 8.5, d > 0 ? 30 : 150, "#3a8f3a");
+    s += hojaCafe(45 + d * 30 * t, y - 11, 26 * t, 8, d > 0 ? -10 : -170, "#2f7d32");
+    s += cereza(45 + d * 9 * t, y + 2, 3.4, "#c1121f") + cereza(45 + d * 15 * t, y + 3, 3.2, "#d62828") + cereza(45 + d * 21 * t, y, 3, i % 2 ? "#e85d04" : "#9d0208");
+  });
+  s += hojaCafe(45, 10, 24, 8, -55, "#3a8f3a") + hojaCafe(45, 10, 24, 8, -125, "#2f7d32") + hojaCafe(45, 8, 20, 7, -90, "#2a6e2c");
+  return svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='-10 -14 110 194'>${s}</svg>`);
+})();
+
+// Fila de cafetos con cerezas (borde de la cabecera y del pie).
+const arbustos = (suelo) =>
+  svg(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='46'><rect x='0' y='36' width='120' height='10' fill='${suelo}'/>` +
+      [[0, 30, 16, "#245a1d"], [120, 30, 16, "#245a1d"], [34, 24, 18, "#2d6a24"], [58, 30, 15, "#1f4f19"], [80, 22, 19, "#2f7a2a"], [102, 30, 14, "#285f20"]]
+        .map(([x, y, r, c]) => `<circle cx='${x}' cy='${y}' r='${r}' fill='${c}'/><circle cx='${x - r * 0.3}' cy='${y - r * 0.35}' r='${r * 0.45}' fill='rgba(140,210,110,0.18)'/>`)
+        .join("") +
+      [[30, 18, "#d62828"], [34, 22, "#c1121f"], [27, 23, "#e85d04"], [76, 15, "#d62828"], [81, 19, "#c1121f"], [85, 15, "#9d0208"], [100, 25, "#d62828"], [55, 26, "#c1121f"], [10, 26, "#d62828"]]
+        .map(([x, y, c]) => `<circle cx='${x}' cy='${y}' r='2.6' fill='${c}'/>`)
+        .join("") +
+      `</svg>`
+  );
+const ARBUSTOS_CAMPO = arbustos("#13351a");
+const ARBUSTOS_TIERRA = arbustos("#4a2c15");
+
+const COLINAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='400' height='90'><path d='M0 55 C80 30 150 30 200 45 S330 70 400 55 V90 H0 Z' fill='#8fb8a8' opacity='.85'/><path d='M0 75 C90 50 170 52 240 64 S350 82 400 75 V90 H0 Z' fill='#4f8f45'/><path d='M0 81 C90 58 170 60 240 71 S350 88 400 81' stroke='#3a7434' stroke-width='3' stroke-dasharray='4 5' fill='none'/><path d='M0 88 C90 66 170 68 240 79 S350 95 400 88' stroke='#356b30' stroke-width='3' stroke-dasharray='4 5' fill='none'/></svg>`
 );
-const CREMA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='14' preserveAspectRatio='none'><path d='M0 0 H80 V6 C70 12 60 2 50 7 S30 12 20 6 S6 10 0 6 Z' fill='#d9b48a'/><path d='M0 0 H80 V4 C70 9 60 0 50 5 S30 9 20 4 S6 7 0 4 Z' fill='#ead2b0'/></svg>`
+const NUBES_CIELO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='320' height='70'><g fill='#ffffff' opacity='.9'><ellipse cx='60' cy='34' rx='30' ry='10'/><ellipse cx='48' cy='28' rx='14' ry='10'/><ellipse cx='70' cy='24' rx='17' ry='13'/></g><g fill='#ffffff' opacity='.7'><ellipse cx='230' cy='48' rx='24' ry='7'/><ellipse cx='222' cy='43' rx='10' ry='7'/><ellipse cx='238' cy='40' rx='12' ry='9'/></g></svg>`
 );
-const ESPRESSO = "linear-gradient(170deg, #3a2417 0%, #2a1910 60%, #22140c 100%)";
+const NEBLINA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='600' height='60'><defs><radialGradient id='n'><stop offset='0' stop-color='#ffffff' stop-opacity='.6'/><stop offset='1' stop-color='#ffffff' stop-opacity='0'/></radialGradient></defs><ellipse cx='130' cy='34' rx='150' ry='20' fill='url(#n)'/><ellipse cx='430' cy='28' rx='170' ry='22' fill='url(#n)'/></svg>`
+);
+// Tierra con surcos y plantones: 10 filas (un solo repeat-x, así arriba
+// de los cafetos el pie queda transparente y se ve el campo).
+const SURCOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='260'><rect width='60' height='260' fill='#4a2c15'/>` +
+    Array.from({ length: 10 }, (_, i) => {
+      const y = i * 26;
+      return `<path d='M0 ${y + 9} H60' stroke='#5f3a1d' stroke-width='8'/><path d='M0 ${y + 21} H60' stroke='#331d0d' stroke-width='6'/><g fill='#5fa64a'><path d='M${15 + (i % 2) * 15} ${y + 6} q-5 -4 -7 0 q4 2 7 0z'/><path d='M${15 + (i % 2) * 15} ${y + 6} q5 -4 7 0 q-4 2 -7 0z'/><path d='M${45 + (i % 2) * 15 - (i % 2) * 60} ${y + 6} q-5 -4 -7 0 q4 2 7 0z'/><path d='M${45 + (i % 2) * 15 - (i % 2) * 60} ${y + 6} q5 -4 7 0 q-4 2 -7 0z'/></g>`;
+    }).join("") +
+    `</svg>`
+);
+const HOJAS_TRAMA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='110' height='110'>${hojaCafe(10, 20, 26, 8, -25, "rgba(120,190,100,0.08)", "rgba(0,0,0,0)")}${hojaCafe(62, 70, 24, 7, 150, "rgba(120,190,100,0.07)", "rgba(0,0,0,0)")}${hojaCafe(70, 14, 20, 6, 60, "rgba(120,190,100,0.06)", "rgba(0,0,0,0)")}<circle cx='30' cy='86' r='3' fill='rgba(214,40,40,0.14)'/><circle cx='36' cy='88' r='3' fill='rgba(214,40,40,0.12)'/></svg>`
+);
+const CIELO = "linear-gradient(180deg, #3b7db6 0%, #6ea9d4 35%, #b9dbe8 68%, #e3efe4 100%)";
+const SOL = "radial-gradient(circle at 86% 16%, rgba(255,250,225,0.95) 0 20px, rgba(255,236,170,0.55) 32px, rgba(255,236,170,0) 150px)";
+const CAMPO = "linear-gradient(180deg, #13351a 0%, #0e2913 45%, #091b0c 100%)";
+// Madera del tronco (como la mesa de la foto): anillos y brillo.
+const ANILLOS = "repeating-radial-gradient(ellipse 160% 110% at 12% 135%, rgba(0,0,0,0) 0 9px, rgba(40,20,8,0.3) 9px 10px, rgba(0,0,0,0) 10px 15px, rgba(255,210,160,0.07) 15px 16px)";
+const TRONCO = "linear-gradient(170deg, #6e4424 0%, #57341b 55%, #462914 100%)";
+const BARNIZ = "linear-gradient(180deg, rgba(255,235,200,0.16), transparent 42%)";
 
 const cafe = (S) =>
   construir(S, {
-    raiz: [trama(GRANOS, "80px 80px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(230,201,168,0.10), transparent 60%)"), capa("linear-gradient(180deg, #170e09 0%, #100906 100%)")],
-    cabecera: [capa(CREMA, "left 0 bottom 0", "80px 14px", "repeat-x"), trama(GRANOS, "80px 80px"), capa("linear-gradient(180deg, #2a1810 0%, #3b2416 100%)")],
-    cabeceraEstilo: "padding-bottom: 28px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(0,0,0,0.5);",
-    pie: [capa(CREMA, "left 0 top 0", "80px 14px", "repeat-x"), trama(GRANOS, "80px 80px"), capa("linear-gradient(180deg, #2a1810, #170e09)")],
-    pieEstilo: "border-top: none !important; padding-top: 26px !important;",
-    boton: [capa("linear-gradient(180deg, rgba(255,230,200,0.25), transparent 55%)"), capa("linear-gradient(180deg, #c27a45, #94562c)")],
-    botonEstilo: "border: 1px solid #5c3418 !important; color: #fff3e3 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.45) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
-    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #5c3418 !important; color: #fff3e3 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
-    // Taza de café: borde de crema arriba y un grano en la esquina.
-    panel: [capa(GRANO, "right 8px top 12px", "14px 18px"), capa(CREMA, "left 0 top 0", "80px 10px", "repeat-x"), trama(GRANOS, "80px 80px"), capa(ESPRESSO)],
-    panelEstilo: "border: 1px solid #1a0f08 !important; box-shadow: inset 0 0 0 1px rgba(230,201,168,0.08), 0 8px 18px rgba(0,0,0,0.45) !important;",
-    modal: [capa(CREMA, "left 0 top 0", "80px 14px", "repeat-x"), trama(GRANOS, "80px 80px"), capa("linear-gradient(170deg, #2f1d12 0%, #1a100a 100%)")],
-    modalEstilo: "border: 1px solid #6b4426 !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
-    tituloEstilo: "color: #f3dcc0 !important; border-bottom: 2px solid rgba(217,180,138,0.45); padding-bottom: 8px;",
-    pestana: [capa(ESPRESSO)],
-    pestanaEstilo: "border: 1px solid #5c3a24 !important; color: #ecd2b4 !important;",
-    activa: [capa("linear-gradient(180deg, #f1dcc0 0%, #e0bf95 100%)")],
-    activaEstilo: "border-color: #8a5a32 !important; color: #3a2112 !important; box-shadow: 0 0 14px rgba(230,201,168,0.35) !important;",
-    campoEstilo: "background: #140c08 !important; border: 1px solid #5c3a24 !important;",
-    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 16px !important; }`,
+    // En la app real el campo lo dibuja la ESCENA (fija, detrás de
+    // todo); este fondo queda para la vista previa del Perfil.
+    raiz: [trama(HOJAS_TRAMA, "110px 110px"), capa(CAMPO)],
+    // Cabecera = el paisaje: cielo con sol, nubes que pasan, colinas
+    // sembradas, neblina que se desliza y la fila de cafetos.
+    cabecera: [
+      capa(ARBUSTOS_CAMPO, "left 0 bottom 0", "120px 46px", "repeat-x"),
+      capa(NEBLINA, "left 0 bottom 40px", "600px 60px", "repeat-x"),
+      capa(COLINAS, "left 0 bottom 30px", "400px 90px", "repeat-x"),
+      capa(NUBES_CIELO, "left 0 top 8px", "320px 70px", "repeat-x"),
+      capa(SOL),
+      capa(CIELO),
+    ],
+    cabeceraEstilo: "padding-bottom: 52px !important; border-bottom: none !important; animation: tz-caf-cielo 80s linear infinite;",
+    // Pie = tierra sembrada con surcos y plantones, cafetos arriba.
+    pie: [
+      capa(CEREZAS, "left 4% bottom 10px", "36px 32px"),
+      capa(CEREZAS, "right 4% bottom 10px", "36px 32px"),
+      capa(ARBUSTOS_TIERRA, "left 0 top 0", "120px 46px", "repeat-x"),
+      capa(SURCOS, "left 0 top 40px", "60px 260px", "repeat-x"),
+    ],
+    pieEstilo: "border-top: none !important; padding-top: 56px !important;",
+    boton: [capa(BARNIZ), capa("linear-gradient(180deg, #b9824a, #8a5a2b)")],
+    botonEstilo: "border: 1px solid #4a2a14 !important; color: #fff6e6 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.4) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.55);",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #4a2a14 !important; color: #fff6e6 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.55);",
+    // Medidores, tarjetas, barra de filtros: madera de tronco barnizada
+    // con un racimo de cerezas en la esquina (sin bordes repetidos).
+    panel: [capa(CEREZAS, "right 6px top 6px", "26px 23px"), capa(BARNIZ), capa(ANILLOS), capa(TRONCO)],
+    panelEstilo: "border: 1px solid #2e1a0b !important; box-shadow: inset 0 1px 0 rgba(255,225,180,0.18), 0 8px 18px rgba(0,0,0,0.45) !important;",
+    modal: [
+      capa(CEREZAS, "left 10px bottom 10px", "32px 28px"),
+      capa(CEREZAS, "right 10px bottom 10px", "32px 28px"),
+      trama(HOJAS_TRAMA, "110px 110px"),
+      capa("linear-gradient(170deg, #17401f 0%, #0b2410 100%)"),
+    ],
+    modalEstilo: "border: 1px solid #8a5a2b !important; box-shadow: inset 0 0 0 3px rgba(11,36,16,0.9), inset 0 0 0 4px rgba(185,130,74,0.45), 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: "color: #fff1d6 !important; border-bottom: 2px solid rgba(185,130,74,0.55); padding-bottom: 8px;",
+    pestana: [capa(BARNIZ), capa("linear-gradient(180deg, #5a361b, #43270f)")],
+    pestanaEstilo: "border: 1px solid #8a5a2b !important; color: #f3dcbc !important;",
+    activa: [capa("linear-gradient(180deg, #e5383b, #a4161a)")],
+    activaEstilo: "border-color: #660708 !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(229,56,59,0.45) !important; text-shadow: 0 1px 2px rgba(0,0,0,0.4);",
+    campoEstilo: "background: #0a1c0d !important; border: 1px solid #7a4f2a !important;",
+    extra: (S) => `
+@keyframes tz-caf-cielo {
+  from { background-position: left 0 bottom 0, left 0 bottom 40px, left 0 bottom 30px, left 0 top 8px, 0 0, 0 0; }
+  to { background-position: left 0 bottom 0, left 600px bottom 40px, left 0 bottom 30px, left 320px top 8px, 0 0, 0 0; }
+}
+${en(S, ".tz-header .tz-subtitle")} { color: #1b4d1e !important; text-shadow: none !important; background: rgba(255,255,255,0.82); padding: 2px 10px; border-radius: 999px; }
+${en(S, ".tz-header .tz-conn-indicator")} { background: rgba(11,36,16,0.9) !important; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(20,40,20,0.45)) !important; }
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 32px !important; }
+/* ---- Escena (solo en la app real; TemaNegocio la dibuja) ---- */
+${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+${en(S, ".tz-esc-campo")} { position: absolute; inset: 0; background: ${HOJAS_TRAMA} 0 0 / 110px 110px repeat, ${CAMPO}; }
+${en(S, ".tz-esc-sol")} {
+  position: absolute; top: -30vh; right: -20vw; width: 90vw; height: 90vh;
+  background: radial-gradient(circle, rgba(255,236,170,0.16), rgba(255,236,170,0) 62%);
+  animation: tz-caf-sol 9s ease-in-out infinite alternate;
+}
+${en(S, ".tz-esc-rayos")} {
+  position: absolute; inset: -10% -20%;
+  background: linear-gradient(118deg, transparent 0 38%, rgba(255,240,190,0.07) 43%, transparent 50%), linear-gradient(126deg, transparent 0 56%, rgba(255,240,190,0.05) 60%, transparent 66%);
+  animation: tz-caf-rayos 14s ease-in-out infinite alternate;
+}
+${en(S, ".tz-esc-niebla")} {
+  position: absolute; left: 0; top: var(--y); width: 80vw; height: 180px;
+  background: radial-gradient(ellipse at center, rgba(225,240,228,0.13), rgba(225,240,228,0) 70%);
+  opacity: var(--op, 1);
+  animation: tz-caf-niebla var(--dur) linear var(--delay) infinite;
+  will-change: transform;
+}
+${en(S, ".tz-esc-hoja")} {
+  position: absolute; top: -40px; left: var(--x);
+  width: var(--tam); height: calc(var(--tam) * 0.46);
+  background: var(--img) center / contain no-repeat;
+  animation: tz-caf-caer var(--dur) linear var(--delay) infinite;
+  will-change: transform;
+}
+${en(S, ".tz-esc-mata")} {
+  position: absolute; bottom: -8px; width: var(--tam); height: calc(var(--tam) * 2);
+  background: ${MATA_CAFE} center bottom / contain no-repeat;
+  transform-origin: 50% 100%;
+  animation: tz-caf-mecer var(--dur) ease-in-out var(--delay) infinite alternate;
+  opacity: 0.9;
+}
+${en(S, ".tz-esc-mata-izq")} { left: var(--x); }
+${en(S, ".tz-esc-mata-der")} { right: var(--x); }
+@keyframes tz-caf-sol { from { opacity: 0.7; transform: scale(0.96); } to { opacity: 1; transform: scale(1.04); } }
+@keyframes tz-caf-rayos { from { transform: translateX(-2%) skewX(-2deg); opacity: 0.6; } to { transform: translateX(2%) skewX(2deg); opacity: 1; } }
+@keyframes tz-caf-niebla { from { transform: translateX(-85vw); } to { transform: translateX(110vw); } }
+@keyframes tz-caf-caer {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+  6% { opacity: 0.9; }
+  25% { transform: translate(46px, 28vh) rotate(95deg); }
+  50% { transform: translate(-18px, 56vh) rotate(200deg); }
+  75% { transform: translate(34px, 84vh) rotate(290deg); }
+  94% { opacity: 0.85; }
+  100% { transform: translate(-8px, 112vh) rotate(380deg); opacity: 0; }
+}
+@keyframes tz-caf-mecer { from { transform: rotate(-3.5deg); } to { transform: rotate(3.5deg); } }`,
   });
+
+// Elementos de la escena del Cafetal (TemaNegocio los dibuja como <div>).
+const ESCENA_CAFETAL = [
+  { clase: "tz-esc-campo" },
+  { clase: "tz-esc-sol" },
+  { clase: "tz-esc-rayos" },
+  { clase: "tz-esc-niebla", estilo: { "--y": "24%", "--dur": "70s", "--delay": "-12s" } },
+  { clase: "tz-esc-niebla", estilo: { "--y": "56%", "--dur": "95s", "--delay": "-55s", "--op": 0.8 } },
+  { clase: "tz-esc-niebla", estilo: { "--y": "80%", "--dur": "82s", "--delay": "-30s", "--op": 0.9 } },
+  ...[
+    ["5%", "30px", "19s", "-3s", HOJA_VERDE],
+    ["17%", "22px", "23s", "-14s", HOJA_SECA],
+    ["31%", "26px", "21s", "-8s", HOJA_CLARA],
+    ["46%", "20px", "26s", "-19s", HOJA_VERDE],
+    ["61%", "28px", "20s", "-5s", HOJA_SECA],
+    ["74%", "22px", "24s", "-16s", HOJA_CLARA],
+    ["87%", "30px", "22s", "-10s", HOJA_VERDE],
+    ["95%", "20px", "27s", "-22s", HOJA_SECA],
+  ].map(([x, tam, dur, delay, img]) => ({ clase: "tz-esc-hoja", estilo: { "--x": x, "--tam": tam, "--dur": dur, "--delay": delay, "--img": img } })),
+  { clase: "tz-esc-mata tz-esc-mata-izq", estilo: { "--x": "-14px", "--tam": "104px", "--dur": "5s", "--delay": "0s" } },
+  { clase: "tz-esc-mata tz-esc-mata-izq", estilo: { "--x": "52px", "--tam": "72px", "--dur": "4.2s", "--delay": "-1.4s" } },
+  { clase: "tz-esc-mata tz-esc-mata-der", estilo: { "--x": "-12px", "--tam": "98px", "--dur": "5.4s", "--delay": "-2.2s" } },
+  { clase: "tz-esc-mata tz-esc-mata-der", estilo: { "--x": "56px", "--tam": "66px", "--dur": "4.6s", "--delay": "-0.8s" } },
+];
 
 // =====================================================================
 // JUGUERÍA — "Tropical"
@@ -705,32 +896,53 @@ const HOJA_ID = HOJA(140);
 const JUGO = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='18' preserveAspectRatio='none'><path d='M0 0 H120 V8 C100 16 80 2 60 9 S20 16 0 8 Z' fill='#fb923c'/><path d='M0 0 H120 V5 C100 12 80 0 60 6 S20 12 0 5 Z' fill='#fdba74'/><g fill='#fff7ed' opacity='.7'><circle cx='30' cy='4' r='1.4'/><circle cx='86' cy='3' r='1.1'/></g></svg>`
 );
-const RODAJA_NARANJA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='-16 -16 32 32'><circle r='15' fill='#fb923c'/><circle r='12.5' fill='#fdba74'/><g stroke='#fb923c' stroke-width='1.4'><path d='M0 -12 V12 M-12 0 H12 M-8.5 -8.5 L8.5 8.5 M-8.5 8.5 L8.5 -8.5'/></g><circle r='2' fill='#fff7ed'/></svg>`
+// Frutos rojos y morados: fresa, frambuesa, arándanos, uvas, moras y
+// cerezas (se intercalan con las rodajas de la cabecera).
+const fresa = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M0 -7 C9 -8 11 2 0 13 C-11 2 -9 -8 0 -7 Z' fill='#e11d48'/><path d='M-3 -6 C-1 -2 -6 4 -2 9' stroke='rgba(255,255,255,0.25)' stroke-width='1.6' fill='none'/><g fill='#fde68a'><ellipse cx='-3' cy='-1' rx='.6' ry='1'/><ellipse cx='3' cy='0' rx='.6' ry='1'/><ellipse cx='0' cy='4' rx='.6' ry='1'/><ellipse cx='-4' cy='4' rx='.6' ry='1'/><ellipse cx='4' cy='5' rx='.6' ry='1'/><ellipse cx='0' cy='8' rx='.6' ry='1'/></g><path d='M0 -7 L-6 -10 L-2 -7.5 L-4 -12 L0 -8.5 L4 -12 L2 -7.5 L6 -10 Z' fill='#16a34a'/></g>`;
+const uvas = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M0 -12 Q2 -16 6 -17' stroke='#65a30d' stroke-width='1.6' fill='none'/><path d='M1 -13 Q9 -18 13 -11 Q6 -9 1 -13Z' fill='#4d7c0f'/>${[[-5, -8], [0, -9], [5, -8], [-7, -3], [-2, -3], [3, -3], [8, -3], [-5, 2], [0, 2], [5, 2], [-2, 7], [3, 7], [0, 12]].map(([a, b]) => `<circle cx='${a}' cy='${b}' r='3.4' fill='#7e22ce'/><circle cx='${a - 1.1}' cy='${b - 1.1}' r='1' fill='rgba(255,255,255,0.45)'/>`).join("")}</g>`;
+const frambuesa = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'>${[[-3, -4], [2, -4], [-5, 0], [0, 0], [5, 0], [-3, 4], [2, 4], [0, 8]].map(([a, b]) => `<circle cx='${a}' cy='${b}' r='2.8' fill='#be123c'/><circle cx='${a - 0.8}' cy='${b - 0.8}' r='.8' fill='rgba(255,255,255,0.4)'/>`).join("")}<path d='M-4 -7 L0 -5 L4 -7 L2 -9 L0 -7 L-2 -9 Z' fill='#16a34a'/></g>`;
+const arandanos = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'>${[[-5, 2, 4.6], [4, 0, 5], [0, -6, 4.2]].map(([a, b, r]) => `<circle cx='${a}' cy='${b}' r='${r}' fill='#3730a3'/><circle cx='${a - r * 0.3}' cy='${b - r * 0.35}' r='${r * 0.35}' fill='rgba(199,210,254,0.45)'/><circle cx='${a + r * 0.25}' cy='${b + r * 0.2}' r='1' fill='#1e1b4b'/>`).join("")}</g>`;
+const moras = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'>${[[-2, -5], [2, -5], [-4, -1], [0, -1], [4, -1], [-2, 3], [2, 3], [0, 7]].map(([a, b]) => `<circle cx='${a}' cy='${b}' r='2.5' fill='#3b0764'/><circle cx='${a - 0.7}' cy='${b - 0.7}' r='.7' fill='rgba(233,213,255,0.5)'/>`).join("")}</g>`;
+const cerezasRojas = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M-4 2 Q-2 -10 4 -13 M5 4 Q4 -6 4 -13' stroke='#65a30d' stroke-width='1.4' fill='none'/><circle cx='-4' cy='5' r='4.6' fill='#dc2626'/><circle cx='5' cy='7' r='4.6' fill='#b91c1c'/><circle cx='-5.5' cy='3.5' r='1.3' fill='rgba(255,255,255,0.5)'/><circle cx='3.5' cy='5.5' r='1.3' fill='rgba(255,255,255,0.5)'/></g>`;
+const BAYAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='150' height='70'>${fresa(18, 50, 1.2)}${uvas(62, 22, 1)}${arandanos(104, 54, 1)}${frambuesa(138, 30, 1.1)}${moras(42, 14, 1)}${cerezasRojas(88, 54, 0.9)}</svg>`
+);
+const BAYAS_TENUES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><g opacity='.22'>${fresa(30, 40, 1.3)}${uvas(120, 60, 1.1)}${arandanos(60, 130, 1.1)}${frambuesa(150, 150, 1.2)}${cerezasRojas(100, 120, 1)}${moras(160, 20, 1)}</g></svg>`
+);
+const FRUTOS_ESQUINA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 30'>${uvas(22, 15, 0.7)}${fresa(10, 16, 0.85)}${arandanos(26, 24, 0.55)}</svg>`
 );
 const VIDRIO_TROPICAL = "linear-gradient(170deg, rgba(22,101,52,0.55) 0%, rgba(6,40,22,0.88) 100%)";
 
 const tropical = (S) =>
   construir(S, {
-    raiz: [capa(HOJA_SI, "left -40px top 120px", "220px 220px"), capa(HOJA_ID, "right -40px bottom -20px", "240px 240px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(163,230,53,0.16), transparent 60%)"), capa("linear-gradient(180deg, #06200f 0%, #04140c 100%)")],
+    raiz: [capa(HOJA_SI, "left -40px top 120px", "220px 220px"), capa(HOJA_ID, "right -40px bottom -20px", "240px 240px"), trama(BAYAS_TENUES, "180px 180px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(163,230,53,0.16), transparent 60%)"), capa("linear-gradient(180deg, #06200f 0%, #04140c 100%)")],
     // Frutas tenues y espaciadas, con una zona tranquila detrás del logo
     // (que no compitan con el logo ni con los textos del centro).
     cabecera: [
       capa(JUGO, "left 0 bottom 0", "120px 18px", "repeat-x"),
       capa("radial-gradient(ellipse 260px 150px at 50% 45%, rgba(21,101,52,0.95) 0%, rgba(21,101,52,0.75) 55%, transparent 100%)"),
       capa("linear-gradient(180deg, rgba(21,128,61,0.55), rgba(22,101,52,0.55))"),
+      capa(BAYAS, "105px 50px", "210px 100px", "repeat"),
       capa(RODAJAS, "0 0", "210px 100px", "repeat"),
       capa("linear-gradient(180deg, #15803d 0%, #166534 100%)"),
     ],
     cabeceraEstilo: "padding-bottom: 32px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(0,0,0,0.45);",
-    pie: [capa(JUGO, "left 0 top 0", "120px 18px", "repeat-x"), capa(HOJA_SI, "left -20px bottom -30px", "130px 130px"), capa(HOJA_ID, "right -20px bottom -30px", "130px 130px"), capa("linear-gradient(180deg, #14532d, #06200f)")],
+    pie: [capa(JUGO, "left 0 top 0", "120px 18px", "repeat-x"), capa(HOJA_SI, "left -20px bottom -30px", "130px 130px"), capa(HOJA_ID, "right -20px bottom -30px", "130px 130px"), trama(BAYAS_TENUES, "180px 180px"), capa("linear-gradient(180deg, #14532d, #06200f)")],
     pieEstilo: "border-top: none !important; padding-top: 30px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.3), transparent 55%)"), capa("linear-gradient(180deg, #bef264, #84cc16)")],
     botonEstilo: "border: 1px solid #3f6212 !important; color: #14290a !important; box-shadow: 0 3px 8px rgba(0,0,0,0.35) !important; border-radius: 999px !important;",
     botonPieEstilo: "border-radius: 999px !important; border: 1px solid #3f6212 !important; color: #14290a !important; box-shadow: 0 4px 10px rgba(0,0,0,0.4) !important;",
-    panel: [capa(RODAJA_NARANJA, "right 6px top 6px", "22px 22px"), capa(VIDRIO_TROPICAL)],
+    panel: [capa(FRUTOS_ESQUINA, "right 6px top 6px", "30px 26px"), capa(VIDRIO_TROPICAL)],
     panelEstilo: "border: 1px solid rgba(190,242,100,0.4) !important; box-shadow: 0 8px 18px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12) !important; backdrop-filter: blur(3px);",
-    modal: [capa(HOJA_SI, "left -30px top -30px", "110px 110px"), capa(HOJA_ID, "right -30px bottom -30px", "110px 110px"), capa("linear-gradient(170deg, #0f3d22 0%, #06200f 100%)")],
+    modal: [capa(HOJA_SI, "left -30px top -30px", "110px 110px"), capa(HOJA_ID, "right -30px bottom -30px", "110px 110px"), capa(FRUTOS_ESQUINA, "left 12px bottom 12px", "34px 30px"), capa("linear-gradient(170deg, #0f3d22 0%, #06200f 100%)")],
     modalEstilo: "border: 1px solid rgba(190,242,100,0.5) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;",
     tituloEstilo: "color: #ecfccb !important; border-bottom: 3px solid #fb923c; padding-bottom: 8px;",
     pestana: [capa("linear-gradient(180deg, #14532d, #0d3b20)")],
@@ -784,7 +996,17 @@ const helado = (S) =>
     activa: [capa("linear-gradient(180deg, #f472b6, #db2777)")],
     activaEstilo: "border-color: #9d174d !important; color: #ffffff !important; box-shadow: 0 4px 14px rgba(219,39,119,0.35) !important;",
     campoEstilo: "background: #ffffff !important; border: 1px solid #b7e4d3 !important;",
-    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 14px !important; }`,
+    // La fila de bolas queda MONTADA sobre el borde de arriba de la barra
+    // de filtros (que va pegada a la cabecera): la cabecera muestra la
+    // parte de arriba de cada bola y la barra el chorreado, sin cortes y
+    // sin tapar "Localidad" / "Sucursal". Sin barra debajo (cajero,
+    // tienda), la cabecera muestra la fila entera.
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 14px !important; }
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: left 0 bottom -13px, 0 0, 22px 22px, 0 0 !important; padding-bottom: 36px !important; }
+${en(S, ".tz-header + .tz-admin-filterbar")} {
+  ${fondo([capa(BOLAS, "left 0 top -21px", "108px 34px", "repeat-x"), capa(CONO, "right 10px bottom 8px", "18px 24px"), capa("linear-gradient(180deg, #ffffff, #fbfffd)")])}
+  border-top: none !important; padding-top: 24px !important;
+}`,
   });
 
 // =====================================================================
@@ -798,9 +1020,23 @@ const CUCHILLA = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 24'><path d='M2 3 H24 V16 Q14 21 2 18 Z' fill='#d7dde3' stroke='#475569' stroke-width='1'/><path d='M2 16 Q13 20 24 15' stroke='#f8fafc' stroke-width='1.2' fill='none'/><circle cx='20' cy='7' r='1.8' fill='#475569'/><rect x='24' y='7' width='9' height='5' rx='2' fill='#7c2d12' stroke='#431407' stroke-width='.8'/></svg>`
 );
 
+// Filetes en mosaico para el fondo: lomo con marmoleo, T-bone con su
+// hueso y bife con capa de grasa (tenues, para que no compitan).
+const marmoleo = `<g stroke='#f1d9c6' stroke-width='0.9' fill='none' opacity='.55' stroke-linejoin='round'><path d='M-15 -6 l4 2 l3 -1 l5 3 l4 -1'/><path d='M-10 6 l3 -2 l4 2 l3 -3 l3 1'/><path d='M2 -11 l2 3 l4 0 l2 3'/><path d='M9 3 l3 3 l3 -1'/><path d='M-4 -2 l3 1 l2 -2'/></g><g fill='#f1d9c6' opacity='.5'><ellipse cx='-6' cy='-8' rx='1.4' ry='.8'/><ellipse cx='12' cy='-4' rx='1.2' ry='.7'/><ellipse cx='-12' cy='10' rx='1.3' ry='.8'/><ellipse cx='4' cy='10' rx='1' ry='.6'/></g>`;
+const lomo = (x, y, r, k = 1) =>
+  `<g transform='translate(${x} ${y}) rotate(${r}) scale(${k})'><path d='M-24 0 C-24 -16 -8 -20 6 -18 C20 -16 26 -6 24 4 C22 16 8 20 -6 18 C-18 16 -24 10 -24 0 Z' fill='#f2e2cf'/><path d='M-20 0 C-20 -13 -7 -16 6 -14.5 C17 -13 21 -5 20 3 C18 13 7 16 -5 14.5 C-15 13 -20 8 -20 0 Z' fill='#a3171c'/><path d='M-14 -2 C-10 -10 4 -11 10 -6 C14 -2 10 6 2 7 C-8 8 -16 4 -14 -2 Z' fill='#bd2228'/>${marmoleo}</g>`;
+// T-bone: el hueso en T separa el bife angosto (grande) del lomo (chico).
+const tbone = (x, y, r, k = 1) =>
+  `<g transform='translate(${x} ${y}) rotate(${r}) scale(${k})'><path d='M-26 -4 C-26 -18 -6 -22 10 -19 C24 -16 28 -4 26 8 C24 18 8 22 -8 20 C-22 18 -26 8 -26 -4 Z' fill='#f2e2cf'/><path d='M-22 -4 C-22 -15 -6 -18 9 -15.5 C21 -13 24 -3 22 7 C20 15 7 18 -7 16.5 C-19 15 -22 7 -22 -4 Z' fill='#a01b20'/><path d='M-8 -14 C-9 -2 -9 8 -6 16' stroke='#ece2d2' stroke-width='5' fill='none' stroke-linecap='round'/><path d='M-20 -9 C-12 -15 0 -17 10 -15' stroke='#ece2d2' stroke-width='4.5' fill='none' stroke-linecap='round'/><path d='M-8 -14 C-9 -2 -9 8 -6 16' stroke='#cdbfa8' stroke-width='1.2' fill='none'/><g transform='translate(8 2)'>${marmoleo}</g><path d='M-19 -2 l3 2 l3 -1 M-17 6 l3 -1' stroke='#f1d9c6' stroke-width='.8' fill='none' opacity='.5'/></g>`;
+const bife = (x, y, r, k = 1) =>
+  `<g transform='translate(${x} ${y}) rotate(${r}) scale(${k})'><path d='M-26 -10 Q0 -20 26 -10 Q30 6 18 14 Q0 20 -18 14 Q-30 6 -26 -10 Z' fill='#b3191f'/><path d='M-26 -10 Q0 -20 26 -10 L25 -5 Q0 -14 -25 -5 Z' fill='#f5e6d3'/>${marmoleo}</g>`;
+const FILETES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='260' height='260'><g opacity='.38'>${lomo(66, 62, -18, 1.75)}${tbone(190, 168, 22, 1.8)}${bife(196, 50, 8, 1.6)}${lomo(66, 196, 34, 1.5)}</g></svg>`
+);
+
 const carnicero = (S) =>
   construir(S, {
-    raiz: [capa("linear-gradient(180deg, rgba(20,12,10,0.94), rgba(14,8,7,0.97))"), trama(AZULEJOS, "44px 22px")],
+    raiz: [trama(FILETES, "260px 260px"), capa("linear-gradient(180deg, rgba(20,12,10,0.94), rgba(14,8,7,0.97))"), trama(AZULEJOS, "44px 22px")],
     cabecera: [capa("linear-gradient(180deg, #b91c1c, #991b1b)", "left 0 bottom 0", "100% 10px"), capa("linear-gradient(180deg, #ffffff, #ffffff)", "left 0 bottom 10px", "100% 3px"), trama(AZULEJOS, "44px 22px")],
     cabeceraEstilo: "padding-bottom: 30px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(0,0,0,0.45);",
     pie: [capa("linear-gradient(180deg, #b91c1c, #991b1b)", "left 0 top 0", "100% 10px"), trama(AZULEJOS, "44px 22px")],
@@ -810,7 +1046,7 @@ const carnicero = (S) =>
     botonPieEstilo: "border-radius: 10px !important; border: 1px solid #5f0f0f !important; color: #fff1e6 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.4) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
     panel: [capa(CUCHILLA, "right 6px top 8px", "26px 18px"), capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.45))"), capa(BLOQUE, "0 0", "28px 28px", "repeat")],
     panelEstilo: "border: 1px solid #2a170c !important; box-shadow: inset 0 0 0 1px rgba(255,220,180,0.08), 0 8px 18px rgba(0,0,0,0.45) !important;",
-    modal: [capa("linear-gradient(180deg, #b91c1c, #991b1b)", "left 0 top 0", "100% 8px"), capa("linear-gradient(170deg, #241310 0%, #160c0a 100%)")],
+    modal: [capa("linear-gradient(180deg, #b91c1c, #991b1b)", "left 0 top 0", "100% 8px"), trama(FILETES, "260px 260px"), capa("linear-gradient(170deg, #241310 0%, #160c0a 100%)")],
     modalEstilo: "border: 1px solid #5f2a1c !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
     tituloEstilo: "color: #fde8e8 !important; border-bottom: 2px solid rgba(239,68,68,0.6); padding-bottom: 8px;",
     pestana: [capa("linear-gradient(180deg, #3a2318, #2a1810)")],
@@ -866,28 +1102,42 @@ const mercado = (S) =>
 const PIEDRA = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='48'><rect width='80' height='48' fill='#1a1013'/><g fill='#2d1d21' stroke='#120a0c' stroke-width='1.5'><path d='M2 2 H34 L36 14 L32 22 H4 L1 12 Z'/><path d='M38 2 H78 V20 L74 22 H40 L37 12 Z'/><path d='M2 25 H22 L24 36 L20 46 H3 L1 36 Z'/><path d='M26 25 H56 L58 34 L54 46 H28 L25 35 Z'/><path d='M60 25 H78 V46 H62 L59 36 Z'/></g><g fill='rgba(255,255,255,0.04)'><path d='M6 4 H30 L31 8 H6 Z'/><path d='M42 4 H72 V8 H42 Z'/></g></svg>`
 );
-const PARRA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='30'><path d='M0 8 C20 2 30 14 60 8 S100 2 120 8' stroke='#6b4a2a' stroke-width='2.4' fill='none'/><g transform='translate(30 10)'><path d='M0 0 C-10 -4 -14 6 -6 8 C-10 14 2 16 2 8 C8 12 12 2 4 0 Z' fill='#4d7c0f'/></g><g transform='translate(84 9)'><path d='M0 0 C-10 -4 -14 6 -6 8 C-10 14 2 16 2 8 C8 12 12 2 4 0 Z' fill='#3f6212'/></g><g fill='#6d28d9'><circle cx='56' cy='14' r='3.4'/><circle cx='62' cy='14' r='3.4'/><circle cx='59' cy='19' r='3.4'/><circle cx='65' cy='19' r='3.2'/><circle cx='53' cy='19' r='3.2'/><circle cx='59' cy='24' r='3.2'/></g><g fill='rgba(255,255,255,0.35)'><circle cx='55' cy='13' r='1'/><circle cx='61' cy='13' r='1'/></g></svg>`
+// Botellas: cerveza (ámbar y verde), whisky, licor claro y shots.
+const cerveza = (x, vidrio, etiqueta) =>
+  `<g transform='translate(${x} 0)'><path d='M1 38 V18 Q1 13 4.5 11 V4 H7.5 V11 Q11 13 11 18 V38 Z' fill='${vidrio}' stroke='rgba(0,0,0,0.35)' stroke-width='.6'/><rect x='4' y='1.6' width='4' height='2.6' rx='.6' fill='#fbbf24'/><rect x='1.6' y='22' width='8.8' height='8' rx='1' fill='${etiqueta}'/><rect x='1.6' y='25' width='8.8' height='1.6' fill='#b91c1c'/><path d='M3 17 V36' stroke='rgba(255,255,255,0.3)' stroke-width='1.2'/></g>`;
+const whisky = (x) =>
+  `<g transform='translate(${x} 0)'><path d='M0 38 V20 Q0 16 5 15 V9 H11 V15 Q16 16 16 20 V38 Z' fill='#d97706' fill-opacity='.85' stroke='#78350f' stroke-width='.8'/><rect x='5' y='5.5' width='6' height='3.6' rx='.8' fill='#1f2937'/><rect x='2' y='24' width='12' height='9' rx='1' fill='#111827' stroke='#e9c46a' stroke-width='.8'/><path d='M4 27 H12 M5 30 H11' stroke='#e9c46a' stroke-width='.7'/><path d='M2 19 V36' stroke='rgba(255,255,255,0.3)' stroke-width='1.2'/></g>`;
+const licorClaro = (x) =>
+  `<g transform='translate(${x} 0)'><path d='M0 38 V16 Q0 12 3 10 V3 H7 V10 Q10 12 10 16 V38 Z' fill='rgba(186,230,253,0.32)' stroke='rgba(255,255,255,0.6)' stroke-width='.7'/><rect x='2.8' y='1' width='4.4' height='2.6' rx='.6' fill='#e9c46a'/><rect x='1.2' y='22' width='7.6' height='9' rx='1' fill='#f5d58a'/><path d='M2 15 V36' stroke='rgba(255,255,255,0.45)' stroke-width='1'/></g>`;
+const shot = (x, y, liquido) =>
+  `<g transform='translate(${x} ${y})'><path d='M0 0 H10 L8.5 10 H1.5 Z' fill='rgba(255,255,255,0.18)' stroke='rgba(255,255,255,0.7)' stroke-width='.8'/><path d='M0.6 3.5 H9.4 L8.5 10 H1.5 Z' fill='${liquido}'/><path d='M1.5 9 H8.5' stroke='rgba(255,255,255,0.8)' stroke-width='1.6'/></g>`;
+// Repisa de madera con la fila de botellas (repeat-x).
+const REPISA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='46'>${cerveza(4, "#92400e", "#fef3c7")}${cerveza(20, "#15803d", "#fde68a")}${whisky(36)}${shot(58, 28, "#f59e0b")}${shot(70, 28, "#dc2626")}${licorClaro(86)}${cerveza(102, "#92400e", "#fef3c7")}<rect x='0' y='38' width='120' height='8' fill='#6b4423'/><rect x='0' y='38' width='120' height='1.5' fill='#a06a3c'/><rect x='0' y='44.5' width='120' height='1.5' fill='#3b2414'/></svg>`
 );
-const UVAS = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 30'><path d='M12 6 Q12 1 16 1' stroke='#6b4a2a' stroke-width='1.6' fill='none'/><path d='M14 4 C20 1 23 7 18 9 Z' fill='#4d7c0f'/><g fill='#7c3aed' stroke='#4c1d95' stroke-width='.6'><circle cx='7' cy='10' r='3.6'/><circle cx='14' cy='10' r='3.6'/><circle cx='10.5' cy='15.5' r='3.6'/><circle cx='17.5' cy='15.5' r='3.4'/><circle cx='4' cy='15.5' r='3.2'/><circle cx='7' cy='21' r='3.4'/><circle cx='14' cy='21' r='3.4'/><circle cx='10.5' cy='26' r='3.2'/></g><g fill='rgba(255,255,255,0.4)'><circle cx='6' cy='9' r='1'/><circle cx='13' cy='9' r='1'/><circle cx='9.5' cy='14.5' r='1'/></g></svg>`
+const SHOTS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 18'><g transform='rotate(-10 6 10)'>${shot(1, 5, "#f59e0b")}</g><g transform='rotate(10 18 10)'>${shot(14, 5, "#dc2626")}</g><g fill='#fde68a'><circle cx='13' cy='2' r='1'/><circle cx='10' cy='4' r='.7'/><circle cx='16' cy='4' r='.7'/></g></svg>`
+);
+const BOTELLA_CERVEZA = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 39'>${cerveza(0, "#92400e", "#fef3c7")}</svg>`);
+const BOTELLAS_TENUES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='150' height='120'><g opacity='.12'><g transform='translate(14 20) rotate(-12)'>${cerveza(0, "#d97706", "#fef3c7")}</g><g transform='translate(80 60) rotate(10)'>${whisky(0)}</g><g transform='translate(118 6) rotate(-6)'>${licorClaro(0)}</g><g transform='translate(40 84)'>${shot(0, 0, "#f59e0b")}${shot(12, 0, "#dc2626")}</g></g></svg>`
 );
 const DUELAS = "repeating-linear-gradient(90deg, #5e3b22 0 26px, #3b2414 26px 28px)";
 const ARO = "linear-gradient(180deg, #4a4a4a 0%, #8a8a8a 45%, #3a3a3a 100%)";
 
 const vinos = (S) =>
   construir(S, {
-    raiz: [capa("radial-gradient(ellipse 900px 380px at 50% -10%, rgba(233,196,106,0.10), transparent 60%)"), trama(PIEDRA, "80px 48px"), capa("#120a0c")],
-    cabecera: [capa(PARRA, "left 0 bottom 2px", "120px 30px", "repeat-x"), capa("radial-gradient(ellipse 60% 70% at 50% 40%, rgba(122,20,44,0.45), transparent 70%)"), trama(PIEDRA, "80px 48px")],
-    cabeceraEstilo: "padding-bottom: 38px !important; border-bottom: 3px solid #e9c46a !important; box-shadow: 0 6px 18px rgba(0,0,0,0.55);",
-    pie: [capa(PARRA, "left 0 top 0", "120px 30px", "repeat-x"), trama(PIEDRA, "80px 48px")],
-    pieEstilo: "border-top: 3px solid #e9c46a !important; padding-top: 34px !important;",
+    raiz: [trama(BOTELLAS_TENUES, "150px 120px"), capa("radial-gradient(ellipse 900px 380px at 50% -10%, rgba(233,196,106,0.10), transparent 60%)"), trama(PIEDRA, "80px 48px"), capa("#120a0c")],
+    cabecera: [capa(REPISA, "left 0 bottom 0", "156px 60px", "repeat-x"), capa("radial-gradient(ellipse 60% 70% at 50% 40%, rgba(122,20,44,0.45), transparent 70%)"), trama(PIEDRA, "80px 48px")],
+    cabeceraEstilo: "padding-bottom: 68px !important; border-bottom: 3px solid #e9c46a !important; box-shadow: 0 6px 18px rgba(0,0,0,0.55);",
+    pie: [capa(REPISA, "left 0 top 0", "156px 60px", "repeat-x"), trama(PIEDRA, "80px 48px")],
+    pieEstilo: "border-top: 3px solid #e9c46a !important; padding-top: 68px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.16), transparent 55%)"), capa("linear-gradient(180deg, #7a1730, #561021)")],
     botonEstilo: "border: 1px solid #e9c46a !important; color: #f5d58a !important; box-shadow: 0 3px 8px rgba(0,0,0,0.5) !important;",
     botonPieEstilo: "border-radius: 10px !important; border: 1px solid #e9c46a !important; color: #f5d58a !important; box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important;",
     // Barrica: duelas verticales con dos aros de metal.
     panel: [
-      capa(UVAS, "right 8px top 14px", "18px 22px"),
+      capa(SHOTS, "right 8px top 14px", "26px 18px"),
       capa(ARO, "left 0 top 6px", "100% 5px"),
       capa(ARO, "left 0 bottom 6px", "100% 5px"),
       capa("linear-gradient(90deg, rgba(0,0,0,0.45) 0%, transparent 25%, transparent 75%, rgba(0,0,0,0.45) 100%)"),
@@ -895,8 +1145,8 @@ const vinos = (S) =>
       capa(DUELAS, "0 0", "auto", "repeat"),
     ],
     panelEstilo: "border: 1px solid #2a170c !important; box-shadow: 0 8px 18px rgba(0,0,0,0.5) !important;",
-    modal: [capa(PARRA, "left 0 top 0", "120px 30px", "repeat-x"), capa("linear-gradient(170deg, #2a0d16 0%, #14070b 100%)")],
-    modalEstilo: "border: 1px solid #e9c46a !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important; padding-top: 38px !important;",
+    modal: [capa(BOTELLA_CERVEZA, "left 12px bottom 10px", "13px 42px"), capa(SHOTS, "right 12px bottom 12px", "30px 21px"), trama(BOTELLAS_TENUES, "150px 120px"), capa("linear-gradient(170deg, #2a0d16 0%, #14070b 100%)")],
+    modalEstilo: "border: 1px solid #e9c46a !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
     tituloEstilo: "color: #f5d58a !important; border-bottom: 1px solid rgba(233,196,106,0.55); padding-bottom: 8px; letter-spacing: 0.1em;",
     pestana: [capa("linear-gradient(180deg, #3a1420, #260b14)")],
     pestanaEstilo: "border: 1px solid rgba(233,196,106,0.4) !important; color: #f3dca8 !important;",
@@ -1152,7 +1402,7 @@ const huellitas = (S) =>
   construir(S, {
     raiz: [trama(HUELLAS, "90px 90px"), capa("linear-gradient(180deg, #f5fbfd 0%, #e8f5f9 100%)")],
     cabecera: [capa(JUGUETES, "left 0 bottom 4px", "120px 26px", "repeat-x"), trama(HUELLAS, "90px 90px"), capa("linear-gradient(180deg, #fef9c3 0%, #fde68a 100%)")],
-    cabeceraEstilo: "padding-bottom: 38px !important; border-bottom: 4px solid #0e7490 !important; box-shadow: 0 6px 14px rgba(14,116,144,0.12);",
+    cabeceraEstilo: "padding-bottom: 54px !important; border-bottom: 4px solid #0e7490 !important; box-shadow: 0 6px 14px rgba(14,116,144,0.12);",
     pie: [capa(JUGUETES, "left 0 top 6px", "120px 26px", "repeat-x"), capa("linear-gradient(180deg, #fde68a, #fef9c3)")],
     pieEstilo: "border-top: 4px solid #0e7490 !important; padding-top: 40px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.25), transparent 55%)"), capa("linear-gradient(180deg, #0891b2, #0e7490)")],
@@ -1284,75 +1534,154 @@ const zen = (S) =>
   });
 
 // =====================================================================
-// ROPA Y MODA — "Boutique"
+// ROPA Y MODA — "Urbano" (denim, costuras naranjas y un tendedero de
+// prendas: polos, camisa a cuadros, gorra, gafas, jeans y bikini)
 // =====================================================================
-const GANCHOS = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='70' height='30'><path d='M0 3 H70' stroke='#d4af37' stroke-width='2'/><g fill='none' stroke='#d4af37' stroke-width='1.6' stroke-linecap='round'><path d='M35 3 Q35 7 32 8 Q30 9 31 11 L35 13'/><path d='M35 13 L14 24 H56 Z'/></g></svg>`
+const polo = (x, y, c, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M8 4 L12 2 Q15 5 18 2 L22 4 L28 9 L24 13 L22 11 V28 H8 V11 L6 13 L2 9 Z' fill='${c}' stroke='rgba(0,0,0,0.35)' stroke-width='.8'/><path d='M12 2 Q15 6 18 2' stroke='rgba(0,0,0,0.3)' stroke-width='1' fill='none'/><rect x='11' y='12' width='8' height='5' rx='1' fill='rgba(255,255,255,0.55)'/></g>`;
+const camisa = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><defs><pattern id='cu' width='6' height='6' patternUnits='userSpaceOnUse'><rect width='6' height='6' fill='#b91c1c'/><path d='M0 1.5 H6 M1.5 0 V6' stroke='#1f2937' stroke-width='1.4'/><path d='M0 4.5 H6 M4.5 0 V6' stroke='rgba(255,255,255,0.25)' stroke-width='.7'/></pattern></defs><path d='M8 4 L12 2 L15 6 L18 2 L22 4 L28 9 L24 13 L22 11 V28 H8 V11 L6 13 L2 9 Z' fill='url(#cu)' stroke='rgba(0,0,0,0.4)' stroke-width='.8'/><path d='M12 2 L15 8 L18 2' fill='#7f1d1d'/><path d='M15 8 V28' stroke='rgba(0,0,0,0.4)' stroke-width='.8'/><g fill='#f8fafc'><circle cx='15' cy='12' r='.8'/><circle cx='15' cy='17' r='.8'/><circle cx='15' cy='22' r='.8'/></g></g>`;
+const gorra = (x, y, c, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M3 17 Q3 5 15 5 Q25 5 25 15 L31 17 Q31 20 27 20 H4 Q3 20 3 17 Z' fill='${c}' stroke='rgba(0,0,0,0.4)' stroke-width='.8'/><path d='M25 15 L31 17 Q31 20 27 20 H22 Z' fill='rgba(0,0,0,0.35)'/><path d='M15 5 Q12 10 12 18 M15 5 Q19 10 20 17' stroke='rgba(0,0,0,0.25)' stroke-width='.8' fill='none'/><circle cx='15' cy='5' r='1.4' fill='rgba(0,0,0,0.4)'/><rect x='7' y='11' width='6' height='4' rx='1' fill='#fde047'/></g>`;
+const gafas = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M1 3 H31' stroke='#111827' stroke-width='2' stroke-linecap='round'/><path d='M2 3 H13 Q14 11 8 12 Q2 12 2 3 Z' fill='#111827'/><path d='M19 3 H30 Q30 12 24 12 Q18 11 19 3 Z' fill='#111827'/><path d='M4 5 L8 9 M21 5 L25 9' stroke='rgba(125,211,252,0.7)' stroke-width='1.4' stroke-linecap='round'/><path d='M13 4 Q16 2 19 4' stroke='#111827' stroke-width='1.6' fill='none'/></g>`;
+const jeans = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M5 2 H25 L27 30 H18.5 L15 12 L11.5 30 H3 Z' fill='#2f5d9a' stroke='#1e3a5f' stroke-width='.8'/><rect x='5' y='2' width='20' height='3.5' fill='#264c80'/><path d='M7 6 Q9 10 13 8 M23 6 Q21 10 17 8' stroke='#f59e0b' stroke-width='.7' fill='none'/><path d='M15 5.5 V12' stroke='#f59e0b' stroke-width='.7' stroke-dasharray='1.4 1'/><circle cx='15' cy='3.8' r='.9' fill='#d6a756'/><path d='M4 28 H11 M19 28 H26' stroke='#f59e0b' stroke-width='.7' stroke-dasharray='1.4 1'/></g>`;
+const bikini = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M2 2 L8 11 M28 2 L22 11 M8 11 Q15 8 22 11' stroke='#111827' stroke-width='.9' fill='none'/><path d='M8 11 L4 5 Q9 4 13 9 Q12 13 8 11 Z' fill='#fb7185'/><path d='M22 11 L26 5 Q21 4 17 9 Q18 13 22 11 Z' fill='#fb7185'/><path d='M6 18 H24 Q22 27 15 28 Q8 27 6 18 Z' fill='#fb7185'/><path d='M2 18 H28' stroke='#111827' stroke-width='.9'/><g fill='#fff1f2'><circle cx='8' cy='8' r='.8'/><circle cx='22' cy='8' r='.8'/><circle cx='11' cy='21' r='.8'/><circle cx='17' cy='23' r='.8'/><circle cx='19' cy='20' r='.8'/></g></g>`;
+const pinza = (x) => `<rect x='${x}' y='3' width='3' height='7' rx='1' fill='#d6a756' stroke='#8a6420' stroke-width='.5'/>`;
+// Tendedero: cuerda + prendas colgadas con pinzas (repeat-x).
+const TENDEDERO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='200' height='46'><path d='M0 6 Q100 11 200 6' stroke='#e5e7eb' stroke-width='1.4' fill='none'/>${polo(4, 8, "#f8fafc", 1)}${pinza(17)}${gorra(36, 6, "#1f2937", 0.95)}${pinza(50)}${gafas(70, 9, 0.9)}${pinza(83)}${jeans(104, 8, 1.15)}${pinza(110)}${pinza(130)}${bikini(140, 6, 1)}${pinza(154)}${camisa(170, 8, 1)}${pinza(183)}</svg>`
 );
-const ETIQUETA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 30'><path d='M11 1 Q15 1 15 5' stroke='#d4af37' stroke-width='1' fill='none'/><path d='M5 8 L11 4 L17 8 V27 H5 Z' fill='#f5ecd2' stroke='#a67c00' stroke-width='1'/><circle cx='11' cy='9' r='1.6' fill='#1c1a14'/><path d='M8 15 H14 M8 18.5 H14 M8 22 H12' stroke='#a67c00' stroke-width='1'/></svg>`
+const PRENDAS_TENUES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><g opacity='.09'>${polo(20, 20, "#e5e7eb", 1.5)}${gafas(120, 40, 1.4)}${gorra(150, 120, "#e5e7eb", 1.4)}${jeans(40, 130, 1.5)}${bikini(110, 175, 1.1)}</g></svg>`
 );
-const CINTA_COSTURA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='12'><rect width='40' height='12' fill='#f3e5ab'/><g stroke='#1c1a14' stroke-width='.8'><path d='M0 0 V6'/><path d='M4 0 V3'/><path d='M8 0 V3'/><path d='M12 0 V3'/><path d='M16 0 V3'/><path d='M20 0 V5'/><path d='M24 0 V3'/><path d='M28 0 V3'/><path d='M32 0 V3'/><path d='M36 0 V3'/></g></svg>`
+// Costura de jean: doble pespunte naranja (repeat-x).
+const PESPUNTE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='16' height='10'><path d='M1 3 H9 M1 7 H9' stroke='#f59e0b' stroke-width='1.3' stroke-linecap='round'/></svg>`
 );
+const TWILL = "repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 3px)";
+const DENIM = "linear-gradient(170deg, #2a4a74 0%, #1d3557 55%, #172a46 100%)";
+const DENIM_OSCURO = "linear-gradient(170deg, #1a2a44 0%, #121e33 100%)";
+const BOLSILLO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 38'><path d='M2 2 H32 V26 L17 36 L2 26 Z' fill='#284a78' stroke='#f59e0b' stroke-width='1.2' stroke-dasharray='2 1.4'/><path d='M6 12 Q17 6 28 12 M6 16 Q17 10 28 16' stroke='#f59e0b' stroke-width='1' fill='none'/></svg>`
+);
+const REMACHE = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><circle cx='5' cy='5' r='4' fill='#b87333'/><circle cx='4' cy='4' r='1.6' fill='#f3c08a'/></svg>`);
+const GAFAS_ICONO = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 14'>${gafas(0, 0, 1)}</svg>`);
 
 const boutique = (S) =>
   construir(S, {
-    raiz: [capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(212,175,55,0.10), transparent 60%)"), capa("linear-gradient(180deg, #0e0d0a 0%, #080706 100%)")],
-    cabecera: [capa(CINTA_COSTURA, "left 0 bottom 0", "40px 12px", "repeat-x"), capa(GANCHOS, "left 0 top 0", "70px 30px", "repeat-x"), capa("linear-gradient(180deg, #16140f 0%, #0e0d0a 100%)")],
-    cabeceraEstilo: "padding-top: 38px !important; padding-bottom: 24px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.6);",
-    pie: [capa(CINTA_COSTURA, "left 0 top 0", "40px 12px", "repeat-x"), capa("linear-gradient(180deg, #16140f, #0b0a08)")],
-    pieEstilo: "border-top: none !important; padding-top: 24px !important;",
-    boton: [capa("linear-gradient(180deg, #16140f, #0b0a08)")],
-    botonEstilo: "border: 1px solid #d4af37 !important; color: #f3e5ab !important; box-shadow: 0 3px 8px rgba(0,0,0,0.5) !important; letter-spacing: 0.08em;",
-    botonPieEstilo: "border-radius: 4px !important; border: 1px solid #d4af37 !important; color: #f3e5ab !important; box-shadow: 0 4px 10px rgba(0,0,0,0.55) !important; letter-spacing: 0.08em;",
-    panel: [capa(ETIQUETA, "right 8px top 6px", "16px 22px"), capa("linear-gradient(155deg, rgba(255,255,255,0.06) 0%, transparent 35%)"), capa("linear-gradient(170deg, #1a1813 0%, #0f0e0b 100%)")],
-    panelEstilo: "border: 1px solid #a67c00 !important; box-shadow: inset 0 0 0 3px #0f0e0b, inset 0 0 0 4px rgba(212,175,55,0.35), 0 8px 18px rgba(0,0,0,0.55) !important;",
-    modal: [capa("linear-gradient(155deg, rgba(255,255,255,0.06) 0%, transparent 35%)"), capa("linear-gradient(170deg, #1c1a14 0%, #0b0a08 100%)")],
-    modalEstilo: "border: 1px solid #d4af37 !important; box-shadow: inset 0 0 0 5px #0b0a08, inset 0 0 0 6px rgba(212,175,55,0.35), 0 20px 60px rgba(0,0,0,0.7) !important;",
-    tituloEstilo: "color: #f3e5ab !important; letter-spacing: 0.18em; border-bottom: 1px solid #d4af37; padding-bottom: 8px;",
-    pestana: [capa("linear-gradient(180deg, #16140f, #0b0a08)")],
-    pestanaEstilo: "border: 1px solid rgba(212,175,55,0.45) !important; color: #e9dcb0 !important; letter-spacing: 0.06em;",
-    activa: [capa("linear-gradient(180deg, #f3e5ab 0%, #d4af37 55%, #a67c00 100%)")],
-    activaEstilo: "border-color: #6b5200 !important; color: #0b0a08 !important; box-shadow: 0 0 14px rgba(212,175,55,0.45) !important;",
-    campoEstilo: "background: #0b0a08 !important; border: 1px solid rgba(212,175,55,0.4) !important;",
+    raiz: [trama(PRENDAS_TENUES, "220px 220px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(125,211,252,0.10), transparent 60%)"), capa("linear-gradient(180deg, #121419 0%, #0b0c10 100%)")],
+    // Cabecera de jean con el tendedero arriba y la costura abajo.
+    cabecera: [
+      capa(TENDEDERO, "left 0 top 0", "270px 62px", "repeat-x"),
+      capa(PESPUNTE, "left 0 bottom 6px", "16px 10px", "repeat-x"),
+      capa(TWILL, "0 0", "auto", "repeat"),
+      capa(DENIM),
+    ],
+    cabeceraEstilo: "padding-top: 68px !important; padding-bottom: 24px !important; border-bottom: 3px solid #0f1b2e !important; box-shadow: 0 6px 18px rgba(0,0,0,0.55);",
+    pie: [
+      capa(BOLSILLO, "left 3% bottom 10px", "34px 38px"),
+      capa(BOLSILLO, "right 3% bottom 10px", "34px 38px"),
+      capa(PESPUNTE, "left 0 top 6px", "16px 10px", "repeat-x"),
+      capa(TWILL, "0 0", "auto", "repeat"),
+      capa(DENIM),
+    ],
+    pieEstilo: "border-top: 3px solid #0f1b2e !important; padding-top: 26px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.14), transparent 55%)"), capa(TWILL, "0 0", "auto", "repeat"), capa("linear-gradient(180deg, #3b6aa8, #2a4f82)")],
+    botonEstilo: "border: 1px solid #0f1b2e !important; color: #f8fafc !important; outline: 1.3px dashed rgba(245,158,11,0.85); outline-offset: -4px; box-shadow: 0 3px 8px rgba(0,0,0,0.45) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #0f1b2e !important; color: #f8fafc !important; outline: 1.3px dashed rgba(245,158,11,0.85); outline-offset: -4px; box-shadow: 0 4px 10px rgba(0,0,0,0.5) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.5);",
+    // Paneles de jean oscuro con pespunte, remaches y unas gafas.
+    panel: [capa(GAFAS_ICONO, "right 8px top 8px", "36px 16px"), ...esquinas(REMACHE, 7, 5).slice(2), capa(TWILL, "0 0", "auto", "repeat"), capa(DENIM_OSCURO)],
+    panelEstilo: "border: 1px solid #0b1424 !important; outline: 1.3px dashed rgba(245,158,11,0.55); outline-offset: -6px; box-shadow: 0 8px 18px rgba(0,0,0,0.5) !important;",
+    modal: [capa(PESPUNTE, "left 0 top 6px", "16px 10px", "repeat-x"), capa(TWILL, "0 0", "auto", "repeat"), capa(DENIM_OSCURO)],
+    modalEstilo: "border: 1px solid #3b6aa8 !important; outline: 1.3px dashed rgba(245,158,11,0.6); outline-offset: -8px; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: "color: #f8fafc !important; letter-spacing: 0.12em; border-bottom: 2px dashed rgba(245,158,11,0.7); padding-bottom: 8px;",
+    pestana: [capa(TWILL, "0 0", "auto", "repeat"), capa("linear-gradient(180deg, #24406a, #1a2f50)")],
+    pestanaEstilo: "border: 1px solid rgba(125,211,252,0.35) !important; color: #dbeafe !important;",
+    activa: [capa("linear-gradient(180deg, #fb7185, #e11d48)")],
+    activaEstilo: "border-color: #9f1239 !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(251,113,133,0.45) !important;",
+    campoEstilo: "background: #0d1626 !important; border: 1px solid rgba(125,211,252,0.35) !important;",
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 38px !important; }`,
   });
 
 // =====================================================================
-// CALZADO — "Vitrina"
+// CALZADO — "Sneakers" (zapatillas retro de colores, pared de
+// exhibición, agujetas y suela de goma; sin marcas reales)
 // =====================================================================
-const CORDONES = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='22'><g fill='#1c1917'><circle cx='4' cy='4' r='2.4'/><circle cx='4' cy='18' r='2.4'/><circle cx='24' cy='4' r='2.4'/><circle cx='24' cy='18' r='2.4'/></g><g fill='#d6d3d1'><circle cx='4' cy='4' r='1.2'/><circle cx='4' cy='18' r='1.2'/><circle cx='24' cy='4' r='1.2'/><circle cx='24' cy='18' r='1.2'/></g><path d='M4 4 L24 18 M4 18 L24 4' stroke='#f8fafc' stroke-width='2.4' stroke-linecap='round'/><path d='M24 4 L44 18 M24 18 L44 4' stroke='#f8fafc' stroke-width='2.4' stroke-linecap='round'/></svg>`
+// Zapatilla de perfil: c = {cuero, refuerzo, talon, suela, panel, alta}.
+const zapatilla = (x, y, c, k = 1, espejo = false) => {
+  const alta = c.alta;
+  const capellada = alta
+    ? "M3 20 Q2 8 6 3 L16 2 Q18 7 24 9 L34 10 Q38 12 42 12 L50 14 Q57 16 57 20 Z"
+    : "M3 20 Q2 12 8 10 L18 8 Q22 4 28 5 L30 4 Q33 9 38 11 L50 14 Q57 16 57 20 Z";
+  return `<g transform='translate(${x} ${y}) scale(${espejo ? -k : k} ${k})${espejo ? " translate(-60 0)" : ""}'><path d='M2 22 H57 Q59 22 59 24 V25 Q59 27 57 27 H4 Q2 27 2 25 Z' fill='${c.suela}'/><path d='M2 20 H58 V22.5 H2 Z' fill='#f8fafc'/><path d='${capellada}' fill='${c.cuero}' stroke='rgba(0,0,0,0.35)' stroke-width='.7'/><path d='M42 12.5 Q55 14.5 57 20 H44 Z' fill='${c.refuerzo}'/><path d='${alta ? "M3 20 Q2 8 6 3 L11 3 L12 20 Z" : "M3 20 Q2 12 8 10 L11 9.5 L12 20 Z"}' fill='${c.talon}'/><path d='M15 20 L21 ${alta ? 6 : 9} L29 ${alta ? 8 : 9} L24 20 Z' fill='${c.panel}' stroke='rgba(0,0,0,0.25)' stroke-width='.5'/><g stroke='#f8fafc' stroke-width='1.1' stroke-linecap='round'><path d='M${alta ? 20 : 27} ${alta ? 5 : 7} L${alta ? 23 : 30} ${alta ? 9 : 10}'/><path d='M${alta ? 24 : 30} ${alta ? 7 : 6.5} L${alta ? 27 : 33} ${alta ? 10.5 : 10.5}'/><path d='M${alta ? 28 : 33} ${alta ? 8.5 : 7.5} L${alta ? 31 : 36} ${alta ? 11 : 11}'/></g><path d='M3 21 H58' stroke='rgba(0,0,0,0.25)' stroke-width='.5' stroke-dasharray='1.5 1'/><g fill='rgba(0,0,0,0.25)'><circle cx='48' cy='17' r='.6'/><circle cx='51' cy='17.5' r='.6'/><circle cx='54' cy='18' r='.6'/></g></g>`;
+};
+const COLORES_ZAP = [
+  { cuero: "#f8fafc", refuerzo: "#dc2626", talon: "#111827", suela: "#111827", panel: "#dc2626" },
+  { cuero: "#f1f5f9", refuerzo: "#1d4ed8", talon: "#1d4ed8", suela: "#c68642", panel: "#93c5fd" },
+  { cuero: "#111827", refuerzo: "#facc15", talon: "#facc15", suela: "#f8fafc", panel: "#374151", alta: true },
+  { cuero: "#ecfdf5", refuerzo: "#10b981", talon: "#f97316", suela: "#c68642", panel: "#10b981" },
+  { cuero: "#fdf2f8", refuerzo: "#a855f7", talon: "#111827", suela: "#f8fafc", panel: "#f472b6", alta: true },
+];
+// Pared de exhibición: repisas con luz y zapatillas (repeat-x).
+const PARED_ZAP = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='260' height='40'>${COLORES_ZAP.slice(0, 4)
+    .map((c, i) => zapatilla(6 + i * 64, 4, c, 0.9, i % 2 === 1))
+    .join("")}<rect x='0' y='31' width='260' height='4' fill='#e5e7eb'/><rect x='0' y='35' width='260' height='5' fill='rgba(255,209,102,0.25)'/></svg>`
 );
-const SUELA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><g fill='rgba(255,255,255,0.035)'><rect x='4' y='6' width='14' height='5' rx='2.5'/><rect x='22' y='6' width='14' height='5' rx='2.5'/><rect x='40' y='6' width='14' height='5' rx='2.5'/><rect x='13' y='18' width='14' height='5' rx='2.5'/><rect x='31' y='18' width='14' height='5' rx='2.5'/><rect x='4' y='30' width='14' height='5' rx='2.5'/><rect x='22' y='30' width='14' height='5' rx='2.5'/><rect x='40' y='30' width='14' height='5' rx='2.5'/><rect x='13' y='42' width='14' height='5' rx='2.5'/><rect x='31' y='42' width='14' height='5' rx='2.5'/></g></svg>`
+const ZAPS_TENUES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='200'><g opacity='.1'><g transform='rotate(-14 60 40)'>${zapatilla(20, 20, COLORES_ZAP[0], 1.3)}</g><g transform='rotate(12 170 110)'>${zapatilla(130, 90, COLORES_ZAP[2], 1.2, true)}</g><g transform='rotate(-6 70 160)'>${zapatilla(30, 150, COLORES_ZAP[3], 1.1)}</g></g></svg>`
 );
-const ZAPATILLA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 20'><path d='M2 14 Q2 6 9 5 L15 4 Q18 9 24 10 L32 12 Q35 13 34 16 H2 Z' fill='#fb7185' stroke='#9f1239' stroke-width='1'/><path d='M2 16 H34 V18 Q34 19 33 19 H3 Q2 19 2 18 Z' fill='#f8fafc' stroke='#9f1239' stroke-width='.8'/><path d='M14 7 L18 11 M17 6 L21 10' stroke='#f8fafc' stroke-width='1.4' stroke-linecap='round'/><path d='M6 11 Q12 9 14 12' stroke='#fde047' stroke-width='1.4' fill='none'/></svg>`
+// Agujetas cruzadas por ojales (borde) y un lazo con sus herretes.
+const AGUJETAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='44' height='22'><path d='M0 4 L22 18 M0 18 L22 4 M22 4 L44 18 M22 18 L44 4' stroke='#f8fafc' stroke-width='3' stroke-linecap='round'/><path d='M0 4 L22 18 M22 4 L44 18' stroke='rgba(0,0,0,0.18)' stroke-width='1'/><g fill='#1f2937' stroke='#d1d5db' stroke-width='1.2'><circle cx='0' cy='4' r='2.6'/><circle cx='0' cy='18' r='2.6'/><circle cx='22' cy='4' r='2.6'/><circle cx='22' cy='18' r='2.6'/><circle cx='44' cy='4' r='2.6'/><circle cx='44' cy='18' r='2.6'/></g></svg>`
 );
-const KRAFT_CAJA = "linear-gradient(180deg, #d98a4e 0%, #c67635 100%)";
+const LAZO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 50 46'><g fill='none' stroke='#f8fafc' stroke-width='3' stroke-linecap='round'><path d='M25 12 C14 0 4 6 10 12 C14 16 22 14 25 12'/><path d='M25 12 C36 0 46 6 40 12 C36 16 28 14 25 12'/><path d='M25 12 C22 22 14 28 10 40'/><path d='M25 12 C30 24 34 30 38 42'/></g><circle cx='25' cy='12' r='3' fill='#f8fafc'/><g fill='#ffd166'><rect x='7' y='38' width='5' height='7' rx='1.5' transform='rotate(22 9.5 41.5)'/><rect x='36' y='40' width='5' height='7' rx='1.5' transform='rotate(-20 38.5 43.5)'/></g></svg>`
+);
+// Suela de goma con dibujo de zigzag (pie de página).
+const GOMA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='18'><rect width='28' height='18' fill='#b57d4c'/><path d='M0 5 L7 1 L14 5 L21 1 L28 5 M0 13 L7 9 L14 13 L21 9 L28 13' stroke='#8f5d33' stroke-width='2.2' fill='none'/></svg>`
+);
+const PERFORADO = "radial-gradient(circle, rgba(255,255,255,0.10) 1.2px, transparent 1.6px)";
+const ZAPA_ICONO = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 28'>${zapatilla(0, 0, COLORES_ZAP[0], 1)}</svg>`);
+const ZAPA_ALTA_ICONO = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 28'>${zapatilla(0, 0, COLORES_ZAP[4], 1)}</svg>`);
 
 const vitrina = (S) =>
   construir(S, {
-    raiz: [trama(SUELA, "60px 60px"), capa("linear-gradient(180deg, #17110d 0%, #0f0b08 100%)")],
-    // Tapa de caja de zapatos con cordones cruzados.
-    cabecera: [capa(CORDONES, "left 0 bottom 6px", "40px 22px", "repeat-x"), capa("linear-gradient(180deg, #2b1d14, #2b1d14)", "left 0 bottom 0", "100% 34px"), capa(KRAFT_CAJA)],
-    cabeceraEstilo: "padding-bottom: 46px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.55);",
-    pie: [capa(CORDONES, "left 0 top 6px", "40px 22px", "repeat-x"), capa("linear-gradient(180deg, #2b1d14, #2b1d14)", "left 0 top 0", "100% 34px"), capa(KRAFT_CAJA)],
-    pieEstilo: "border-top: none !important; padding-top: 46px !important;",
-    boton: [capa("linear-gradient(180deg, #fde3c4, #f6c99a)")],
-    botonEstilo: "border: 1px solid #8a4b1c !important; color: #3a1c08 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.35) !important; font-weight: 800;",
-    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #8a4b1c !important; color: #3a1c08 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.4) !important;",
-    panel: [capa(ZAPATILLA, "right 6px top 8px", "28px 16px"), trama(SUELA, "60px 60px"), capa("linear-gradient(170deg, #2b2019 0%, #1d1510 100%)")],
-    panelEstilo: "border: 1px solid #4a3527 !important; border-top: 3px solid #c67635 !important; box-shadow: 0 8px 18px rgba(0,0,0,0.5) !important;",
-    modal: [trama(SUELA, "60px 60px"), capa("linear-gradient(180deg, #c67635 0 8px, transparent 8px)"), capa("linear-gradient(170deg, #2b2019 0%, #160f0b 100%)")],
-    modalEstilo: "border: 1px solid #8a4b1c !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
-    tituloEstilo: `color: #fde3c4 !important; background: ${CORDONES} left 0 bottom 0 / 30px 16px repeat-x !important; padding-bottom: 24px;`,
-    pestana: [capa("linear-gradient(170deg, #2b2019 0%, #1d1510 100%)")],
-    pestanaEstilo: "border: 1px solid #6b4a32 !important; color: #f3d5b5 !important;",
-    activa: [capa("linear-gradient(180deg, #fb7185, #e11d48)")],
-    activaEstilo: "border-color: #9f1239 !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(251,113,133,0.45) !important;",
-    campoEstilo: "background: #120d0a !important; border: 1px solid #6b4a32 !important;",
+    raiz: [trama(ZAPS_TENUES, "240px 200px"), capa("radial-gradient(ellipse 900px 400px at 50% -10%, rgba(255,209,102,0.10), transparent 60%)"), capa("linear-gradient(180deg, #11131a 0%, #0b0d12 100%)")],
+    // Cabecera = pared de exhibición: zapatillas sobre repisa con luz y
+    // un lazo de agujetas en cada esquina de arriba.
+    cabecera: [
+      capa(LAZO, "left 1.5% top 6px", "40px 37px"),
+      capa(LAZO, "right 1.5% top 6px", "40px 37px"),
+      capa(PARED_ZAP, "left 0 bottom 0", "400px 62px", "repeat-x"),
+      capa("linear-gradient(180deg, transparent 0 calc(100% - 74px), rgba(255,209,102,0.10) calc(100% - 74px))"),
+      capa(PERFORADO, "0 0", "14px 14px", "repeat"),
+      capa("linear-gradient(170deg, #1d2130 0%, #141722 100%)"),
+    ],
+    cabeceraEstilo: "padding-bottom: 76px !important; border-bottom: 4px solid #ffd166 !important; box-shadow: 0 6px 18px rgba(0,0,0,0.55);",
+    // Pie = suela de goma con agujetas arriba.
+    pie: [capa(AGUJETAS, "left 0 top 4px", "44px 22px", "repeat-x"), capa("linear-gradient(180deg, #141722 0 30px, transparent 30px)"), capa(GOMA, "0 0", "28px 18px", "repeat")],
+    pieEstilo: "border-top: none !important; padding-top: 40px !important;",
+    // Botones de cuero blanco con "suela" de goma abajo.
+    boton: [capa("linear-gradient(180deg, transparent calc(100% - 4px), #c68642 calc(100% - 4px))"), capa("linear-gradient(180deg, #ffffff, #e5e7eb)")],
+    botonEstilo: "border: 1px solid #9ca3af !important; color: #111827 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.4) !important; font-weight: 800;",
+    botonPieEstilo: "border-radius: 10px !important; border: 1px solid #9ca3af !important; color: #111827 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.45) !important; font-weight: 800;",
+    // Paneles de gamuza con perforado y una zapatilla en la esquina.
+    panel: [capa(ZAPA_ICONO, "right 6px top 6px", "44px 21px"), capa(PERFORADO, "right 0 bottom 0", "12px 12px", "repeat"), capa("linear-gradient(170deg, #232838 0%, #191d28 100%)")],
+    panelEstilo: "border: 1px solid #343a4e !important; border-bottom: 3px solid #c68642 !important; box-shadow: 0 8px 18px rgba(0,0,0,0.5) !important;",
+    modal: [capa(ZAPA_ALTA_ICONO, "right 12px bottom 10px", "46px 22px"), capa(PERFORADO, "0 0", "14px 14px", "repeat"), capa("linear-gradient(170deg, #232838 0%, #12141c 100%)")],
+    modalEstilo: "border: 1px solid #ffd166 !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: `color: #ffd166 !important; background: ${AGUJETAS} left 0 bottom 0 / 30px 15px repeat-x !important; padding-bottom: 22px;`,
+    pestana: [capa("linear-gradient(170deg, #232838 0%, #191d28 100%)")],
+    pestanaEstilo: "border: 1px solid #3f465c !important; color: #e5e7eb !important;",
+    activa: [capa("linear-gradient(180deg, #ff6b6b, #dc2626)")],
+    activaEstilo: "border-color: #7f1d1d !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(255,107,107,0.45) !important;",
+    campoEstilo: "background: #0f1118 !important; border: 1px solid #3f465c !important;",
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 50px !important; }`,
   });
 
 // =====================================================================
@@ -1444,19 +1773,20 @@ export const TEMATICOS = [
   {
     id: "cafe",
     rubro: "cafeteria",
-    nombre: "Café de especialidad",
-    descripcion: "Espresso, granos de café, crema y cobre",
-    paleta: { id: "tematico-cafe", nombre: "Café de especialidad", modo: "oscuro", principal: "#e6c9a8", secundario: "#e0915e", acento: "#f2d0a4", botones: "#d9a066", fondo1: "#100906", fondo2: "#24160f" },
-    muestra: `${GRANO} right 12px top 14px / 14px 18px no-repeat, ${CREMA} left 0 top 0 / 70px 12px repeat-x, ${GRANOS} 0 0 / 70px 70px, ${ESPRESSO}`,
+    nombre: "Cafetal",
+    descripcion: "Campo de café: cielo, cafetos con cerezas, neblina y hojas que caen",
+    paleta: { id: "tematico-cafe", nombre: "Cafetal", modo: "oscuro", principal: "#a7e08a", secundario: "#ff8a75", acento: "#f6d27a", botones: "#f0c08a", fondo1: "#0b1f0e", fondo2: "#14321a" },
+    muestra: `${CEREZAS} right 10px bottom 8px / 26px 23px no-repeat, ${ARBUSTOS_CAMPO} left 0 top 34px / 70px 27px repeat-x, ${COLINAS} left 0 top 14px / 220px 50px repeat-x, ${NUBES_CIELO} left 0 top 0 / 160px 35px repeat-x, linear-gradient(180deg, #4a8cc2 0%, #b9dbe8 38%, #13351a 62%, #0b1f0e 100%)`,
+    escena: ESCENA_CAFETAL,
     css: cafe,
   },
   {
     id: "tropical",
     rubro: "jugueria",
     nombre: "Tropical",
-    descripcion: "Hojas tropicales, frutas y ola de jugo",
+    descripcion: "Hojas tropicales, frutas, frutos rojos y morados, ola de jugo",
     paleta: { id: "tematico-tropical", nombre: "Tropical", modo: "oscuro", principal: "#86efac", secundario: "#fb923c", acento: "#fde047", botones: "#bef264", fondo1: "#04140c", fondo2: "#0a2a19" },
-    muestra: `${JUGO} left 0 bottom 0 / 90px 14px repeat-x, ${HOJA_SI} left -20px top -20px / 80px 80px no-repeat, ${RODAJAS} 0 0 / 120px 56px, linear-gradient(180deg, #15803d, #0a2a19)`,
+    muestra: `${JUGO} left 0 bottom 0 / 90px 14px repeat-x, ${HOJA_SI} left -20px top -20px / 80px 80px no-repeat, ${BAYAS} 60px 28px / 120px 56px, ${RODAJAS} 0 0 / 120px 56px, linear-gradient(180deg, #15803d, #0a2a19)`,
     css: tropical,
   },
   {
@@ -1472,7 +1802,7 @@ export const TEMATICOS = [
     id: "carnicero",
     rubro: "carniceria",
     nombre: "Carnicero",
-    descripcion: "Azulejos, tabla de picar y cuchilla",
+    descripcion: "Azulejos, filetes en mosaico, tabla de picar y cuchilla",
     paleta: { id: "tematico-carnicero", nombre: "Carnicero", modo: "oscuro", principal: "#f5e6d3", secundario: "#fca5a5", acento: "#fecaca", botones: "#fee2e2", fondo1: "#0e0807", fondo2: "#1d110d" },
     muestra: `${CUCHILLA} right 10px bottom 10px / 28px 20px no-repeat, linear-gradient(180deg, #b91c1c, #991b1b) left 0 top 46% / 100% 8px no-repeat, ${AZULEJOS} 0 0 / 33px 16px, #d6cec2`,
     css: carnicero,
@@ -1489,10 +1819,10 @@ export const TEMATICOS = [
   {
     id: "vinos",
     rubro: "licoreria",
-    nombre: "Bodega de vinos",
-    descripcion: "Muro de piedra, barricas, parra y oro",
-    paleta: { id: "tematico-vinos", nombre: "Bodega de vinos", modo: "oscuro", principal: "#e9c46a", secundario: "#f4a7b9", acento: "#f5d58a", botones: "#e9c46a", fondo1: "#120a0c", fondo2: "#2a0d16" },
-    muestra: `${UVAS} right 12px top 10px / 18px 22px no-repeat, ${PARRA} left 0 bottom 2px / 100px 25px repeat-x, ${PIEDRA} 0 0 / 60px 36px, #120a0c`,
+    nombre: "Bodega de licores",
+    descripcion: "Muro de piedra, barricas, cervezas, licores y shots",
+    paleta: { id: "tematico-vinos", nombre: "Bodega de licores", modo: "oscuro", principal: "#e9c46a", secundario: "#f4a7b9", acento: "#f5d58a", botones: "#e9c46a", fondo1: "#120a0c", fondo2: "#2a0d16" },
+    muestra: `${SHOTS} right 12px top 10px / 24px 17px no-repeat, ${REPISA} left 0 bottom 0 / 80px 31px repeat-x, ${PIEDRA} 0 0 / 60px 36px, #120a0c`,
     css: vinos,
   },
   {
@@ -1580,19 +1910,19 @@ export const TEMATICOS = [
   {
     id: "boutique",
     rubro: "ropa-moda",
-    nombre: "Boutique",
-    descripcion: "Negro y dorado, ganchos, cinta de costura y etiqueta",
-    paleta: { id: "tematico-boutique", nombre: "Boutique", modo: "oscuro", principal: "#d4af37", secundario: "#f5d77a", acento: "#f3e5ab", botones: "#f3e5ab", fondo1: "#080706", fondo2: "#1c1a14" },
-    muestra: `${GANCHOS} left 0 top 0 / 56px 24px repeat-x, ${ETIQUETA} right 12px bottom 8px / 16px 22px no-repeat, ${CINTA_COSTURA} left 0 bottom 0 / 30px 9px repeat-x, linear-gradient(180deg, #16140f, #0e0d0a)`,
+    nombre: "Urbano",
+    descripcion: "Denim con costuras, tendedero de polos, gorras, gafas, jeans y bikinis",
+    paleta: { id: "tematico-boutique", nombre: "Urbano", modo: "oscuro", principal: "#7dd3fc", secundario: "#fb7185", acento: "#fde047", botones: "#e0f2fe", fondo1: "#0b0c10", fondo2: "#161a22" },
+    muestra: `${TENDEDERO} left 0 top 0 / 140px 32px repeat-x, ${GAFAS_ICONO} right 10px bottom 10px / 28px 12px no-repeat, ${PESPUNTE} left 0 bottom 2px / 12px 8px repeat-x, ${TWILL}, ${DENIM}`,
     css: boutique,
   },
   {
     id: "vitrina",
     rubro: "calzado",
-    nombre: "Vitrina",
-    descripcion: "Caja de zapatos, cordones, suelas y zapatilla",
-    paleta: { id: "tematico-vitrina", nombre: "Vitrina", modo: "oscuro", principal: "#fdba74", secundario: "#fb7185", acento: "#fde047", botones: "#fde3c4", fondo1: "#0f0b08", fondo2: "#241a14" },
-    muestra: `${ZAPATILLA} right 10px top 8px / 28px 16px no-repeat, ${CORDONES} left 0 bottom 4px / 30px 16px repeat-x, linear-gradient(180deg, #2b1d14, #2b1d14) left 0 bottom 0 / 100% 24px no-repeat, ${KRAFT_CAJA}`,
+    nombre: "Sneakers",
+    descripcion: "Zapatillas retro de colores, agujetas y suela de goma",
+    paleta: { id: "tematico-vitrina", nombre: "Sneakers", modo: "oscuro", principal: "#ffd166", secundario: "#ff6b6b", acento: "#7dd3fc", botones: "#f8fafc", fondo1: "#0b0d12", fondo2: "#1a1d26" },
+    muestra: `${LAZO} right 8px top 6px / 26px 24px no-repeat, ${PARED_ZAP} left 0 bottom 6px / 160px 25px repeat-x, linear-gradient(180deg, #ffd166, #ffd166) left 0 bottom 0 / 100% 4px no-repeat, ${PERFORADO} 0 0 / 12px 12px, linear-gradient(170deg, #1d2130, #141722)`,
     css: vitrina,
   },
 ];

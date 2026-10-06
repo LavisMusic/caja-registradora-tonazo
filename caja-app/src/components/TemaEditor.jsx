@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Save, RotateCcw, Check, Moon, Sun, LogOut, Wallet, ShoppingCart, Sparkles } from "lucide-react";
+import { Loader2, Save, RotateCcw, Check, Moon, Sun, LogOut, Wallet, ShoppingCart, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import { PRESETS_TEMA, TEMA_POR_DEFECTO, resolverPaleta, variablesTema } from "../lib/tema";
-import { tematicoDe, tematicosDelRubro } from "../lib/tematicos";
+import { TEMATICOS, tematicoDe } from "../lib/tematicos";
 import logoTonazo from "../assets/logo.webp";
 
 // Apartado "Tema" del Perfil del negocio: elegir una paleta armada (oscura
@@ -11,9 +11,35 @@ import logoTonazo from "../assets/logo.webp";
 // guardar. Cambia los colores de la caja (admin y cajero) y de la tienda
 // pública del negocio. Guarda con la RPC actualizar_tema_negocio
 // (migración 0096).
-// Arriba de todo, si su rubro tiene: "Temático de tu rubro" — temas
-// especiales con adornos (src/lib/tematicos.js, rubros.clave de 0097).
+// Arriba de todo: "Temas por rubros" — temas especiales con adornos
+// (src/lib/tematicos.js). Son LIBRES (migración 0099): cualquier negocio
+// usa el de cualquier rubro. Se muestran 3 (primero el de su rubro) y
+// "Ver más" despliega todos agrupados por rubro, de 3 en 3.
 const mismoTema = (a, b) => JSON.stringify(a || null) === JSON.stringify(b || null);
+
+function TarjetaTematico({ t, activa, onClick }) {
+  const claro = t.paleta.modo === "claro";
+  return (
+    <button
+      type="button"
+      className={`tz-tema-preset tz-tema-tematico ${activa ? "tz-tema-preset-activa" : ""}`}
+      style={{ background: t.muestra }}
+      onClick={onClick}
+    >
+      <span className="tz-tema-preset-nombre" style={{ color: claro ? "#14111f" : "#f4f2ff", textShadow: claro ? "none" : undefined }}>
+        {t.nombre}
+      </span>
+      <span className="tz-tema-tematico-desc" style={claro ? { color: "#3a3550", textShadow: "none" } : undefined}>
+        {t.descripcion}
+      </span>
+      {activa && (
+        <span className="tz-tema-preset-check">
+          <Check size={12} />
+        </span>
+      )}
+    </button>
+  );
+}
 
 function MuestraPaleta({ paleta, activa, onClick }) {
   return (
@@ -50,15 +76,16 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [rubro, setRubro] = useState({ clave: null, nombre: "" });
-
-  const [aviso, setAviso] = useState("");
+  // clave → nombre de todos los rubros (para agrupar los temáticos).
+  const [nombresRubro, setNombresRubro] = useState({});
+  const [verTodos, setVerTodos] = useState(false);
   // Para comparar en el callback de tiempo real sin re-suscribirse.
   const estado = useRef({ guardado: null, tema: TEMA_POR_DEFECTO, rubroId: null });
   estado.current.guardado = guardado;
   estado.current.tema = tema;
 
-  // Rubro del negocio (para sus temáticos). Consulta tolerante: sin la
-  // migración 0097 no hay clave y simplemente no se muestran temáticos.
+  // Rubro del negocio (sus temáticos salen primero). Consulta tolerante:
+  // sin la migración 0097 no hay clave.
   const cargarRubro = async (rubroId) => {
     estado.current.rubroId = rubroId;
     if (!rubroId) return null;
@@ -93,12 +120,13 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
         if (err) setError("Para usar temas falta correr la migración 0096 en Supabase.");
         aplicarGuardado(data?.tema || null, { forzar: true });
         await cargarRubro(data?.rubro_id || null);
+        const { data: rs } = await supabase.from("rubros").select("clave, nombre");
+        if (vivo && rs) setNombresRubro(Object.fromEntries(rs.filter((r) => r.clave).map((r) => [r.clave, r.nombre])));
         if (vivo) setCargando(false);
       });
 
-    // TIEMPO REAL: si el super admin cambia el rubro (o el tema vuelve al
-    // original porque era un temático del rubro anterior — migración
-    // 0098), la pestaña se actualiza sola, sin cerrar el Perfil.
+    // TIEMPO REAL: si cambia el tema guardado (otra sesión del admin) o
+    // el rubro (lo cambia el super admin), la pestaña se actualiza sola.
     const canal = supabase
       .channel(`tema-negocio-${negocioId}-${Math.random().toString(36).slice(2, 10)}`)
       .on(
@@ -106,21 +134,10 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
         { event: "UPDATE", schema: "public", table: "negocios", filter: `id=eq.${negocioId}` },
         async ({ new: fila }) => {
           if (!vivo || !fila) return;
-          const cambioRubro = "rubro_id" in fila && fila.rubro_id !== estado.current.rubroId;
-          const teniaTematico = !!tematicoDe(estado.current.guardado);
           if ("tema" in fila && !mismoTema(fila.tema || null, estado.current.guardado || null)) {
-            aplicarGuardado(fila.tema || null, { forzar: cambioRubro });
+            aplicarGuardado(fila.tema || null);
           }
-          if (cambioRubro) {
-            const nuevo = await cargarRubro(fila.rubro_id);
-            if (!vivo || !nuevo) return;
-            const cantidad = tematicosDelRubro(nuevo.clave).length;
-            setAviso(
-              `Tu rubro ahora es ${nuevo.nombre}.` +
-                (teniaTematico && !tematicoDe(fila.tema) ? " Tu tema temático era del rubro anterior: volviste al tema original." : "") +
-                (cantidad > 0 ? ` Tienes ${cantidad === 1 ? "un tema temático" : `${cantidad} temas temáticos`} para tu rubro.` : "")
-            );
-          }
+          if ("rubro_id" in fila && fila.rubro_id !== estado.current.rubroId) await cargarRubro(fila.rubro_id);
         }
       )
       .subscribe();
@@ -135,7 +152,16 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
   const paleta = resolverPaleta(tema);
   const esLibre = !!tema?.principal;
   const tematicoActual = tematicoDe(tema);
-  const tematicos = tematicosDelRubro(rubro.clave);
+  // Primero los temáticos del rubro del negocio, luego el resto.
+  const ordenados = [...TEMATICOS.filter((t) => t.rubro === rubro.clave), ...TEMATICOS.filter((t) => t.rubro !== rubro.clave)];
+  const destacados = ordenados.slice(0, 3);
+  const grupos = [];
+  for (const t of ordenados) {
+    const g = grupos.find((x) => x.rubro === t.rubro);
+    if (g) g.temas.push(t);
+    else grupos.push({ rubro: t.rubro, temas: [t] });
+  }
+  const nombreRubro = (clave) => nombresRubro[clave] || clave.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
   const cambios = !mismoTema(tema, guardado || TEMA_POR_DEFECTO);
 
   const usarLibre = (color = colorLibre, modo = modoLibre) => setTema({ modo, principal: color });
@@ -163,44 +189,45 @@ export default function TemaEditor({ negocioId, nombre, logoUrl }) {
 
   return (
     <div className="tz-add-entry">
-      {aviso && <p className="tz-success" style={{ margin: 0 }}>{aviso}</p>}
       <p className="tz-stock-editor-sub" style={{ margin: 0 }}>
         Los colores de tu caja (admin y cajeros) y de tu tienda en línea. El texto siempre se ajusta para que se lea bien.
       </p>
 
-      {tematicos.length > 0 && (
-        <>
-          <label className="tz-field-label">
-            <Sparkles size={12} /> Temático de tu rubro ({rubro.nombre})
-          </label>
-          <div className="tz-tema-presets tz-tema-tematicos">
-            {tematicos.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`tz-tema-preset tz-tema-tematico ${tematicoActual?.id === t.id ? "tz-tema-preset-activa" : ""}`}
-                style={{ background: t.muestra }}
-                onClick={() => setTema({ tematico: t.id, rubro: t.rubro })}
-              >
-                <span className="tz-tema-preset-nombre" style={{ color: t.paleta.modo === "claro" ? "#14111f" : "#f4f2ff", textShadow: t.paleta.modo === "claro" ? "none" : undefined }}>
-                  {t.nombre}
-                </span>
-                <span
-                  className="tz-tema-tematico-desc"
-                  style={t.paleta.modo === "claro" ? { color: "#3a3550", textShadow: "none" } : undefined}
-                >
-                  {t.descripcion}
-                </span>
-                {tematicoActual?.id === t.id && (
-                  <span className="tz-tema-preset-check">
-                    <Check size={12} />
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </>
+      <label className="tz-field-label">
+        <Sparkles size={12} /> Temas por rubros
+      </label>
+      {!verTodos ? (
+        <div className="tz-tema-presets tz-tema-tematicos">
+          {destacados.map((t) => (
+            <TarjetaTematico key={t.id} t={t} activa={tematicoActual?.id === t.id} onClick={() => setTema({ tematico: t.id, rubro: t.rubro })} />
+          ))}
+        </div>
+      ) : (
+        <div className="tz-tema-grupos">
+          {grupos.map((g) => (
+            <div key={g.rubro} className="tz-tema-grupo">
+              <span className="tz-tema-grupo-rubro">
+                {nombreRubro(g.rubro)}
+                {g.rubro === rubro.clave ? " · tu rubro" : ""}
+              </span>
+              {g.temas.map((t) => (
+                <TarjetaTematico key={t.id} t={t} activa={tematicoActual?.id === t.id} onClick={() => setTema({ tematico: t.id, rubro: t.rubro })} />
+              ))}
+            </div>
+          ))}
+        </div>
       )}
+      <button type="button" className="tz-tema-ver-mas" onClick={() => setVerTodos((v) => !v)}>
+        {verTodos ? (
+          <>
+            <ChevronUp size={14} /> Ver menos
+          </>
+        ) : (
+          <>
+            <ChevronDown size={14} /> Ver más ({TEMATICOS.length} temas)
+          </>
+        )}
+      </button>
 
       <label className="tz-field-label">Paletas oscuras</label>
       <div className="tz-tema-presets">
