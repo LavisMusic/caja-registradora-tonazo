@@ -94,6 +94,24 @@ const sinObjetos = (capas) => {
   return quedan.length ? quedan : capas;
 };
 
+// BORDE: la PRIMERA capa de la cabecera es una franja repeat-x pegada
+// abajo (bolas, jugo, lápices, cerco…). Cuando la barra de filtros va
+// pegada debajo, esa franja queda MONTADA sobre su borde: la cabecera
+// muestra los primeros `enCabecera` px y la barra el resto, sin tapar
+// "Localidad" / "Sucursal". Sin barra debajo se ve entera.
+function borde(S, d) {
+  const { enCabecera, rellenoCabecera, rellenoBarra } = d.borde;
+  const franja = d.cabecera[0];
+  const alto = parseFloat(franja.size.split(" ")[1]);
+  const pos = d.cabecera.map((c, i) => (i === 0 ? `left 0 bottom ${enCabecera - alto}px` : c.pos || "0 0")).join(", ");
+  return `
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: ${pos} !important; ${rellenoCabecera ? `padding-bottom: ${rellenoCabecera}px !important;` : ""} }
+${en(S, ".tz-header + .tz-admin-filterbar")} {
+  ${fondo([capa(franja.img, `left 0 top ${-enCabecera}px`, franja.size, "repeat-x"), ...(d.barra || d.panel)])}
+  border-top-color: transparent !important; padding-top: ${rellenoBarra || alto - enCabecera + 10}px !important;
+}`;
+}
+
 function construir(S, d) {
   return `
 ${en(S)} { ${fondo(d.raiz)} }
@@ -112,6 +130,7 @@ ${PESTANAS(S)} { ${fondo(d.pestana)} ${d.pestanaEstilo || ""} }
 ${ACTIVAS(S)} { ${fondo(d.activa)} ${d.activaEstilo || ""} }
 ${CAMPOS(S)} { ${d.campoEstilo || ""} }
 ${d.puente ? puente(S, d) : ""}
+${d.borde ? borde(S, d) : ""}
 ${d.extra ? d.extra(S) : ""}
 `;
 }
@@ -2058,6 +2077,349 @@ ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 40px !i
   });
 
 // =====================================================================
+// LAVADO DE AUTOS — "Espuma" (agua, burbujas que suben, espuma sobre la
+// barra, esponja y un auto recién lavado que brilla)
+// =====================================================================
+const ESPUMA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='90' height='30'><g fill='#f8fdff' stroke='rgba(125,211,252,0.55)' stroke-width='.8'>${[[0, 10, 9], [90, 10, 9], [22, 8, 10], [38, 11, 9], [53, 7, 11], [69, 10, 9], [82, 7, 9]].map(([x, y, r]) => `<circle cx='${x}' cy='${y}' r='${r}'/>`).join("")}${[[14, 21, 5], [30, 23, 4], [46, 20, 6], [62, 24, 4], [77, 21, 5]].map(([x, y, r]) => `<circle cx='${x}' cy='${y}' r='${r}'/>`).join("")}</g><g fill='#f8fdff' opacity='.85'><circle cx='6' cy='27' r='2.4'/><circle cx='40' cy='28' r='2'/><circle cx='70' cy='28' r='2.4'/></g><g fill='rgba(255,255,255,0.95)'><circle cx='19' cy='4' r='2.2'/><circle cx='50' cy='3' r='2.4'/><circle cx='79' cy='4' r='2'/></g></svg>`
+);
+// Burbujas que suben (SMIL): cada una cruza su baldosa de abajo arriba.
+const BURBUJAS_VIVAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'>${[
+    [18, 9, 7, 0],
+    [52, 5, 5.5, 1.8],
+    [88, 11, 9, 3.4],
+    [118, 6, 6, 0.9],
+    [36, 4, 4.8, 2.6],
+    [104, 8, 8, 4.4],
+  ]
+    .map(
+      ([x, r, dur, delay]) =>
+        `<g><animateTransform attributeName='transform' type='translate' values='0 0; 6 -80; -4 -160' dur='${dur}s' begin='-${delay}s' repeatCount='indefinite'/><circle cx='${x}' cy='${140 + r}' r='${r}' fill='rgba(186,230,253,0.10)' stroke='rgba(186,230,253,0.45)' stroke-width='1'/><circle cx='${x - r * 0.35}' cy='${140 + r - r * 0.35}' r='${r * 0.28}' fill='rgba(255,255,255,0.75)'/></g>`
+    )
+    .join("")}</svg>`
+);
+const AUTO_BRILLO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 34'><path d='M4 24 Q4 17 10 16 L20 15 L28 8 Q31 6 36 6 H48 Q52 6 55 9 L61 15 Q68 16 68 22 V25 H4 Z' fill='#2563eb' stroke='#1e3a8a' stroke-width='1'/><path d='M23 15 L30 9 H40 V15 Z M43 15 V9 H48 Q51 9 53 11 L57 15 Z' fill='#bfdbfe'/><path d='M10 18 H60' stroke='rgba(255,255,255,0.55)' stroke-width='1.6' stroke-linecap='round'/><circle cx='18' cy='25' r='5.5' fill='#111827'/><circle cx='18' cy='25' r='2.4' fill='#cbd5e1'/><circle cx='54' cy='25' r='5.5' fill='#111827'/><circle cx='54' cy='25' r='2.4' fill='#cbd5e1'/>${destello(64, 7, 5, "#ffffff", 1.8, 0)}${destello(26, 4, 3.5, "#ffffff", 2.3, 0.7)}${destello(46, 3, 3, "#fde047", 2, 1.2)}</svg>`
+);
+const ESPONJA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 22'><rect x='1' y='6' width='28' height='15' rx='4' fill='#facc15' stroke='#a16207' stroke-width='1'/><rect x='1' y='2' width='28' height='6' rx='3' fill='#22c55e' stroke='#15803d' stroke-width='1'/><g fill='#ca8a04'><circle cx='7' cy='12' r='1.4'/><circle cx='14' cy='16' r='1.2'/><circle cx='21' cy='11' r='1.5'/><circle cx='24' cy='17' r='1.1'/><circle cx='10' cy='18' r='1'/></g><g fill='#f8fdff' stroke='rgba(125,211,252,0.6)' stroke-width='.6'><circle cx='26' cy='3' r='3'/><circle cx='21' cy='1.5' r='2'/></g></svg>`
+);
+const GOTAS_AGUA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><g fill='rgba(186,230,253,0.16)'><path d='M12 8 q-4 6 0 8 q4 -2 0 -8z'/><path d='M44 22 q-3 5 0 6.5 q3 -1.5 0 -6.5z'/><path d='M26 44 q-4 6 0 8 q4 -2 0 -8z'/><path d='M52 50 q-2.5 4 0 5 q2.5 -1 0 -5z'/></g></svg>`
+);
+const AGUA_LAVADO = "linear-gradient(180deg, #0a2a4a 0%, #062039 55%, #03111f 100%)";
+const VIDRIO_MOJADO = "linear-gradient(170deg, rgba(14,58,99,0.88) 0%, rgba(6,30,56,0.94) 100%)";
+
+const espuma = (S) =>
+  construir(S, {
+    raiz: [trama(BURBUJAS_VIVAS, "140px 140px"), capa("radial-gradient(ellipse 900px 420px at 50% -10%, rgba(125,211,252,0.14), transparent 60%)"), capa(AGUA_LAVADO)],
+    // Cabecera: agua con burbujas, un auto recién lavado que brilla y la
+    // espuma abajo (montada sobre la barra de filtros).
+    cabecera: [
+      capa(ESPUMA, "left 0 bottom 0", "90px 30px", "repeat-x"),
+      capa(AUTO_BRILLO, "left 2% bottom 22px", "100px 47px"),
+      capa(ESPONJA, "right 3% bottom 24px", "48px 35px"),
+      trama(BURBUJAS_VIVAS, "140px 140px"),
+      capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)"),
+    ],
+    cabeceraEstilo: "padding-bottom: 60px !important; border-bottom: none !important;",
+    borde: { enCabecera: 14, rellenoCabecera: 56 },
+    pie: [capa(ESPUMA, "left 0 top 0", "90px 30px", "repeat-x"), trama(BURBUJAS_VIVAS, "140px 140px"), capa("linear-gradient(180deg, #0a3561, #03111f)")],
+    pieEstilo: "border-top: none !important; padding-top: 36px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.4), transparent 50%)"), capa("linear-gradient(180deg, #38bdf8, #0284c7)")],
+    botonEstilo: "border: 1px solid #075985 !important; color: #ffffff !important; box-shadow: 0 3px 10px rgba(2,132,199,0.4) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.35); border-radius: 999px !important;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #075985 !important; color: #ffffff !important; box-shadow: 0 4px 12px rgba(2,132,199,0.45) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.35);",
+    panel: [capa(ESPONJA, "right 8px top 7px", "24px 18px"), trama(GOTAS_AGUA, "60px 60px"), capa(VIDRIO_MOJADO)],
+    panelEstilo: "border: 1px solid rgba(125,211,252,0.4) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 8px 18px rgba(0,0,0,0.45) !important;",
+    barra: [trama(GOTAS_AGUA, "60px 60px"), capa(VIDRIO_MOJADO)],
+    modal: [capa(ESPONJA, "right 12px bottom 12px", "30px 22px"), trama(GOTAS_AGUA, "60px 60px"), capa("linear-gradient(170deg, #0e3a63 0%, #04182c 100%)")],
+    modalEstilo: "border: 1px solid rgba(125,211,252,0.55) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;",
+    tituloEstilo: `color: #f0f9ff !important; background: ${ESPUMA} left 0 bottom 0 / 54px 18px repeat-x !important; padding-bottom: 22px;`,
+    pestana: [capa("linear-gradient(180deg, #0f4c81, #0a3561)")],
+    pestanaEstilo: "border: 1px solid rgba(125,211,252,0.4) !important; color: #e0f2fe !important;",
+    activa: [capa("linear-gradient(180deg, #f0abfc, #d946ef)")],
+    activaEstilo: "border-color: #86198f !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(240,171,252,0.5) !important;",
+    campoEstilo: "background: #04182c !important; border: 1px solid rgba(125,211,252,0.4) !important;",
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }`,
+  });
+
+// =====================================================================
+// LIBRERÍA Y BAZAR — "Cuaderno" (claro: hoja rayada con margen, espiral,
+// lápices de colores sobre la barra, cinta adhesiva y clips)
+// =====================================================================
+const RENGLONES = "repeating-linear-gradient(180deg, transparent 0 27px, rgba(59,130,246,0.22) 27px 28px)";
+const MARGEN = "linear-gradient(90deg, transparent 0 46px, rgba(239,68,68,0.5) 46px 48px, transparent 48px)";
+const HOJA_PAPEL = "linear-gradient(180deg, #fffef9 0%, #fbf9ef 100%)";
+const ESPIRAL = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='28' height='24'><circle cx='14' cy='17' r='3.6' fill='#d6d3c8'/><path d='M11 17 Q9 3 14 1 Q19 3 17 17' stroke='#64748b' stroke-width='2.4' fill='none' stroke-linecap='round'/><path d='M12 15 Q11 5 14 3' stroke='#e2e8f0' stroke-width='.9' fill='none'/></svg>`
+);
+// Lápices de colores con la punta hacia abajo (franja repeat-x).
+const LAPICES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='42'>${[
+    ["#ef4444", 0],
+    ["#f97316", 5],
+    ["#facc15", 2],
+    ["#22c55e", 6],
+    ["#3b82f6", 1],
+    ["#a855f7", 4],
+  ]
+    .map(([c, dy], i) => {
+      const x = 4 + i * 20;
+      return `<g transform='translate(${x} ${dy - 6})'><rect x='0' y='0' width='12' height='28' fill='${c}'/><rect x='4' y='0' width='4' height='28' fill='rgba(255,255,255,0.22)'/><path d='M0 28 L6 40 L12 28 Z' fill='#f5d0a9'/><path d='M3.6 35.2 L6 40 L8.4 35.2 Z' fill='${c}'/></g>`;
+    })
+    .join("")}</svg>`
+);
+const WASHI = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 16'><g transform='rotate(-8 22 8)'><path d='M3 3 L5 5 L3 7 L5 9 L3 11 L5 13 H39 L41 11 L39 9 L41 7 L39 5 L41 3 Z' fill='rgba(244,114,182,0.75)'/><path d='M10 3 V13 M18 3 V13 M26 3 V13 M34 3 V13' stroke='rgba(255,255,255,0.55)' stroke-width='2.5'/></g></svg>`
+);
+const CLIPS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='26'>${[["#ef4444", 6], ["#3b82f6", 24], ["#22c55e", 42], ["#facc15", 60]]
+    .map(([c, x], i) => `<g transform='translate(${x} ${i % 2 ? 4 : 1}) rotate(${i % 2 ? 8 : -6})'><path d='M3 20 V5 Q3 1 6 1 Q9 1 9 5 V18 Q9 22 6 22 Q2 22 2 18 V8' stroke='${c}' stroke-width='1.8' fill='none' stroke-linecap='round'/></g>`)
+    .join("")}</svg>`
+);
+const KRAFT = "linear-gradient(180deg, #d1a777 0%, #b88b5a 100%)";
+
+const cuaderno = (S) =>
+  construir(S, {
+    raiz: [capa(MARGEN), capa(RENGLONES), capa(HOJA_PAPEL)],
+    // Cabecera = hoja de cuaderno con espiral arriba; los lápices de
+    // colores quedan montados con la punta sobre la barra de filtros.
+    cabecera: [
+      capa(LAPICES, "left 0 bottom 0", "120px 42px", "repeat-x"),
+      capa(ESPIRAL, "left 0 top 0", "28px 24px", "repeat-x"),
+      capa(MARGEN),
+      capa(RENGLONES),
+      capa(HOJA_PAPEL),
+    ],
+    cabeceraEstilo: "padding-top: 32px !important; padding-bottom: 56px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(30,41,59,0.10);",
+    borde: { enCabecera: 26, rellenoCabecera: 40 },
+    pie: [capa(CLIPS, "left 0 top 4px", "72px 26px", "repeat-x"), capa(KRAFT)],
+    pieEstilo: "border-top: 3px solid #8a6238 !important; padding-top: 36px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.35), transparent 55%)"), capa("linear-gradient(180deg, #fde047, #facc15)")],
+    botonEstilo: "border: 1px solid #a16207 !important; color: #1f2937 !important; box-shadow: 0 2px 6px rgba(161,98,7,0.25) !important; font-weight: 800;",
+    botonPieEstilo: "border-radius: 8px !important; border: 1px solid #a16207 !important; color: #1f2937 !important; box-shadow: 0 3px 8px rgba(80,50,10,0.3) !important; font-weight: 800;",
+    // Paneles = hojas sueltas con un pedazo de cinta adhesiva.
+    panel: [capa(WASHI, "right 6px top -2px", "40px 15px"), capa(RENGLONES), capa(HOJA_PAPEL)],
+    panelEstilo: "border: 1px solid #e7e2cf !important; box-shadow: 0 1px 0 #ddd6bd, 0 6px 14px rgba(30,41,59,0.10) !important;",
+    barra: [capa(HOJA_PAPEL)],
+    modal: [capa(MARGEN), capa(RENGLONES), capa(HOJA_PAPEL)],
+    modalEstilo: "border: 1px solid #e7e2cf !important; box-shadow: 0 20px 60px rgba(30,41,59,0.22) !important;",
+    tituloEstilo: "color: #1e3a8a !important; border-bottom: 2px solid rgba(239,68,68,0.55); padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #ffffff, #f5f3ea)")],
+    pestanaEstilo: "border: 1px solid #d6d0b8 !important; color: #334155 !important;",
+    activa: [capa("linear-gradient(180deg, #3b82f6, #1d4ed8)")],
+    activaEstilo: "border-color: #1e3a8a !important; color: #ffffff !important; box-shadow: 0 4px 12px rgba(29,78,216,0.3) !important;",
+    campoEstilo: "background: #ffffff !important; border: 1px solid #d6d0b8 !important;",
+    extra: (S) => `
+${en(S, ".tz-header .tz-subtitle")} { color: #1d4ed8 !important; text-shadow: none !important; }
+${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 6px rgba(30,41,59,0.15); }
+${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(30,41,59,0.25)) !important; }
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 14px !important; }`,
+  });
+
+// =====================================================================
+// JUGUETERÍA — "Bloques" (claro: cielo con cometas, bloques de
+// construcción de colores, pelotas y confeti)
+// =====================================================================
+const bloque = (x, c, oscuro) =>
+  `<g transform='translate(${x} 0)'><rect x='2' y='1' width='9' height='8' rx='2' fill='${c}' stroke='${oscuro}' stroke-width='.8'/><rect x='21' y='1' width='9' height='8' rx='2' fill='${c}' stroke='${oscuro}' stroke-width='.8'/><rect x='0' y='7' width='32' height='23' rx='2.5' fill='${c}' stroke='${oscuro}' stroke-width='1'/><rect x='3' y='3' width='4' height='1.6' rx='.8' fill='rgba(255,255,255,0.6)'/><rect x='22' y='3' width='4' height='1.6' rx='.8' fill='rgba(255,255,255,0.6)'/><rect x='2.5' y='10' width='27' height='3' rx='1.5' fill='rgba(255,255,255,0.3)'/></g>`;
+const LADRILLOS_JUGUETE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='128' height='30'>${bloque(0, "#ef4444", "#991b1b")}${bloque(32, "#facc15", "#a16207")}${bloque(64, "#3b82f6", "#1e40af")}${bloque(96, "#22c55e", "#15803d")}</svg>`
+);
+const MURO_JUGUETE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='128' height='46'>${bloque(0, "#3b82f6", "#1e40af")}${bloque(32, "#ef4444", "#991b1b")}${bloque(64, "#22c55e", "#15803d")}${bloque(96, "#facc15", "#a16207")}<g transform='translate(-16 23)'>${bloque(0, "#facc15", "#a16207")}${bloque(32, "#3b82f6", "#1e40af")}${bloque(64, "#ef4444", "#991b1b")}${bloque(96, "#22c55e", "#15803d")}${bloque(128, "#facc15", "#a16207")}</g></svg>`
+);
+const cometa = (a, b, c) =>
+  svg(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 70'><g><animateTransform attributeName='transform' type='rotate' values='-7 20 20; 7 20 20; -7 20 20' dur='4s' repeatCount='indefinite'/><path d='M20 2 L36 20 L20 40 L4 20 Z' fill='${a}' stroke='#1f2937' stroke-width='1'/><path d='M20 2 L36 20 L20 20 Z' fill='${b}'/><path d='M4 20 L20 40 L20 20 Z' fill='${b}'/><path d='M20 2 V40 M4 20 H36' stroke='#1f2937' stroke-width='.8'/><path d='M20 40 Q14 48 20 54 Q26 60 20 68' stroke='#1f2937' stroke-width='1' fill='none'/><g fill='${c}'><path d='M17 47 L20 45 L23 47 L20 49 Z'/><path d='M17 57 L20 55 L23 57 L20 59 Z'/></g></g></svg>`
+  );
+const COMETA_ROJA = cometa("#ef4444", "#facc15", "#3b82f6");
+const COMETA_AZUL = cometa("#3b82f6", "#22c55e", "#ef4444");
+const PELOTA_PLAYA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='-12 -12 24 24'><circle r='11' fill='#ffffff' stroke='#1f2937' stroke-width='.8'/><path d='M0 -11 A11 11 0 0 1 9.5 -5.5 L0 0 Z' fill='#ef4444'/><path d='M9.5 5.5 A11 11 0 0 1 0 11 L0 0 Z' fill='#3b82f6'/><path d='M-9.5 5.5 A11 11 0 0 1 -9.5 -5.5 L0 0 Z' fill='#facc15'/><circle r='2.2' fill='#22c55e'/><ellipse cx='-4' cy='-5' rx='2.5' ry='1.4' fill='rgba(255,255,255,0.7)'/></svg>`
+);
+const CONFETI_JUGUETES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='110' height='110'><g opacity='.35'><circle cx='14' cy='18' r='4' fill='#ef4444'/><path d='M60 10 L66 22 H54 Z' fill='#3b82f6'/><rect x='88' y='40' width='8' height='8' rx='1.5' fill='#22c55e' transform='rotate(20 92 44)'/><path d='M30 70 l2.4 5 5.4.6-4 3.7 1.1 5.3-4.9-2.7-4.9 2.7 1.1-5.3-4-3.7 5.4-.6z' fill='#facc15'/><circle cx='86' cy='92' r='3.5' fill='#a855f7'/><path d='M8 96 Q14 90 20 96' stroke='#f97316' stroke-width='3' fill='none' stroke-linecap='round'/></g></svg>`
+);
+const CIELO_JUGUETE = "linear-gradient(180deg, #7dd3fc 0%, #bae6fd 55%, #e0f2fe 100%)";
+
+const bloques = (S) =>
+  construir(S, {
+    raiz: [trama(CONFETI_JUGUETES, "110px 110px"), capa("linear-gradient(180deg, #fffdf5 0%, #fff4dc 100%)")],
+    // Cabecera = cielo con cometas que se mecen y una fila de bloques
+    // abajo (montada sobre la barra de filtros).
+    cabecera: [
+      capa(LADRILLOS_JUGUETE, "left 0 bottom 0", "128px 30px", "repeat-x"),
+      capa(COMETA_ROJA, "left 3% bottom 30px", "46px 80px"),
+      capa(COMETA_AZUL, "right 3% bottom 36px", "40px 70px"),
+      capa(NUBES_CIELO, "left 0 top 6px", "320px 70px", "repeat-x"),
+      capa(CIELO_JUGUETE),
+    ],
+    cabeceraEstilo: "padding-bottom: 44px !important; border-bottom: none !important;",
+    borde: { enCabecera: 15, rellenoCabecera: 30 },
+    pie: [capa(MURO_JUGUETE, "0 0", "128px 46px", "repeat")],
+    pieEstilo: "border-top: none !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.35), transparent 50%)"), capa("linear-gradient(180deg, #ef4444, #dc2626)")],
+    botonEstilo: "border: 1px solid #991b1b !important; color: #ffffff !important; box-shadow: 0 3px 0 #991b1b, 0 5px 10px rgba(153,27,27,0.25) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.3); font-weight: 800;",
+    botonPie: [capa("linear-gradient(180deg, #ffffff, #f1f5f9)")],
+    botonPieEstilo: "border-radius: 12px !important; border: 2px solid #1e40af !important; color: #1e3a8a !important; box-shadow: 0 3px 0 #1e40af, 0 6px 12px rgba(0,0,0,0.25) !important; font-weight: 800;",
+    panel: [capa(PELOTA_PLAYA, "right 8px top 8px", "22px 22px"), capa("linear-gradient(180deg, #ffffff, #fffbf0)")],
+    panelEstilo: "border: 2px solid #fcd34d !important; border-radius: 16px !important; box-shadow: 0 4px 0 #f59e0b, 0 8px 16px rgba(180,83,9,0.12) !important;",
+    barra: [capa("linear-gradient(180deg, #ffffff, #fffbf0)")],
+    modal: [capa(PELOTA_PLAYA, "right 12px bottom 12px", "26px 26px"), trama(CONFETI_JUGUETES, "110px 110px"), capa("linear-gradient(180deg, #ffffff, #fffaf0)")],
+    modalEstilo: "border: 3px solid #3b82f6 !important; box-shadow: 0 6px 0 #1e40af, 0 20px 60px rgba(30,64,175,0.2) !important;",
+    tituloEstilo: `color: #1e3a8a !important; background: ${LADRILLOS_JUGUETE} left 0 bottom 0 / 64px 15px repeat-x !important; padding-bottom: 22px;`,
+    pestana: [capa("linear-gradient(180deg, #ffffff, #f1f5f9)")],
+    pestanaEstilo: "border: 2px solid #93c5fd !important; color: #1e3a8a !important;",
+    activa: [capa("linear-gradient(180deg, #facc15, #eab308)")],
+    activaEstilo: "border-color: #a16207 !important; color: #422006 !important; box-shadow: 0 3px 0 #a16207 !important;",
+    campoEstilo: "background: #ffffff !important; border: 2px solid #bfdbfe !important;",
+    extra: (S) => `
+${en(S, ".tz-header .tz-subtitle")} { color: #1e3a8a !important; text-shadow: none !important; background: rgba(255,255,255,0.85); padding: 2px 10px; border-radius: 999px; }
+${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 6px rgba(30,64,175,0.2); }
+${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(30,64,175,0.3)) !important; }
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !important; }`,
+  });
+
+// =====================================================================
+// FLORERÍA — "Jardín" (claro: guirnalda de flores sobre la barra,
+// pétalos que caen, lazo de papel kraft)
+// =====================================================================
+const rosa = (x, y, k, c, oscuro) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><circle r='7' fill='${c}'/><path d='M-4 -1 Q0 -6 4 -1 Q2 3 -2 2 Q-3 -1 0 -2' stroke='${oscuro}' stroke-width='1.1' fill='none'/><path d='M-6 2 Q-2 7 5 4' stroke='${oscuro}' stroke-width='.9' fill='none'/></g>`;
+const margarita = (x, y, k) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'>${Array.from({ length: 8 }, (_, i) => `<ellipse cx='0' cy='-5.5' rx='2.2' ry='4.2' fill='#ffffff' stroke='#e5e7eb' stroke-width='.5' transform='rotate(${i * 45})'/>`).join("")}<circle r='2.8' fill='#facc15'/></g>`;
+const tulipan = (x, y, k, c) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M-5 -2 Q-6 -10 -3 -9 L0 -5 L3 -9 Q6 -10 5 -2 Q4 4 0 4 Q-4 4 -5 -2 Z' fill='${c}'/><path d='M0 -5 V4' stroke='rgba(0,0,0,0.15)' stroke-width='.8'/></g>`;
+const hojita = (x, y, ang) => `<g transform='translate(${x} ${y}) rotate(${ang})'><path d='M0 0 Q5 -4 11 0 Q5 4 0 0 Z' fill='#4d7c0f'/></g>`;
+// Guirnalda de flores (franja repeat-x).
+const GUIRNALDA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='160' height='40'><path d='M0 16 Q40 26 80 16 T160 16' stroke='#3f6212' stroke-width='2' fill='none'/>${hojita(8, 18, 20)}${hojita(30, 22, -30)}${hojita(52, 21, 160)}${hojita(70, 16, -20)}${hojita(96, 19, 30)}${hojita(118, 24, -150)}${hojita(140, 20, 10)}${rosa(20, 20, 1, "#f472b6", "#be185d")}${margarita(44, 24, 1)}${tulipan(64, 22, 1.1, "#a855f7")}${rosa(88, 22, 1.15, "#ef4444", "#991b1b")}${margarita(112, 24, 0.9)}${tulipan(132, 20, 1, "#f97316")}${rosa(152, 18, 0.9, "#fda4af", "#e11d48")}</svg>`
+);
+// Pétalos que caen girando (SMIL), en baldosas.
+const PETALOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='170' height='170'>${[
+    [20, "#f9a8d4", 9, 0],
+    [70, "#fda4af", 11, 3],
+    [120, "#f9a8d4", 8, 5.5],
+    [150, "#fbcfe8", 12, 1.5],
+    [45, "#fecdd3", 10, 7],
+  ]
+    .map(
+      ([x, c, dur, delay]) =>
+        `<g><animateTransform attributeName='transform' type='translate' values='0 -20; 14 50; -8 120; 6 190' dur='${dur}s' begin='-${delay}s' repeatCount='indefinite'/><g transform='translate(${x} 0)'><ellipse rx='4' ry='6.5' fill='${c}' opacity='.75'><animateTransform attributeName='transform' type='rotate' values='0;180;360' dur='${dur / 2}s' repeatCount='indefinite'/></ellipse></g></g>`
+    )
+    .join("")}</svg>`
+);
+const FLOR_ICONO = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 22'>${hojita(10, 14, 160)}${hojita(18, 14, 20)}${rosa(10, 10, 0.9, "#f472b6", "#be185d")}${margarita(22, 9, 0.75)}</svg>`);
+const LAZO_KRAFT = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 34'><path d='M22 12 C12 0 2 6 8 14 C12 18 19 15 22 12 Z' fill='#c99a66' stroke='#8a6238' stroke-width='1'/><path d='M22 12 C32 0 42 6 36 14 C32 18 25 15 22 12 Z' fill='#c99a66' stroke='#8a6238' stroke-width='1'/><path d='M20 14 L12 32 L17 29 L19 33 Z M24 14 L32 32 L27 29 L25 33 Z' fill='#b88452' stroke='#8a6238' stroke-width='.8'/><circle cx='22' cy='13' r='3.5' fill='#b88452' stroke='#8a6238' stroke-width='1'/></svg>`
+);
+const PASTO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='18'><path d='M0 18 L3 6 L5 18 L8 2 L10 18 L14 8 L16 18 L19 4 L22 18 L25 7 L27 18 L31 3 L33 18 L36 8 L38 18 L40 5 V18 Z' fill='#65a30d'/></svg>`
+);
+const FLORES_FONDO = "linear-gradient(180deg, #fff7f9 0%, #fdeef2 100%)";
+
+const jardin = (S) =>
+  construir(S, {
+    raiz: [trama(PETALOS, "170px 170px"), capa(FLORES_FONDO)],
+    // Cabecera rosada con pétalos cayendo, lazo kraft en las esquinas y
+    // la guirnalda de flores montada sobre la barra de filtros.
+    cabecera: [
+      capa(GUIRNALDA, "left 0 bottom 0", "224px 56px", "repeat-x"),
+      capa(LAZO_KRAFT, "left 3% bottom 52px", "54px 42px"),
+      capa(LAZO_KRAFT, "right 3% bottom 52px", "54px 42px"),
+      trama(PETALOS, "170px 170px"),
+      capa("radial-gradient(ellipse 60% 80% at 50% 0%, rgba(255,255,255,0.7), transparent 70%)"),
+      capa("linear-gradient(180deg, #fde2ea 0%, #fbd0dd 100%)"),
+    ],
+    cabeceraEstilo: "padding-bottom: 70px !important; border-bottom: none !important;",
+    borde: { enCabecera: 30, rellenoCabecera: 50 },
+    pie: [capa(FLOR_ICONO, "left 4% bottom 16px", "40px 29px"), capa(FLOR_ICONO, "right 4% bottom 16px", "40px 29px"), capa(PASTO, "left 0 bottom 0", "40px 18px", "repeat-x"), capa("linear-gradient(180deg, #fbd0dd, #f9c2d3)")],
+    pieEstilo: "border-top: 3px solid #f472b6 !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.35), transparent 55%)"), capa("linear-gradient(180deg, #f472b6, #db2777)")],
+    botonEstilo: "border: 1px solid #9d174d !important; color: #ffffff !important; box-shadow: 0 3px 8px rgba(219,39,119,0.3) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.25); border-radius: 999px !important;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #9d174d !important; color: #ffffff !important; box-shadow: 0 4px 10px rgba(219,39,119,0.35) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.25);",
+    panel: [capa(FLOR_ICONO, "right 6px top 6px", "30px 22px"), capa("linear-gradient(180deg, #ffffff, #fffafb)")],
+    panelEstilo: "border: 1px solid #fbcfe8 !important; box-shadow: 0 6px 16px rgba(190,24,93,0.08) !important;",
+    barra: [capa("linear-gradient(180deg, #ffffff, #fffafb)")],
+    modal: [capa(LAZO_KRAFT, "right 12px bottom 10px", "36px 28px"), trama(PETALOS, "170px 170px"), capa("linear-gradient(180deg, #ffffff, #fff5f8)")],
+    modalEstilo: "border: 1px solid #f9a8d4 !important; box-shadow: 0 20px 60px rgba(190,24,93,0.18) !important;",
+    tituloEstilo: "color: #9d174d !important; border-bottom: 2px solid #86efac; padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #ffffff, #fdf2f8)")],
+    pestanaEstilo: "border: 1px solid #fbcfe8 !important; color: #831843 !important;",
+    activa: [capa("linear-gradient(180deg, #4ade80, #16a34a)")],
+    activaEstilo: "border-color: #166534 !important; color: #ffffff !important; box-shadow: 0 4px 12px rgba(22,163,74,0.3) !important;",
+    campoEstilo: "background: #ffffff !important; border: 1px solid #f5c2d8 !important;",
+    extra: (S) => `
+${en(S, ".tz-header .tz-subtitle")} { color: #9d174d !important; text-shadow: none !important; background: rgba(255,255,255,0.85); padding: 2px 10px; border-radius: 999px; }
+${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 8px rgba(190,24,93,0.2); }
+${en(S, ".tz-header .tz-conn-online")} { color: #15803d !important; }
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 38px !important; }`,
+  });
+
+// =====================================================================
+// AGROVETERINARIA — "Granja" (granero rojo, cerco de madera sobre la
+// barra, pasto con huellas de vaca, herradura y sacos de alimento)
+// =====================================================================
+const CERCO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='46'><g fill='#a16207' stroke='#713f12' stroke-width='1'><path d='M6 46 V6 L11 1 L16 6 V46 Z'/><path d='M46 46 V6 L51 1 L56 6 V46 Z'/><rect x='-2' y='14' width='84' height='7' rx='1'/><rect x='-2' y='30' width='84' height='7' rx='1'/></g><g stroke='rgba(60,30,5,0.35)' stroke-width='.8'><path d='M9 10 V42 M49 10 V42 M20 17 H40 M60 33 H76'/></g><circle cx='11' cy='17.5' r='1' fill='#3b2205'/><circle cx='51' cy='33.5' r='1' fill='#3b2205'/></svg>`
+);
+const HUELLAS_VACA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><g fill='rgba(20,40,12,0.55)'><g transform='translate(22 26) rotate(-15)'><path d='M-5 -6 Q-7 0 -4 6 Q-1 6 -1 0 Q-1 -6 -5 -6Z'/><path d='M5 -6 Q7 0 4 6 Q1 6 1 0 Q1 -6 5 -6Z'/></g><g transform='translate(70 66) rotate(20)'><path d='M-5 -6 Q-7 0 -4 6 Q-1 6 -1 0 Q-1 -6 -5 -6Z'/><path d='M5 -6 Q7 0 4 6 Q1 6 1 0 Q1 -6 5 -6Z'/></g></g><g stroke='rgba(132,204,22,0.18)' stroke-width='1.4' stroke-linecap='round'><path d='M10 90 l2 -6 M14 90 l-1 -7 M80 20 l2 -6 M84 20 l-1 -7 M50 46 l1 -6'/></g></svg>`
+);
+const HERRADURA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 26'><path d='M5 24 L4 12 Q4 3 13 3 Q22 3 22 12 L21 24 L16 24 L17 12 Q17 8 13 8 Q9 8 9 12 L10 24 Z' fill='#9ca3af' stroke='#4b5563' stroke-width='1'/><g fill='#374151'><circle cx='6.5' cy='20' r='1'/><circle cx='6' cy='14' r='1'/><circle cx='19.5' cy='20' r='1'/><circle cx='20' cy='14' r='1'/></g></svg>`
+);
+const GRANERO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 48'><path d='M4 20 L30 4 L56 20 V46 H4 Z' fill='#b91c1c' stroke='#7f1d1d' stroke-width='1.2'/><path d='M2 21 L30 3 L58 21' stroke='#f8fafc' stroke-width='3' fill='none' stroke-linejoin='round'/><rect x='20' y='26' width='20' height='20' fill='#7f1d1d' stroke='#f8fafc' stroke-width='2'/><path d='M20 26 L40 46 M40 26 L20 46' stroke='#f8fafc' stroke-width='2'/><rect x='26' y='12' width='8' height='7' fill='#fde68a' stroke='#f8fafc' stroke-width='1.4'/></svg>`
+);
+const SACO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 40'><path d='M6 8 Q4 4 8 3 H26 Q30 4 28 8 Q33 20 30 36 Q17 40 4 36 Q1 20 6 8 Z' fill='#d6b98c' stroke='#8a6a3a' stroke-width='1.2'/><path d='M7 8 H27' stroke='#8a6a3a' stroke-width='1.6' stroke-dasharray='2 1.6'/><rect x='10' y='16' width='14' height='11' rx='1.5' fill='#f8fafc' stroke='#15803d' stroke-width='1'/><path d='M14 21.5 h6 M17 18.5 v6' stroke='#15803d' stroke-width='1.8'/></svg>`
+);
+const TABLAS_GRANERO = "repeating-linear-gradient(90deg, #9b1c1c 0 26px, #7f1d1d 26px 28px)";
+const PRADERA = "linear-gradient(180deg, #16290f 0%, #0f1a0c 100%)";
+const MADERA_ESTABLO = "linear-gradient(170deg, #3b2a1a 0%, #2a1d12 100%)";
+
+const granja = (S) =>
+  construir(S, {
+    raiz: [trama(HUELLAS_VACA, "100px 100px"), capa("radial-gradient(ellipse 900px 420px at 50% -10%, rgba(253,230,138,0.10), transparent 60%)"), capa(PRADERA)],
+    // Cabecera = pared de granero; abajo el cerco de madera montado
+    // sobre la barra de filtros, el granero y un saco de alimento.
+    cabecera: [
+      capa(CERCO, "left 0 bottom 0", "80px 46px", "repeat-x"),
+      capa(GRANERO, "left 2.5% bottom 36px", "70px 56px"),
+      capa(SACO, "right 3% bottom 36px", "40px 47px"),
+      capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.4))"),
+      capa(TABLAS_GRANERO),
+    ],
+    cabeceraEstilo: "padding-bottom: 66px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.5);",
+    borde: { enCabecera: 26, rellenoCabecera: 52 },
+    pie: [capa(CERCO, "left 0 top 0", "80px 46px", "repeat-x"), capa(HUELLAS_VACA, "0 0", "100px 100px", "repeat"), capa(PRADERA)],
+    pieEstilo: "border-top: none !important; padding-top: 52px !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.3), transparent 55%)"), capa("linear-gradient(180deg, #fde68a, #eab308)")],
+    botonEstilo: "border: 1px solid #854d0e !important; color: #3b2a06 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.4) !important; font-weight: 800;",
+    botonPieEstilo: "border-radius: 8px !important; border: 1px solid #854d0e !important; color: #3b2a06 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.45) !important; font-weight: 800;",
+    // Paneles = madera del establo con una herradura.
+    panel: [capa(HERRADURA, "right 8px top 7px", "20px 20px"), trama(VETA, "120px 34px"), capa(MADERA_ESTABLO)],
+    panelEstilo: "border: 1px solid #1a120a !important; box-shadow: inset 0 1px 0 rgba(255,230,180,0.1), 0 8px 18px rgba(0,0,0,0.45) !important;",
+    barra: [trama(VETA, "120px 34px"), capa(MADERA_ESTABLO)],
+    modal: [capa(HERRADURA, "right 12px bottom 12px", "24px 24px"), trama(VETA, "120px 34px"), capa(MADERA_ESTABLO)],
+    modalEstilo: "border: 2px solid #a16207 !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
+    tituloEstilo: "color: #fde68a !important; border-bottom: 3px solid #b91c1c; padding-bottom: 8px;",
+    pestana: [capa(MADERA_ESTABLO)],
+    pestanaEstilo: "border: 1px solid #a16207 !important; color: #fde68a !important;",
+    activa: [capa("linear-gradient(180deg, #dc2626, #991b1b)")],
+    activaEstilo: "border-color: #7f1d1d !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(220,38,38,0.45) !important;",
+    campoEstilo: "background: #0f1a0c !important; border: 1px solid #854d0e !important;",
+    extra: (S) => `
+${en(S, ".tz-header .tz-subtitle")} { color: #fde68a !important; background: rgba(40,10,10,0.75); padding: 2px 10px; border-radius: 999px; }
+${en(S, ".tz-header .tz-conn-indicator")} { background: rgba(20,12,6,0.85) !important; }
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !important; }`,
+  });
+
+// =====================================================================
 // Catálogo
 // =====================================================================
 export const TEMATICOS = [
@@ -2342,6 +2704,51 @@ export const TEMATICOS = [
     paleta: { id: "tematico-garaje", nombre: "Garaje", modo: "oscuro", principal: "#93c5fd", secundario: "#fca5a5", acento: "#fde68a", botones: "#e2e8f0", fondo1: "#0e1013", fondo2: "#1c2026" },
     muestra: `${LLANTA} right 8px bottom 8px / 30px 30px no-repeat, ${HERRAMIENTAS} left 0 top 4px / 140px 31px repeat-x, ${PEGBOARD} 0 0 / 14px 14px`,
     css: garaje,
+  },
+  {
+    id: "espuma",
+    rubro: "lavado-autos",
+    nombre: "Espuma",
+    descripcion: "Agua, burbujas que suben, espuma, esponja y un auto que brilla",
+    paleta: { id: "tematico-espuma", nombre: "Espuma", modo: "oscuro", principal: "#7dd3fc", secundario: "#f0abfc", acento: "#fde047", botones: "#bae6fd", fondo1: "#03111f", fondo2: "#0a2340" },
+    muestra: `${AUTO_BRILLO} right 8px top 8px / 44px 21px no-repeat, ${ESPUMA} left 0 bottom 0 / 60px 20px repeat-x, ${BURBUJAS_VIVAS} 0 0 / 100px 100px, linear-gradient(180deg, #0f4c81, #03111f)`,
+    css: espuma,
+  },
+  {
+    id: "cuaderno",
+    rubro: "libreria-bazar",
+    nombre: "Cuaderno",
+    descripcion: "Hoja rayada con espiral, lápices de colores, cinta y clips",
+    paleta: { id: "tematico-cuaderno", nombre: "Cuaderno", modo: "claro", principal: "#1d4ed8", secundario: "#be123c", acento: "#a16207", botones: "#1e3a8a", fondo1: "#fdfdf8", fondo2: "#f3f1e6" },
+    muestra: `${ESPIRAL} left 0 top 0 / 20px 17px repeat-x, ${LAPICES} left 0 bottom 0 / 90px 31px repeat-x, ${MARGEN}, ${RENGLONES}, ${HOJA_PAPEL}`,
+    css: cuaderno,
+  },
+  {
+    id: "bloques",
+    rubro: "jugueteria",
+    nombre: "Bloques",
+    descripcion: "Cielo con cometas, bloques de colores, pelotas y confeti",
+    paleta: { id: "tematico-bloques", nombre: "Bloques", modo: "claro", principal: "#1d4ed8", secundario: "#dc2626", acento: "#a16207", botones: "#dc2626", fondo1: "#fffdf5", fondo2: "#fff4dc" },
+    muestra: `${COMETA_ROJA} right 10px top 4px / 22px 38px no-repeat, ${LADRILLOS_JUGUETE} left 0 bottom 0 / 96px 22px repeat-x, ${NUBES_CIELO} left 0 top 0 / 200px 44px repeat-x, ${CIELO_JUGUETE}`,
+    css: bloques,
+  },
+  {
+    id: "jardin",
+    rubro: "floreria",
+    nombre: "Jardín",
+    descripcion: "Guirnalda de flores, pétalos que caen y lazo de papel kraft",
+    paleta: { id: "tematico-jardin", nombre: "Jardín", modo: "claro", principal: "#be185d", secundario: "#15803d", acento: "#b45309", botones: "#be185d", fondo1: "#fff7f9", fondo2: "#fdeef2" },
+    muestra: `${LAZO_KRAFT} right 8px top 6px / 30px 23px no-repeat, ${GUIRNALDA} left 0 bottom 0 / 120px 30px repeat-x, ${PETALOS} 0 0 / 120px 120px, linear-gradient(180deg, #fde2ea, #fff7f9)`,
+    css: jardin,
+  },
+  {
+    id: "granja",
+    rubro: "agroveterinaria",
+    nombre: "Granja",
+    descripcion: "Granero rojo, cerco de madera, huellas, herradura y sacos",
+    paleta: { id: "tematico-granja", nombre: "Granja", modo: "oscuro", principal: "#fde68a", secundario: "#fca5a5", acento: "#bbf7d0", botones: "#fde68a", fondo1: "#0f1a0c", fondo2: "#1f3318" },
+    muestra: `${GRANERO} right 8px top 6px / 34px 27px no-repeat, ${CERCO} left 0 bottom 0 / 60px 35px repeat-x, ${TABLAS_GRANERO}`,
+    css: granja,
   },
 ];
 
