@@ -2420,6 +2420,157 @@ ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !i
   });
 
 // =====================================================================
+// LAVANDERÍA — "Tendedero" (claro: ropa colgada sobre la barra, burbujas
+// de jabón que suben, lavadora girando y canasta de ropa)
+// =====================================================================
+const toalla = (x, y, c) =>
+  `<g transform='translate(${x} ${y})'><rect x='0' y='0' width='18' height='26' rx='1.5' fill='${c}' stroke='rgba(0,0,0,0.18)' stroke-width='.7'/><path d='M0 19 H18 M0 22 H18' stroke='rgba(255,255,255,0.75)' stroke-width='1.4'/><path d='M2 26 v2 M5 26 v2 M8 26 v2 M11 26 v2 M14 26 v2' stroke='${c}' stroke-width='1'/></g>`;
+const calcetin = (x, y, c, ang) =>
+  `<g transform='translate(${x} ${y}) rotate(${ang})'><path d='M0 0 H7 V14 Q7 20 12 20 Q15 21 14 24 H5 Q0 24 0 18 Z' fill='${c}' stroke='rgba(0,0,0,0.2)' stroke-width='.7'/><rect x='0' y='0' width='7' height='3' fill='rgba(255,255,255,0.7)'/><path d='M10 21 Q12 24 14 23' stroke='rgba(255,255,255,0.6)' stroke-width='1' fill='none'/></g>`;
+const pinzaRopa = (x) => `<rect x='${x}' y='2' width='3' height='8' rx='1' fill='#f472b6' stroke='#be185d' stroke-width='.5'/>`;
+// Cuerda con ropa colgada (franja repeat-x; la cuerda empalma a y = 6).
+const TENDEDERO_ROPA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='180' height='48'><path d='M0 6 Q90 12 180 6' stroke='#64748b' stroke-width='1.4' fill='none'/>${toalla(8, 8, "#7dd3fc")}${pinzaRopa(10)}${pinzaRopa(22)}${polo(32, 9, "#fda4af", 1.05)}${pinzaRopa(40)}${pinzaRopa(53)}${calcetin(66, 10, "#c4b5fd", -4)}${calcetin(78, 10, "#c4b5fd", 4)}${pinzaRopa(68)}${pinzaRopa(80)}${toalla(98, 10, "#fde68a")}${pinzaRopa(100)}${pinzaRopa(112)}${polo(124, 9, "#86efac", 1.05)}${pinzaRopa(132)}${pinzaRopa(145)}${calcetin(158, 9, "#7dd3fc", 2)}${pinzaRopa(160)}</svg>`
+);
+// Burbujas de jabón tornasoladas que suben (SMIL).
+const BURBUJAS_JABON = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='150' height='150'><defs><linearGradient id='t' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#7dd3fc'/><stop offset='.5' stop-color='#f0abfc'/><stop offset='1' stop-color='#fde68a'/></linearGradient></defs>${[
+    [20, 10, 9, 0],
+    [62, 6, 7, 2.2],
+    [104, 13, 11, 4],
+    [134, 7, 8, 1.1],
+    [42, 5, 6, 3.3],
+  ]
+    .map(
+      ([x, r, dur, delay]) =>
+        `<g><animateTransform attributeName='transform' type='translate' values='0 0; -8 -85; 6 -170' dur='${dur}s' begin='-${delay}s' repeatCount='indefinite'/><circle cx='${x}' cy='${150 + r}' r='${r}' fill='rgba(255,255,255,0.18)' stroke='url(#t)' stroke-width='1.3' opacity='.8'/><ellipse cx='${x - r * 0.35}' cy='${150 + r - r * 0.4}' rx='${r * 0.3}' ry='${r * 0.18}' fill='rgba(255,255,255,0.9)'/></g>`
+    )
+    .join("")}</svg>`
+);
+const LAVADORA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 52'><rect x='1' y='1' width='44' height='50' rx='5' fill='#ffffff' stroke='#94a3b8' stroke-width='1.2'/><rect x='1' y='1' width='44' height='10' rx='5' fill='#e2e8f0'/><circle cx='36' cy='6' r='3' fill='#cbd5e1' stroke='#64748b' stroke-width='.8'/><rect x='6' y='4.5' width='10' height='3' rx='1.5' fill='#7dd3fc'/><circle cx='23' cy='31' r='15' fill='#cbd5e1' stroke='#64748b' stroke-width='1.2'/><circle cx='23' cy='31' r='11.5' fill='#bae6fd'/><g><animateTransform attributeName='transform' type='rotate' from='0 23 31' to='360 23 31' dur='2.4s' repeatCount='indefinite'/><path d='M15 30 Q19 24 25 26 Q22 30 15 30 Z' fill='#f472b6'/><path d='M24 35 Q30 34 31 28 Q26 31 24 35 Z' fill='#a78bfa'/><path d='M17 35 Q20 39 25 38 Q21 35 17 35 Z' fill='#fde047'/></g><path d='M15 25 Q18 21 23 20.5' stroke='rgba(255,255,255,0.85)' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>`
+);
+const CANASTA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 36'><path d='M8 10 Q14 2 22 8 Q28 1 36 8 L38 12 H6 Z' fill='#f9a8d4'/><path d='M14 6 Q20 0 26 6' fill='#7dd3fc'/><path d='M3 12 H43 L39 34 H7 Z' fill='#d6a35c' stroke='#8a5a26' stroke-width='1'/><g stroke='#a86f30' stroke-width='1.2'><path d='M5 17 H41 M6 22 H40 M7 27 H39'/><path d='M12 12 L13 34 M19 12 L19.5 34 M26 12 L26 34 M33 12 L32.5 34'/></g><rect x='2' y='10' width='42' height='4' rx='2' fill='#b07a3a'/></svg>`
+);
+const JABON_ICONO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 24'><g fill='rgba(255,255,255,0.6)' stroke='#38bdf8' stroke-width='1.2'><circle cx='9' cy='14' r='7'/><circle cx='20' cy='9' r='5'/><circle cx='21' cy='19' r='3.5'/></g><g fill='#ffffff'><ellipse cx='6.5' cy='11' rx='2' ry='1.2'/><ellipse cx='18.5' cy='7.5' rx='1.4' ry='.8'/></g></svg>`
+);
+const AZULEJO_CLARO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'><rect width='30' height='30' fill='#bfe6ef'/><rect x='1' y='1' width='28' height='28' rx='2' fill='#f4fbfd'/><rect x='3' y='3' width='10' height='2' rx='1' fill='rgba(255,255,255,0.9)'/></svg>`
+);
+const AIRE_LIMPIO = "linear-gradient(180deg, #cdeef7 0%, #e3f6fb 100%)";
+
+const tendedero = (S) =>
+  construir(S, {
+    raiz: [trama(BURBUJAS_JABON, "150px 150px"), capa("linear-gradient(180deg, #f5fbfd 0%, #e6f4f8 100%)")],
+    // Cabecera celeste con burbujas de jabón, la lavadora girando y la
+    // canasta; abajo la cuerda con la ropa colgada sobre la barra.
+    cabecera: [
+      capa(TENDEDERO_ROPA, "left 0 bottom 0", "240px 64px", "repeat-x"),
+      capa(LAVADORA, "left 2.5% bottom 52px", "58px 66px"),
+      capa(CANASTA, "right 2.5% bottom 52px", "64px 50px"),
+      trama(BURBUJAS_JABON, "150px 150px"),
+      capa(AIRE_LIMPIO),
+    ],
+    cabeceraEstilo: "padding-bottom: 84px !important; border-bottom: none !important;",
+    borde: { enCabecera: 21, rellenoCabecera: 56 },
+    pie: [capa("linear-gradient(180deg, #38bdf8, #0ea5e9)", "left 0 top 0", "100% 4px"), trama(AZULEJO_CLARO, "30px 30px")],
+    pieEstilo: "border-top: none !important;",
+    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.35), transparent 55%)"), capa("linear-gradient(180deg, #22d3ee, #0891b2)")],
+    botonEstilo: "border: 1px solid #0e7490 !important; color: #ffffff !important; box-shadow: 0 3px 8px rgba(8,145,178,0.3) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.25); border-radius: 999px !important;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #0e7490 !important; color: #ffffff !important; box-shadow: 0 4px 10px rgba(8,145,178,0.35) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.25);",
+    panel: [capa(JABON_ICONO, "right 8px top 6px", "26px 22px"), capa("linear-gradient(180deg, #ffffff, #f7fcfe)")],
+    panelEstilo: "border: 1px solid #bfe6ef !important; box-shadow: 0 6px 16px rgba(14,116,144,0.10) !important;",
+    barra: [capa("linear-gradient(180deg, #ffffff, #f7fcfe)")],
+    modal: [capa(JABON_ICONO, "right 12px bottom 12px", "30px 26px"), trama(BURBUJAS_JABON, "150px 150px"), capa("linear-gradient(180deg, #ffffff, #f2fafd)")],
+    modalEstilo: "border: 1px solid #a5dcea !important; box-shadow: 0 20px 60px rgba(14,116,144,0.2) !important;",
+    tituloEstilo: "color: #0e7490 !important; border-bottom: 2px dashed #f9a8d4; padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #ffffff, #effafc)")],
+    pestanaEstilo: "border: 1px solid #a5dcea !important; color: #155e75 !important;",
+    activa: [capa("linear-gradient(180deg, #f472b6, #db2777)")],
+    activaEstilo: "border-color: #9d174d !important; color: #ffffff !important; box-shadow: 0 4px 12px rgba(219,39,119,0.3) !important;",
+    campoEstilo: "background: #ffffff !important; border: 1px solid #a5dcea !important;",
+    extra: (S) => `
+${en(S, ".tz-header .tz-subtitle")} { color: #0e7490 !important; text-shadow: none !important; background: rgba(255,255,255,0.85); padding: 2px 10px; border-radius: 999px; }
+${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 6px rgba(14,116,144,0.2); }
+${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(14,116,144,0.3)) !important; }
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }`,
+  });
+
+// =====================================================================
+// SEX SHOP — "Neón íntimo" (discreto: terciopelo negro, luces de neón
+// rosa y morado que titilan, corazones, labios y antifaz)
+// =====================================================================
+const BRILLO_NEON = `<filter id='n' x='-30%' y='-30%' width='160%' height='160%'><feGaussianBlur stdDeviation='1.6' result='b'/><feMerge><feMergeNode in='b'/><feMergeNode in='b'/><feMergeNode in='SourceGraphic'/></feMerge></filter>`;
+const parpadeo = (dur, delay = 0) => `<animate attributeName='opacity' values='1;1;0.55;1;1;0.8;1' keyTimes='0;0.4;0.45;0.5;0.8;0.85;1' dur='${dur}s' begin='${delay}s' repeatCount='indefinite'/>`;
+const CORAZON_PATH = "M30 50 C10 36 3 26 3 16 A12 12 0 0 1 30 10 A12 12 0 0 1 57 16 C57 26 50 36 30 50 Z";
+const NEON_CORAZON = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 54'><defs>${BRILLO_NEON}</defs><g filter='url(#n)'>${parpadeo(3.2)}<path d='${CORAZON_PATH}' fill='none' stroke='#ff4fa3' stroke-width='3' stroke-linejoin='round'/><path d='${CORAZON_PATH}' fill='none' stroke='#ffe4f1' stroke-width='1'/></g></svg>`
+);
+const NEON_LABIOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 66 38'><defs>${BRILLO_NEON}</defs><g filter='url(#n)' fill='none' stroke-linecap='round' stroke-linejoin='round'>${parpadeo(4.1, 1.2)}<path d='M4 19 Q16 4 26 9 Q33 4 40 9 Q50 4 62 19 Q50 34 33 34 Q16 34 4 19 Z' stroke='#c084fc' stroke-width='3'/><path d='M4 19 Q20 21 33 19 Q46 21 62 19' stroke='#c084fc' stroke-width='2.4'/><path d='M4 19 Q16 4 26 9 Q33 4 40 9 Q50 4 62 19 Q50 34 33 34 Q16 34 4 19 Z' stroke='#f3e8ff' stroke-width='.9'/></g></svg>`
+);
+const ANTIFAZ = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 54 26'><defs>${BRILLO_NEON}</defs><g filter='url(#n)'><path d='M3 8 Q14 2 27 8 Q40 2 51 8 Q52 20 40 22 Q32 22 27 16 Q22 22 14 22 Q2 20 3 8 Z' fill='none' stroke='#ff4fa3' stroke-width='2.4' stroke-linejoin='round'/><ellipse cx='15' cy='13' rx='5' ry='3' fill='none' stroke='#ffe4f1' stroke-width='1.2'/><ellipse cx='39' cy='13' rx='5' ry='3' fill='none' stroke='#ffe4f1' stroke-width='1.2'/></g></svg>`
+);
+// Guirnalda de foquitos en forma de corazón que se encienden por turnos
+// (franja repeat-x; el cable empalma a y = 4).
+const LUCES_CORAZON = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='96' height='34'><defs>${BRILLO_NEON}</defs><path d='M0 4 Q24 12 48 4 T96 4' stroke='#3b1030' stroke-width='1.6' fill='none'/>${[
+    [16, 9, "#ff4fa3", 0],
+    [48, 5, "#c084fc", 0.6],
+    [80, 9, "#fb7185", 1.2],
+  ]
+    .map(
+      ([x, y, c, d]) =>
+        `<g transform='translate(${x - 8} ${y})'><rect x='6' y='0' width='4' height='4' rx='1' fill='#2a0c22'/><g filter='url(#n)'><animate attributeName='opacity' values='1;0.35;1' dur='1.8s' begin='${d}s' repeatCount='indefinite'/><path d='M8 22 C2 17 0 13 0 10 A4 4 0 0 1 8 8 A4 4 0 0 1 16 10 C16 13 14 17 8 22 Z' fill='${c}'/></g></g>`
+    )
+    .join("")}</svg>`
+);
+const CORAZONES_TENUES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='130' height='130'><g fill='none' stroke-width='1.2' opacity='.16'><path d='M24 34 C16 28 12 24 12 20 A5 5 0 0 1 24 17 A5 5 0 0 1 36 20 C36 24 32 28 24 34 Z' stroke='#ff4fa3'/><path d='M94 96 C88 91 85 88 85 85 A4 4 0 0 1 94 83 A4 4 0 0 1 103 85 C103 88 100 91 94 96 Z' stroke='#c084fc'/><path d='M100 30 C96 27 94 25 94 23 A3 3 0 0 1 100 22 A3 3 0 0 1 106 23 C106 25 104 27 100 30 Z' stroke='#fb7185'/></g></svg>`
+);
+const CORAZONCITO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 54'><defs>${BRILLO_NEON}</defs><path d='${CORAZON_PATH}' fill='#ff4fa3' filter='url(#n)'/></svg>`
+);
+const SATEN_NEGRO = "linear-gradient(160deg, #1f0a1a 0%, #12050f 55%, #0b0309 100%)";
+
+const neonIntimo = (S) =>
+  construir(S, {
+    raiz: [trama(CORAZONES_TENUES, "130px 130px"), capa("radial-gradient(ellipse 700px 380px at 15% 0%, rgba(255,79,163,0.14), transparent 65%)"), capa("radial-gradient(ellipse 700px 380px at 85% 0%, rgba(192,132,252,0.12), transparent 65%)"), capa("linear-gradient(180deg, #0d0409 0%, #0a0408 100%)")],
+    // Cabecera de terciopelo negro con un corazón y unos labios de neón
+    // titilando y la guirnalda de foquitos-corazón sobre la barra.
+    cabecera: [
+      capa(LUCES_CORAZON, "left 0 bottom 0", "96px 34px", "repeat-x"),
+      capa(NEON_CORAZON, "left 2.5% bottom 38px", "58px 52px"),
+      capa(NEON_LABIOS, "right 2.5% bottom 44px", "66px 38px"),
+      trama(CORAZONES_TENUES, "130px 130px"),
+      capa("radial-gradient(ellipse 60% 90% at 50% 100%, rgba(255,79,163,0.18), transparent 70%)"),
+      capa("linear-gradient(180deg, #170612 0%, #220a1b 100%)"),
+    ],
+    cabeceraEstilo: "padding-bottom: 50px !important; border-bottom: none !important; box-shadow: 0 6px 22px rgba(255,79,163,0.15);",
+    borde: { enCabecera: 14, rellenoCabecera: 34 },
+    pie: [capa(LUCES_CORAZON, "left 0 top 0", "96px 34px", "repeat-x"), capa(ANTIFAZ, "left 4% bottom 12px", "50px 24px"), capa(ANTIFAZ, "right 4% bottom 12px", "50px 24px"), capa(SATEN_NEGRO)],
+    pieEstilo: "border-top: 1px solid rgba(255,79,163,0.4) !important; padding-top: 40px !important;",
+    boton: [capa(SATEN_NEGRO)],
+    botonEstilo: "border: 1.5px solid #ff4fa3 !important; color: #ffd1e8 !important; box-shadow: 0 0 10px rgba(255,79,163,0.45), inset 0 0 8px rgba(255,79,163,0.2) !important; text-shadow: 0 0 6px rgba(255,79,163,0.7);",
+    botonPieEstilo: "border-radius: 999px !important; border: 1.5px solid #c084fc !important; color: #f3e8ff !important; box-shadow: 0 0 12px rgba(192,132,252,0.45), inset 0 0 8px rgba(192,132,252,0.2) !important; text-shadow: 0 0 6px rgba(192,132,252,0.7);",
+    panel: [capa(CORAZONCITO, "right 9px top 9px", "18px 16px"), capa("linear-gradient(155deg, rgba(255,255,255,0.05) 0%, transparent 35%)"), capa(SATEN_NEGRO)],
+    panelEstilo: "border: 1px solid rgba(255,79,163,0.45) !important; box-shadow: 0 0 14px rgba(255,79,163,0.12), 0 8px 18px rgba(0,0,0,0.55) !important;",
+    barra: [capa("linear-gradient(155deg, rgba(255,255,255,0.05) 0%, transparent 35%)"), capa(SATEN_NEGRO)],
+    modal: [capa(ANTIFAZ, "right 12px bottom 12px", "44px 21px"), trama(CORAZONES_TENUES, "130px 130px"), capa(SATEN_NEGRO)],
+    modalEstilo: "border: 1px solid #ff4fa3 !important; box-shadow: 0 0 30px rgba(255,79,163,0.25), 0 20px 60px rgba(0,0,0,0.75) !important;",
+    tituloEstilo: "color: #ffd1e8 !important; text-shadow: 0 0 10px rgba(255,79,163,0.7); border-bottom: 1px solid rgba(255,79,163,0.6); padding-bottom: 8px;",
+    pestana: [capa(SATEN_NEGRO)],
+    pestanaEstilo: "border: 1px solid rgba(192,132,252,0.5) !important; color: #f3e8ff !important;",
+    activa: [capa("linear-gradient(135deg, #ff4fa3 0%, #c084fc 100%)")],
+    activaEstilo: "border-color: #86198f !important; color: #ffffff !important; box-shadow: 0 0 16px rgba(255,79,163,0.55) !important; text-shadow: 0 1px 2px rgba(0,0,0,0.35);",
+    campoEstilo: "background: #0b0309 !important; border: 1px solid rgba(255,79,163,0.4) !important;",
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 32px !important; }`,
+  });
+
+// =====================================================================
 // Catálogo
 // =====================================================================
 export const TEMATICOS = [
@@ -2749,6 +2900,24 @@ export const TEMATICOS = [
     paleta: { id: "tematico-granja", nombre: "Granja", modo: "oscuro", principal: "#fde68a", secundario: "#fca5a5", acento: "#bbf7d0", botones: "#fde68a", fondo1: "#0f1a0c", fondo2: "#1f3318" },
     muestra: `${GRANERO} right 8px top 6px / 34px 27px no-repeat, ${CERCO} left 0 bottom 0 / 60px 35px repeat-x, ${TABLAS_GRANERO}`,
     css: granja,
+  },
+  {
+    id: "tendedero",
+    rubro: "lavanderia",
+    nombre: "Tendedero",
+    descripcion: "Ropa colgada, burbujas de jabón, lavadora girando y canasta",
+    paleta: { id: "tematico-tendedero", nombre: "Tendedero", modo: "claro", principal: "#0e7490", secundario: "#be185d", acento: "#6d28d9", botones: "#0e7490", fondo1: "#f5fbfd", fondo2: "#e6f4f8" },
+    muestra: `${LAVADORA} right 10px top 6px / 26px 29px no-repeat, ${TENDEDERO_ROPA} left 0 bottom 0 / 135px 36px repeat-x, ${BURBUJAS_JABON} 0 0 / 110px 110px, ${AIRE_LIMPIO}`,
+    css: tendedero,
+  },
+  {
+    id: "neon-intimo",
+    rubro: "sex-shop",
+    nombre: "Neón íntimo",
+    descripcion: "Terciopelo negro, neón rosa y morado, corazones, labios y antifaz",
+    paleta: { id: "tematico-neon-intimo", nombre: "Neón íntimo", modo: "oscuro", principal: "#f472b6", secundario: "#c084fc", acento: "#fb7185", botones: "#f9a8d4", fondo1: "#0a0408", fondo2: "#1a0a16" },
+    muestra: `${NEON_CORAZON} right 10px top 8px / 34px 30px no-repeat, ${LUCES_CORAZON} left 0 bottom 0 / 72px 26px repeat-x, ${CORAZONES_TENUES} 0 0 / 100px 100px, linear-gradient(180deg, #220a1b, #0a0408)`,
+    css: neonIntimo,
   },
 ];
 
