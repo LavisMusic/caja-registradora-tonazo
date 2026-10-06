@@ -70,6 +70,18 @@ function velar(capas) {
   return [...capas.slice(0, i), capa(VELO), ...capas.slice(i)];
 }
 
+// PUENTE: un adorno montado sobre el borde de arriba de la barra de
+// filtros (que va pegada a la cabecera): la cabecera dibuja la parte de
+// arriba (`enCabecera` px) y la barra el resto, alineados por la derecha.
+// La barra usa `d.barra` (sin el adorno de esquina de los paneles).
+function puente(S, d) {
+  const { img, ancho, alto, enCabecera, x = "right 18px" } = d.puente;
+  const tam = `${ancho}px ${alto}px`;
+  return `
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { ${fondo([capa(img, `${x} bottom ${enCabecera - alto}px`, tam), ...d.cabecera])} }
+${en(S, ".tz-header + .tz-admin-filterbar")} { ${fondo([capa(img, `${x} top ${-enCabecera}px`, tam), ...(d.barra || d.panel)])} }`;
+}
+
 function construir(S, d) {
   return `
 ${en(S)} { ${fondo(d.raiz)} }
@@ -86,6 +98,7 @@ ${en(S, ".tz-modal h2")} { ${d.tituloEstilo || ""} }
 ${PESTANAS(S)} { ${fondo(d.pestana)} ${d.pestanaEstilo || ""} }
 ${ACTIVAS(S)} { ${fondo(d.activa)} ${d.activaEstilo || ""} }
 ${CAMPOS(S)} { ${d.campoEstilo || ""} }
+${d.puente ? puente(S, d) : ""}
 ${d.extra ? d.extra(S) : ""}
 `;
 }
@@ -944,6 +957,9 @@ const tropical = (S) =>
     botonEstilo: "border: 1px solid #3f6212 !important; color: #14290a !important; box-shadow: 0 3px 8px rgba(0,0,0,0.35) !important; border-radius: 999px !important;",
     botonPieEstilo: "border-radius: 999px !important; border: 1px solid #3f6212 !important; color: #14290a !important; box-shadow: 0 4px 10px rgba(0,0,0,0.4) !important;",
     panel: [capa(FRUTOS_ESQUINA, "right 6px top 6px", "30px 26px"), capa(VIDRIO_TROPICAL)],
+    // Los frutos de la barra de filtros van montados sobre su borde.
+    barra: [capa(VIDRIO_TROPICAL)],
+    puente: { img: FRUTOS_ESQUINA, ancho: 44, alto: 39, enCabecera: 20 },
     panelEstilo: "border: 1px solid rgba(190,242,100,0.4) !important; box-shadow: 0 8px 18px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12) !important; backdrop-filter: blur(3px);",
     modal: [capa(HOJA_SI, "left -30px top -30px", "110px 110px"), capa(HOJA_ID, "right -30px bottom -30px", "110px 110px"), capa(FRUTOS_ESQUINA, "left 12px bottom 12px", "34px 30px"), capa("linear-gradient(170deg, #0f3d22 0%, #06200f 100%)")],
     modalEstilo: "border: 1px solid rgba(190,242,100,0.5) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;",
@@ -959,7 +975,7 @@ const tropical = (S) =>
 // HELADERÍA — "Helado artesanal" (claro)
 // =====================================================================
 const BOLAS = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='108' height='34'><g stroke-width='1.2'><path d='M0 34 V14 A18 16 0 0 1 36 14 V22 C33 22 33 30 30 30 C27 30 28 24 24 24 C20 24 21 32 17 32 C13 32 14 25 10 25 C6 25 7 34 0 34 Z' fill='#f9a8d4' stroke='#ec4899'/><path d='M36 34 V14 A18 16 0 0 1 72 14 V24 C69 24 69 31 66 31 C63 31 64 25 60 25 C56 25 57 33 53 33 C49 33 50 26 46 26 C42 26 43 34 36 34 Z' fill='#a7f3d0' stroke='#10b981'/><path d='M72 34 V14 A18 16 0 0 1 108 14 V22 C105 22 105 30 102 30 C99 30 100 25 96 25 C92 25 93 32 89 32 C85 32 86 26 82 26 C78 26 79 34 72 34 Z' fill='#fef3c7' stroke='#f59e0b'/></g><g fill='#fff' opacity='.6'><ellipse cx='12' cy='8' rx='5' ry='2.5'/><ellipse cx='48' cy='8' rx='5' ry='2.5'/><ellipse cx='84' cy='8' rx='5' ry='2.5'/></g></svg>`
+  `<svg xmlns='http://www.w3.org/2000/svg' width='108' height='38'><g transform='translate(0 4)'><g stroke-width='1.2'><path d='M0 34 V14 A18 16 0 0 1 36 14 V22 C33 22 33 30 30 30 C27 30 28 24 24 24 C20 24 21 32 17 32 C13 32 14 25 10 25 C6 25 7 34 0 34 Z' fill='#f9a8d4' stroke='#ec4899'/><path d='M36 34 V14 A18 16 0 0 1 72 14 V24 C69 24 69 31 66 31 C63 31 64 25 60 25 C56 25 57 33 53 33 C49 33 50 26 46 26 C42 26 43 34 36 34 Z' fill='#a7f3d0' stroke='#10b981'/><path d='M72 34 V14 A18 16 0 0 1 108 14 V22 C105 22 105 30 102 30 C99 30 100 25 96 25 C92 25 93 32 89 32 C85 32 86 26 82 26 C78 26 79 34 72 34 Z' fill='#fef3c7' stroke='#f59e0b'/></g><g fill='#fff' opacity='.6'><ellipse cx='12' cy='8' rx='5' ry='2.5'/><ellipse cx='48' cy='8' rx='5' ry='2.5'/><ellipse cx='84' cy='8' rx='5' ry='2.5'/></g></g></svg>`
 );
 // Cada textura de varias imágenes va como capas separadas (si no, las
 // posiciones/tamaños se corren contra las demás capas).
@@ -982,13 +998,16 @@ const DERRETIDO = svg(
 const helado = (S) =>
   construir(S, {
     raiz: [...CONFETI, capa("linear-gradient(180deg, #f4fbf8 0%, #e9f6f0 100%)")],
-    cabecera: [capa(BOLAS, "left 0 bottom 0", "108px 34px", "repeat-x"), ...CONFETI, capa("linear-gradient(180deg, #d1fae5 0%, #a7f3d0 100%)")],
-    cabeceraEstilo: "padding-bottom: 46px !important; border-bottom: none !important;",
-    pie: [capa(BOLAS, "left 0 top 0", "108px 34px", "repeat-x"), ...BARQUILLO],
-    pieEstilo: "border-top: none !important; padding-top: 44px !important;",
+    cabecera: [capa(BOLAS, "left 0 bottom 0", "108px 38px", "repeat-x"), ...CONFETI, capa("linear-gradient(180deg, #d1fae5 0%, #a7f3d0 100%)")],
+    cabeceraEstilo: "padding-bottom: 50px !important; border-bottom: none !important;",
+    pie: [capa(BOLAS, "left 0 top 0", "108px 38px", "repeat-x"), ...BARQUILLO],
+    pieEstilo: "border-top: none !important; padding-top: 48px !important;",
     boton: [...BARQUILLO],
     botonEstilo: "border: 1px solid #b45309 !important; color: #5b2c06 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 3px 8px rgba(146,64,14,0.2) !important; border-radius: 999px !important;",
-    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #b45309 !important; color: #5b2c06 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 4px 10px rgba(146,64,14,0.25) !important;",
+    // En el pie (sobre el barquillo) los botones van lisos, crema y rosa,
+    // para que el texto se lea.
+    botonPie: [capa("linear-gradient(180deg, #ffffff 0%, #fde7f1 100%)")],
+    botonPieEstilo: "border-radius: 999px !important; border: 1.5px solid #f472b6 !important; color: #9d174d !important; font-weight: 800; box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), 0 4px 10px rgba(146,64,14,0.3) !important;",
     panel: [capa(CONO, "right 8px top 12px", "18px 24px"), capa(DERRETIDO, "left 0 top 0", "60px 10px", "repeat-x"), capa("linear-gradient(180deg, #ffffff, #fbfffd)")],
     panelEstilo: "border: 1px solid #c7eadb !important; box-shadow: 0 6px 16px rgba(15,118,110,0.10) !important;",
     modal: [capa(DERRETIDO, "left 0 top 0", "60px 10px", "repeat-x"), ...CONFETI, capa("linear-gradient(180deg, #ffffff, #f4fbf8)")],
@@ -1005,9 +1024,9 @@ const helado = (S) =>
     // sin tapar "Localidad" / "Sucursal". Sin barra debajo (cajero,
     // tienda), la cabecera muestra la fila entera.
     extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 14px !important; }
-${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: left 0 bottom -13px, 0 0, 22px 22px, 0 0 !important; padding-bottom: 36px !important; }
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: left 0 bottom -12px, 0 0, 22px 22px, 0 0 !important; padding-bottom: 40px !important; }
 ${en(S, ".tz-header + .tz-admin-filterbar")} {
-  ${fondo([capa(BOLAS, "left 0 top -21px", "108px 34px", "repeat-x"), capa(CONO, "right 10px bottom 8px", "18px 24px"), capa("linear-gradient(180deg, #ffffff, #fbfffd)")])}
+  ${fondo([capa(BOLAS, "left 0 top -26px", "108px 38px", "repeat-x"), capa(CONO, "right 10px bottom 8px", "18px 24px"), capa("linear-gradient(180deg, #ffffff, #fbfffd)")])}
   border-top: none !important; padding-top: 24px !important;
 }`,
   });
@@ -1798,7 +1817,7 @@ export const TEMATICOS = [
     nombre: "Helado artesanal",
     descripcion: "Bolas de colores, barquillo y conos",
     paleta: { id: "tematico-helado", nombre: "Helado artesanal", modo: "claro", principal: "#0f766e", secundario: "#db2777", acento: "#b45309", botones: "#92400e", fondo1: "#f4fbf8", fondo2: "#e9f6f0" },
-    muestra: `${CONO} right 12px top 10px / 18px 24px no-repeat, ${BOLAS} left 0 bottom 0 / 81px 26px repeat-x, linear-gradient(180deg, #d1fae5, #a7f3d0)`,
+    muestra: `${CONO} right 12px top 10px / 18px 24px no-repeat, ${BOLAS} left 0 bottom 0 / 81px 28px repeat-x, linear-gradient(180deg, #d1fae5, #a7f3d0)`,
     css: helado,
   },
   {
