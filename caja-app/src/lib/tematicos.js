@@ -2211,9 +2211,9 @@ const espuma = (S) =>
     // esconden detrás de la barra de filtros. Esto queda para la vista
     // previa del Perfil.
     raiz: [trama(GOTAS_AGUA, "60px 60px"), capa(AGUA_LAVADO)],
-    cabecera: [capa(LAVADO_AUTO, "left 0 bottom 0", "100% 82px"), capa("radial-gradient(ellipse 70% 60% at 50% 0%, rgba(186,230,253,0.18), transparent 70%)"), capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)")],
+    cabecera: [capa("radial-gradient(ellipse 70% 60% at 50% 0%, rgba(186,230,253,0.18), transparent 70%)"), capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)")],
     cabeceraEstilo: "padding-bottom: 78px !important; border-bottom: none !important;",
-    pie: [capa(ESPUMA_VIVA, "left 0 top 0", "120px 46px", "repeat-x"), trama(GOTAS_AGUA, "60px 60px"), capa("linear-gradient(180deg, #0a3561, #03111f)")],
+    pie: [capa(ESPUMA_VIVA, "left 0 top 0", "120px 46px", "repeat-x"), capa("linear-gradient(180deg, transparent 0 22px, #0a3561 22px, #03111f 100%)")],
     pieEstilo: "border-top: none !important; padding-top: 50px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.4), transparent 50%)"), capa("linear-gradient(180deg, #38bdf8, #0284c7)")],
     botonEstilo: "border: 1px solid #075985 !important; color: #ffffff !important; box-shadow: 0 3px 10px rgba(2,132,199,0.4) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.35); border-radius: 999px !important;",
@@ -2230,7 +2230,11 @@ const espuma = (S) =>
     campoEstilo: "background: #04182c !important; border: 1px solid rgba(125,211,252,0.4) !important;",
     extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }
 ${barraPropia(S, [trama(GOTAS_AGUA, "60px 60px"), capa(VIDRIO_MOJADO)], "padding-top: 34px !important;")}
-${montado(S, { img: ESPUMA_VIVA, tam: "120px 46px", arriba: 22, alto: 46, corre: 120, dur: "3.5s" })}
+${montado(S, { img: ESPUMA_VIVA, tam: "120px 46px", arriba: 22, alto: 46, corre: 120, dur: "14s" })}
+/* El auto y la esponja ruedan ENCIMA de la espuma (capa de arriba), con
+   las llantas en el medio de la pista. */
+${BARRA(S, "::after")} { content: ""; position: absolute; left: 0; right: 0; top: -68px; height: 82px; background: ${LAVADO_AUTO} left 0 top 0 / 100% 82px no-repeat; pointer-events: none; z-index: 3; }
+${en(S, ".tz-header:not(:has(+ .tz-admin-filterbar))")} { ${fondo([capa(LAVADO_AUTO, "left 0 bottom 13px", "100% 82px"), capa(ESPUMA_VIVA, "left 0 bottom 0", "120px 46px", "repeat-x"), capa("radial-gradient(ellipse 70% 60% at 50% 0%, rgba(186,230,253,0.18), transparent 70%)"), capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)")])} }
 /* ---- Escena (solo en la app real; TemaNegocio la dibuja) ---- */
 ${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
 ${en(S, ".tz-esc-agua")} { position: absolute; inset: 0; background: radial-gradient(ellipse 900px 420px at 50% -10%, rgba(125,211,252,0.14), transparent 60%), ${AGUA_LAVADO}; }
