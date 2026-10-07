@@ -6773,7 +6773,18 @@ export default function Styles() {
       /* --tz-sub-dy: en la tienda se centra entre el logo y la barra de
          filtros (CatalogPage lo mide); "translate" no toca a "transform"
          ni mueve nada más. */
-      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); --tz-sub-ajuste: -20px; }
+      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); --tz-sub-ajuste: -23px; }
+      /* Tienda: el texto flota centrado sobre un espacio de alto fijo (una
+         línea), así pasar a 2 líneas no empuja el borde de la cabecera. */
+      .tz-subtitle-slot { position: relative; width: 100%; height: 24px; flex: 0 0 auto; }
+      .tz-subtitle-slot > .tz-subtitle-maquina {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: max-content;
+        margin: 0;
+      }
       /* Caja: el nombre de la sucursal y la etiqueta de estado suben un
          poco (el logo cuadrado deja aire transparente abajo); así la
          cabecera queda más baja. La tienda centra su texto aparte. */

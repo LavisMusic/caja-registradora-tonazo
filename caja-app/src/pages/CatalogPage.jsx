@@ -613,7 +613,11 @@ export default function CatalogPage() {
             {/* Mensajes en secuencia (se escriben y se borran): saludo al
                cliente → descripciones del negocio (Perfil) → horario de
                hoy de la sucursal elegida. */}
-            <TextoMaquina mensajes={mensajesSubtitulo} />
+            {/* Espacio de alto fijo (una línea): si el mensaje pasa a 2
+               líneas, crece sobre este punto sin empujar la cabecera. */}
+            <div className="tz-subtitle-slot">
+              <TextoMaquina mensajes={mensajesSubtitulo} />
+            </div>
           </div>
 
           <div className="tz-header-side tz-header-side-right">
