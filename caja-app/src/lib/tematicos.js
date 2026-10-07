@@ -1817,68 +1817,122 @@ const vitrina = (S) =>
   });
 
 // =====================================================================
-// JOYERÍA Y ACCESORIOS — "Joyero" (terciopelo burdeos, oro, perlas,
-// anillos y diamantes; destellos que titilan)
+// JOYERÍA Y ACCESORIOS — "Joyero Celeste" (claro y premium: blanco puro
+// y celeste cielo, filetes finos plateados; pocas joyas, cada una en su
+// lugar: collar con dije, reloj, aretes, pulsera de cuarzo, pulsera de
+// eslabones y anillo solitario)
 // =====================================================================
 const diamante = (x, y, k = 1) =>
   `<g transform='translate(${x} ${y}) scale(${k})'><path d='M8 2 H26 L33 10 L17 29 L1 10 Z' fill='#dff3fb' stroke='#5fb4d0' stroke-width='.8'/><path d='M1 10 H33' stroke='#7cc7df' stroke-width='.8'/><path d='M8 2 L12 10 L17 29 M26 2 L22 10 L17 29 M12 10 L17 2 L22 10' stroke='#7cc7df' stroke-width='.8' fill='none'/><path d='M12 10 L17 2 L22 10 Z' fill='#ffffff'/><path d='M1 10 L12 10 L17 29 Z' fill='#b9e3f2'/><path d='M22 10 L33 10 L17 29 Z' fill='#cdeef8'/></g>`;
-const DIAMANTE = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 30'>${diamante(0, 0)}</svg>`);
-const ANILLO = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 32'><ellipse cx='14' cy='21' rx='10' ry='9' fill='none' stroke='#b8901f' stroke-width='4'/><ellipse cx='14' cy='21' rx='10' ry='9' fill='none' stroke='#f5d78e' stroke-width='2'/><path d='M10 11 L14 13 L18 11' stroke='#b8901f' stroke-width='2' fill='none'/>${diamante(7, 0, 0.42)}</svg>`
-);
-// Collar de perlas que cuelga (repeat-x; sube y baja igual en las puntas).
-const PERLAS = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='22'><defs><radialGradient id='p' cx='.35' cy='.35' r='.7'><stop offset='0' stop-color='#ffffff'/><stop offset='.6' stop-color='#f3eee4'/><stop offset='1' stop-color='#c9bfae'/></radialGradient></defs>${Array.from({ length: 12 }, (_, i) => {
-    const x = 3 + i * 6;
-    const y = 5 + 9 * Math.sin((Math.PI * (x - 3)) / 72);
-    return `<circle cx='${x}' cy='${y.toFixed(1)}' r='3.2' fill='url(#p)'/>`;
-  }).join("")}</svg>`
-);
-// Destellos dorados y blancos que titilan (SMIL, sin JS).
+// Destello de 4 puntas que titila (SMIL, sin JS). Lo usan otros temas.
 const destello = (x, y, r, c, dur, delay) =>
   `<path d='M${x} ${y - r} L${x + r * 0.22} ${y - r * 0.22} L${x + r} ${y} L${x + r * 0.22} ${y + r * 0.22} L${x} ${y + r} L${x - r * 0.22} ${y + r * 0.22} L${x - r} ${y} L${x - r * 0.22} ${y - r * 0.22} Z' fill='${c}'><animate attributeName='opacity' values='0.15;1;0.15' dur='${dur}s' begin='${delay}s' repeatCount='indefinite'/></path>`;
-const DESTELLOS = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'>${destello(18, 22, 5, "#f5d78e", 2.6, 0)}${destello(78, 14, 3.5, "#ffffff", 3.1, 0.8)}${destello(52, 66, 4.5, "#f5d78e", 2.2, 1.4)}${destello(104, 84, 3, "#ffffff", 2.8, 0.4)}${destello(24, 100, 3.5, "#fbcfe8", 3.4, 1.9)}</svg>`
+
+// Gota de cristal celeste con facetas (dije y aretes).
+const gotaCristal = (x, y, k = 1) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M0 0 C5 6 7 11 7 15 A7 7 0 0 1 -7 15 C-7 11 -5 6 0 0 Z' fill='#7dd3fc' stroke='#0284c7' stroke-width='.7'/><path d='M0 0 L-3 12 L0 22 L3 12 Z' fill='#bae6fd' opacity='.9'/><path d='M-7 15 L-3 12 M7 15 L3 12' stroke='#e0f2fe' stroke-width='.6'/><ellipse cx='-2.6' cy='10' rx='1.2' ry='2.4' fill='#ffffff' opacity='.85'/></g>`;
+
+// Collar fino: cadena de eslabones plateada con piedritas celestes y un
+// dije de gota en el centro de cada tramo (franja repeat-x; la cadena
+// empalma a la misma altura en las puntas).
+const COLLAR = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='34'><path d='M0 6 Q120 18 240 6' stroke='#94a3b8' stroke-width='1.8' fill='none' stroke-dasharray='2.6 1.4' stroke-linecap='round'/><path d='M0 5.4 Q120 17.4 240 5.4' stroke='#f1f5f9' stroke-width='.6' fill='none' stroke-dasharray='1.2 2.8'/>${[40, 80, 160, 200]
+    .map((x) => {
+      const y = 6 + 12 * (1 - Math.pow((x - 120) / 120, 2));
+      return `<circle cx='${x}' cy='${y.toFixed(1)}' r='1.9' fill='#38bdf8' stroke='#0369a1' stroke-width='.4'/><circle cx='${x - 0.6}' cy='${(y - 0.6).toFixed(1)}' r='.6' fill='#ffffff'/>`;
+    })
+    .join("")}<circle cx='120' cy='12.5' r='1.6' fill='none' stroke='#94a3b8' stroke-width='1'/>${gotaCristal(120, 14.5, 0.78)}</svg>`
 );
-// Terciopelo: brillo + tela (dos capas separadas, una imagen por capa).
-const TERCIOPELO = [
-  capa("radial-gradient(ellipse 120% 80% at 30% 0%, rgba(255,180,210,0.10), transparent 60%)"),
-  capa("linear-gradient(170deg, #4a0f24 0%, #33091a 55%, #240612 100%)"),
-];
-const ESTUCHE = "linear-gradient(170deg, #3a0b1d 0%, #270714 100%)";
+
+// Reloj de esfera celeste, correa de malla plateada y segundero que gira.
+const RELOJ = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 50'><defs><radialGradient id='e' cx='.4' cy='.35' r='.75'><stop offset='0' stop-color='#f0f9ff'/><stop offset='1' stop-color='#7dd3fc'/></radialGradient></defs><path d='M9 1 H21 L20 13 H10 Z M10 37 H20 L21 49 H9 Z' fill='#e2e8f0' stroke='#94a3b8' stroke-width='.7'/><path d='M10 4 H20 M10 7 H20 M10 10 H20 M10 40 H20 M10 43 H20 M10 46 H20' stroke='#cbd5e1' stroke-width='.6'/><rect x='26' y='23' width='2.4' height='4' rx='.8' fill='#cbd5e1' stroke='#94a3b8' stroke-width='.5'/><circle cx='15' cy='25' r='12' fill='#f8fafc' stroke='#94a3b8' stroke-width='1.2'/><circle cx='15' cy='25' r='9.6' fill='url(#e)'/>${Array.from({ length: 12 }, (_, i) => `<rect x='14.6' y='16.2' width='.8' height='${i % 3 ? 1.2 : 2}' fill='#0369a1' transform='rotate(${i * 30} 15 25)'/>`).join("")}<path d='M15 25 L15 19' stroke='#0c4a6e' stroke-width='1.1' stroke-linecap='round'/><path d='M15 25 L19.5 25' stroke='#0c4a6e' stroke-width='1.3' stroke-linecap='round'/><path d='M15 26.5 L15 17.4' stroke='#0284c7' stroke-width='.5' stroke-linecap='round'><animateTransform attributeName='transform' type='rotate' from='0 15 25' to='360 15 25' dur='60s' repeatCount='indefinite'/></path><circle cx='15' cy='25' r='.9' fill='#0c4a6e'/></svg>`
+);
+
+// Par de aretes colgantes: gancho, brillante y gota de cristal.
+const aretes = (x, y, k) =>
+  `<g transform='translate(${x} ${y}) scale(${k})'><path d='M0 6 C0 0 6 0 6 4' stroke='#94a3b8' stroke-width='1.1' fill='none'/><circle cx='0' cy='8' r='2.2' fill='#f8fafc' stroke='#94a3b8' stroke-width='.6'/><circle cx='-.6' cy='7.4' r='.7' fill='#ffffff'/><path d='M0 10 V15' stroke='#94a3b8' stroke-width='.8'/>${gotaCristal(0, 15, 0.82)}</g>`;
+const ARETES = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 46'>${aretes(12, 2, 1)}${aretes(29, 6, 0.9)}</svg>`);
+
+// Pulsera de cuarzo: cuentas translúcidas celestes y blancas en círculo.
+const PULSERA_CUARZO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><defs><radialGradient id='q' cx='.35' cy='.3' r='.75'><stop offset='0' stop-color='#ffffff'/><stop offset='1' stop-color='#7dd3fc'/></radialGradient><radialGradient id='b' cx='.35' cy='.3' r='.75'><stop offset='0' stop-color='#ffffff'/><stop offset='1' stop-color='#e2e8f0'/></radialGradient></defs><ellipse cx='18' cy='18' rx='12' ry='11' fill='none' stroke='#cbd5e1' stroke-width='.6'/>${Array.from({ length: 12 }, (_, i) => {
+    const a = (i * Math.PI) / 6;
+    const x = 18 + 12 * Math.cos(a);
+    const y = 18 + 11 * Math.sin(a);
+    const grande = i === 3;
+    return `<circle cx='${x.toFixed(1)}' cy='${y.toFixed(1)}' r='${grande ? 4.2 : 3.1}' fill='url(#${i % 2 || grande ? "q" : "b"})' stroke='${grande ? "#0284c7" : "#94a3b8"}' stroke-width='.5' opacity='.95'/>`;
+  }).join("")}</svg>`
+);
+
+// Pulsera de eslabones plateada (curva).
+const PULSERA_ESLABONES = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 26'>${Array.from({ length: 9 }, (_, i) => {
+    const x = 6 + i * 6.5;
+    const y = 8 + 10 * Math.sin((Math.PI * i) / 8);
+    const r = (i - 4) * -9;
+    return `<ellipse cx='${x.toFixed(1)}' cy='${y.toFixed(1)}' rx='4' ry='2.6' fill='none' stroke='#94a3b8' stroke-width='1.6' transform='rotate(${r} ${x.toFixed(1)} ${y.toFixed(1)})'/><ellipse cx='${x.toFixed(1)}' cy='${(y - 0.6).toFixed(1)}' rx='3' ry='1.6' fill='none' stroke='#f1f5f9' stroke-width='.5' transform='rotate(${r} ${x.toFixed(1)} ${y.toFixed(1)})'/>`;
+  }).join("")}<rect x='56' y='5' width='6' height='4' rx='1' fill='#cbd5e1' stroke='#94a3b8' stroke-width='.5'/></svg>`
+);
+
+// Anillo solitario: aro plateado y brillante celeste.
+const SOLITARIO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 34'><ellipse cx='15' cy='23' rx='10' ry='9' fill='none' stroke='#94a3b8' stroke-width='3.4'/><ellipse cx='15' cy='23' rx='10' ry='9' fill='none' stroke='#f1f5f9' stroke-width='1.2'/><path d='M11 13 L15 15 L19 13' stroke='#94a3b8' stroke-width='1.6' fill='none'/>${diamante(8.2, 0, 0.41)}</svg>`
+);
+
+// Dije pequeño (esquina de las ventanas).
+const DIJE = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='-9 -4 18 30'><circle cx='0' cy='-1' r='1.8' fill='none' stroke='#94a3b8' stroke-width='1'/>${gotaCristal(0, 1, 1)}</svg>`);
+
+// Facetas: destellos celestes muy espaciados que titilan (fondo).
+const FACETAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'>${destello(30, 40, 3.2, "#7dd3fc", 3.2, 0)}${destello(150, 24, 2.4, "#bae6fd", 2.6, 1.1)}${destello(96, 128, 3.6, "#7dd3fc", 3.8, 2)}${destello(190, 170, 2.6, "#bae6fd", 2.9, 0.6)}${destello(46, 192, 2.2, "#7dd3fc", 3.4, 1.6)}</svg>`
+);
+const BLANCO_PURO = "linear-gradient(180deg, #ffffff 0%, #f6fbfe 100%)";
+const SEDA_CELESTE = "linear-gradient(180deg, #ffffff 0%, #f0f8ff 62%, #e3f2fd 100%)";
+const FILETE = "inset 0 0 0 3px #ffffff, inset 0 0 0 4px rgba(56,189,248,0.32)";
 
 const joyero = (S) =>
   construir(S, {
-    raiz: [trama(DESTELLOS, "120px 120px"), capa("radial-gradient(ellipse 900px 420px at 50% -10%, rgba(245,215,142,0.10), transparent 60%)"), capa("linear-gradient(180deg, #1a0710 0%, #12050b 100%)")],
-    // Cabecera de terciopelo con un collar de perlas abajo y diamantes
-    // en las esquinas de abajo.
+    raiz: [trama(FACETAS, "220px 220px"), capa(BLANCO_PURO)],
+    // Cabecera: seda blanca con un velo celeste, un reloj (izquierda) y
+    // un par de aretes (derecha); el collar cuelga sobre la barra.
     cabecera: [
-      capa(DIAMANTE, "left 2.5% bottom 26px", "30px 26px"),
-      capa(PERLAS, "left 0 bottom 4px", "72px 22px", "repeat-x"),
-      capa("linear-gradient(90deg, #a8841f, #f5d78e, #a8841f)", "left 0 bottom 0", "100% 2px"),
-      trama(DESTELLOS, "120px 120px"),
-      ...TERCIOPELO,
+      capa(COLLAR, "left 0 bottom 0", "240px 34px", "repeat-x"),
+      capa(RELOJ, "left 3% bottom 20px", "34px 57px"),
+      capa(ARETES, "right 3% bottom 20px", "46px 53px"),
+      trama(FACETAS, "220px 220px"),
+      capa(SEDA_CELESTE),
     ],
-    cabeceraEstilo: "padding-bottom: 40px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.55);",
-    pie: [capa(PERLAS, "left 0 top 4px", "72px 22px", "repeat-x"), trama(DESTELLOS, "120px 120px"), ...TERCIOPELO],
-    pieEstilo: "border-top: 2px solid #d4af37 !important; padding-top: 34px !important;",
-    boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.35), transparent 50%)"), capa("linear-gradient(180deg, #f5d78e 0%, #d4af37 55%, #a8841f 100%)")],
-    botonEstilo: "border: 1px solid #7a5c10 !important; color: #2a0614 !important; box-shadow: 0 3px 10px rgba(0,0,0,0.45) !important; font-weight: 800;",
-    botonPieEstilo: "border-radius: 999px !important; border: 1px solid #7a5c10 !important; color: #2a0614 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important; font-weight: 800;",
-    // Paneles = interior de estuche con un anillo en la esquina.
-    panel: [capa(ANILLO, "right 8px top 6px", "22px 25px"), capa("linear-gradient(155deg, rgba(255,255,255,0.06) 0%, transparent 35%)"), capa(ESTUCHE)],
-    panelEstilo: "border: 1px solid #d4af37 !important; box-shadow: inset 0 0 0 3px #270714, inset 0 0 0 4px rgba(212,175,55,0.35), 0 8px 18px rgba(0,0,0,0.5) !important;",
-    barra: [capa("linear-gradient(155deg, rgba(255,255,255,0.06) 0%, transparent 35%)"), capa(ESTUCHE)],
-    puente: { img: DIAMANTE, ancho: 36, alto: 32, enCabecera: 14 },
-    modal: [capa(DIAMANTE, "left 12px bottom 12px", "26px 23px"), capa(DIAMANTE, "right 12px bottom 12px", "26px 23px"), trama(DESTELLOS, "120px 120px"), ...TERCIOPELO],
-    modalEstilo: "border: 1px solid #d4af37 !important; box-shadow: inset 0 0 0 5px #240612, inset 0 0 0 6px rgba(212,175,55,0.4), 0 20px 60px rgba(0,0,0,0.7) !important;",
-    tituloEstilo: `color: #f5d78e !important; letter-spacing: 0.14em; background: ${PERLAS} left 0 bottom 0 / 54px 16px repeat-x !important; padding-bottom: 20px;`,
-    pestana: [capa(ESTUCHE)],
-    pestanaEstilo: "border: 1px solid rgba(212,175,55,0.5) !important; color: #f3dfa8 !important;",
-    activa: [capa("linear-gradient(180deg, #f5d78e 0%, #d4af37 55%, #a8841f 100%)")],
-    activaEstilo: "border-color: #7a5c10 !important; color: #2a0614 !important; box-shadow: 0 0 14px rgba(245,215,142,0.45) !important;",
-    campoEstilo: "background: #1a0710 !important; border: 1px solid rgba(212,175,55,0.45) !important;",
-    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !important; }`,
+    cabeceraEstilo: "padding-bottom: 34px !important; border-bottom: none !important; box-shadow: 0 6px 22px rgba(3,105,161,0.08);",
+    borde: { enCabecera: 14, rellenoCabecera: 22 },
+    // Pie celeste con una pulsera de eslabones y un anillo solitario.
+    pie: [
+      capa(PULSERA_ESLABONES, "left 4% bottom 14px", "84px 34px"),
+      capa(SOLITARIO, "right 10% bottom 14px", "32px 36px"),
+      capa("linear-gradient(90deg, transparent, rgba(56,189,248,0.7), transparent)", "left 0 top 0", "100% 1px"),
+      capa("linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%)"),
+    ],
+    pieEstilo: "border-top: none !important;",
+    boton: [capa("linear-gradient(180deg, #ffffff, #f0f9ff)")],
+    botonEstilo: "border: 1px solid rgba(56,189,248,0.55) !important; color: #0369a1 !important; border-radius: 999px !important; box-shadow: 0 2px 10px rgba(3,105,161,0.12) !important; font-weight: 700; letter-spacing: 0.06em;",
+    botonPieEstilo: "border-radius: 999px !important; border: 1px solid rgba(3,105,161,0.35) !important; color: #0369a1 !important; box-shadow: 0 3px 12px rgba(3,105,161,0.18) !important; font-weight: 700; letter-spacing: 0.06em;",
+    // Paneles: blanco con doble filete celeste (interior de estuche) y una
+    // pulsera de cuarzo en la esquina de los medidores.
+    panel: [capa(PULSERA_CUARZO, "right 8px top 7px", "24px 24px"), capa(BLANCO_PURO)],
+    panelEstilo: `border: 1px solid rgba(56,189,248,0.45) !important; box-shadow: ${FILETE}, 0 8px 22px rgba(3,105,161,0.08) !important;`,
+    barra: [capa("linear-gradient(180deg, #ffffff, #f7fbfe)")],
+    modal: [capa(DIJE, "right 14px bottom 12px", "14px 24px"), trama(FACETAS, "220px 220px"), capa(BLANCO_PURO)],
+    modalEstilo: "border: 1px solid rgba(56,189,248,0.55) !important; box-shadow: inset 0 0 0 5px #ffffff, inset 0 0 0 6px rgba(56,189,248,0.3), 0 20px 60px rgba(3,105,161,0.18) !important;",
+    tituloEstilo: "color: #0369a1 !important; letter-spacing: 0.16em; border-bottom: 1px solid rgba(56,189,248,0.5); padding-bottom: 8px;",
+    pestana: [capa("linear-gradient(180deg, #ffffff, #f0f9ff)")],
+    pestanaEstilo: "border: 1px solid rgba(56,189,248,0.45) !important; color: #0369a1 !important;",
+    activa: [capa("linear-gradient(180deg, #38bdf8 0%, #0284c7 100%)")],
+    activaEstilo: "border-color: #0369a1 !important; color: #ffffff !important; box-shadow: 0 4px 14px rgba(2,132,199,0.3) !important;",
+    campoEstilo: "background: #ffffff !important; border: 1px solid rgba(56,189,248,0.45) !important;",
+    extra: (S) => `
+${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 8px rgba(3,105,161,0.15); }
+${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 12px rgba(3,105,161,0.22)) !important; }
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }`,
   });
 
 // =====================================================================
@@ -3181,10 +3235,10 @@ export const TEMATICOS = [
   {
     id: "joyero",
     rubro: "joyeria",
-    nombre: "Joyero",
-    descripcion: "Terciopelo burdeos, oro, perlas, anillos y diamantes que destellan",
-    paleta: { id: "tematico-joyero", nombre: "Joyero", modo: "oscuro", principal: "#f5d78e", secundario: "#f9a8d4", acento: "#bae6fd", botones: "#f5d78e", fondo1: "#12050b", fondo2: "#2a0a18" },
-    muestra: `${DIAMANTE} right 12px top 10px / 24px 21px no-repeat, ${PERLAS} left 0 bottom 4px / 54px 16px repeat-x, ${DESTELLOS} 0 0 / 90px 90px, linear-gradient(170deg, #4a0f24, #240612)`,
+    nombre: "Joyero Celeste",
+    descripcion: "Blanco puro y celeste cielo: collar, reloj, aretes y pulsera de cuarzo",
+    paleta: { id: "tematico-joyero", nombre: "Joyero Celeste", modo: "claro", principal: "#0284c7", secundario: "#0369a1", acento: "#0e7490", botones: "#0284c7", fondo1: "#ffffff", fondo2: "#f3f9fd" },
+    muestra: `${RELOJ} left 10px bottom 8px / 17px 28px no-repeat, ${ARETES} right 10px bottom 8px / 22px 25px no-repeat, ${COLLAR} left 0 top 30% / 160px 23px repeat-x, ${FACETAS} 0 0 / 150px 150px, linear-gradient(180deg, #ffffff, #e3f2fd)`,
     css: joyero,
   },
   {
