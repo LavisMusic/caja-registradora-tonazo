@@ -2223,7 +2223,9 @@ const espuma = (S) =>
     // previa del Perfil.
     raiz: [trama(GOTAS_AGUA, "60px 60px"), capa(AGUA_LAVADO)],
     cabecera: [capa("radial-gradient(ellipse 70% 60% at 50% 0%, rgba(186,230,253,0.18), transparent 70%)"), capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)")],
-    cabeceraEstilo: "padding-bottom: 78px !important; border-bottom: none !important;",
+    // El auto va encima de la espuma (::after de la barra): la cabecera
+    // solo deja el lugar justo para la espuma y el techo del auto.
+    cabeceraEstilo: "padding-bottom: 44px !important; border-bottom: none !important;",
     pie: [capa(ESPUMA_VIVA, "left 0 top 0", "120px 46px", "repeat-x"), capa("linear-gradient(180deg, transparent 0 22px, #0a3561 22px, #03111f 100%)")],
     pieEstilo: "border-top: none !important; padding-top: 50px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.4), transparent 50%)"), capa("linear-gradient(180deg, #38bdf8, #0284c7)")],
@@ -2245,7 +2247,7 @@ ${montado(S, { img: ESPUMA_VIVA, tam: "120px 46px", arriba: 22, alto: 46, corre:
 /* El auto y la esponja ruedan ENCIMA de la espuma (capa de arriba), con
    las llantas en el medio de la pista. */
 ${BARRA(S, "::after")} { content: ""; position: absolute; left: 0; right: 0; top: -68px; height: 82px; background: ${LAVADO_AUTO} left 0 top 0 / 100% 82px no-repeat; pointer-events: none; z-index: 3; }
-${en(S, ".tz-header:not(:has(+ .tz-admin-filterbar))")} { ${fondo([capa(LAVADO_AUTO, "left 0 bottom 13px", "100% 82px"), capa(ESPUMA_VIVA, "left 0 bottom 0", "120px 46px", "repeat-x"), capa("radial-gradient(ellipse 70% 60% at 50% 0%, rgba(186,230,253,0.18), transparent 70%)"), capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)")])} }
+${en(S, ".tz-header:not(:has(+ .tz-admin-filterbar))")} { ${fondo([capa(LAVADO_AUTO, "left 0 bottom 13px", "100% 82px"), capa(ESPUMA_VIVA, "left 0 bottom 0", "120px 46px", "repeat-x"), capa("radial-gradient(ellipse 70% 60% at 50% 0%, rgba(186,230,253,0.18), transparent 70%)"), capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)")])} padding-bottom: 78px !important; }
 /* ---- Escena (solo en la app real; TemaNegocio la dibuja) ---- */
 ${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
 ${en(S, ".tz-esc-agua")} { position: absolute; inset: 0; background: radial-gradient(ellipse 900px 420px at 50% -10%, rgba(125,211,252,0.14), transparent 60%), ${AGUA_LAVADO}; }
