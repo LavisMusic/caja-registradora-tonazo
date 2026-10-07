@@ -112,6 +112,19 @@ ${en(S, ".tz-header + .tz-admin-filterbar")} {
 }`;
 }
 
+// La barra de filtros pegada a la cabecera, con fondo propio (lápices,
+// ropa, pasto con cerco…) en vez del de los paneles.
+const BARRA = (S, sub = "") => en(S, `.tz-header + .tz-admin-filterbar${sub}`);
+const barraPropia = (S, capas, estilo = "") =>
+  `${BARRA(S)} { ${fondo(capas)} border-top-color: transparent !important; ${estilo} }`;
+// MONTADO: una franja en PRIMERA CAPA que cruza la unión cabecera/barra
+// (`arriba` px sobre la cabecera, el resto sobre la barra) en una sola
+// pieza — sin costura ni recortes. Va en ::before de la barra (que la
+// app no usa) y no tapa los textos (la barra deja su padding arriba).
+const montado = (S, { img, tam, arriba, alto }) => `
+${BARRA(S)} { position: relative; overflow: visible !important; }
+${BARRA(S, "::before")} { content: ""; position: absolute; left: 0; right: 0; top: ${-arriba}px; height: ${alto}px; background: ${img} left 0 top 0 / ${tam} repeat-x; pointer-events: none; z-index: 2; }`;
+
 function construir(S, d) {
   return `
 ${en(S)} { ${fondo(d.raiz)} }
@@ -1040,8 +1053,10 @@ const helado = (S) =>
     cabeceraEstilo: "padding-bottom: 50px !important; border-bottom: none !important;",
     pie: [capa(BOLAS, "left 0 top 0", "108px 38px", "repeat-x"), ...BARQUILLO],
     pieEstilo: "border-top: none !important; padding-top: 48px !important;",
-    boton: [...BARQUILLO],
-    botonEstilo: "border: 1px solid #b45309 !important; color: #5b2c06 !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 3px 8px rgba(146,64,14,0.2) !important; border-radius: 999px !important;",
+    // Barquillo con un velo crema encima (la textura se ve, pero suave) y
+    // texto café oscuro grueso con borde claro: se lee bien.
+    boton: [capa("linear-gradient(rgba(255,247,232,0.6), rgba(255,247,232,0.6))"), ...BARQUILLO],
+    botonEstilo: "border: 1px solid #b45309 !important; color: #3b1a03 !important; font-weight: 800 !important; text-shadow: 0 1px 0 rgba(255,255,255,0.8), 0 0 4px rgba(255,247,232,0.9) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 3px 8px rgba(146,64,14,0.2) !important; border-radius: 999px !important;",
     // En el pie (sobre el barquillo) los botones van lisos, crema y rosa,
     // para que el texto se lea.
     botonPie: [capa("linear-gradient(180deg, #ffffff 0%, #fde7f1 100%)")],
@@ -2111,38 +2126,110 @@ const GOTAS_AGUA = svg(
 const AGUA_LAVADO = "linear-gradient(180deg, #0a2a4a 0%, #062039 55%, #03111f 100%)";
 const VIDRIO_MOJADO = "linear-gradient(170deg, rgba(14,58,99,0.88) 0%, rgba(6,30,56,0.94) 100%)";
 
+// Espuma viva (franja montada sobre la unión cabecera/barra): burbujas
+// apretadas, sin huecos, que se inflan y desinflan (SMIL). Todas caben
+// dentro del dibujo, así ningún borde redondo sale cortado.
+const ESPUMA_VIVA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='46'><g fill='#f8fdff' stroke='rgba(125,211,252,0.5)' stroke-width='.8'>${[
+    ...[0, 15, 30, 45, 60, 75, 90, 105, 120].map((x, i) => [x, 21, i % 2 ? 12 : 11, 2 + (i % 3) * 0.7, i * 0.3]),
+    ...[-7.5, 7.5, 22.5, 37.5, 52.5, 67.5, 82.5, 97.5, 112.5].map((x, i) => [x, 31, 9.5, 2.4 + (i % 2) * 0.8, i * 0.4]),
+    ...[8, 38, 68, 98].map((x, i) => [x, 12, 7.5, 2.8, i * 0.5]),
+  ]
+    .map(([x, y, r, dur, delay]) => `<circle cx='${x}' cy='${y}' r='${r}'><animate attributeName='r' values='${r};${(r * 1.1).toFixed(1)};${r}' dur='${dur.toFixed(1)}s' begin='-${delay.toFixed(1)}s' repeatCount='indefinite'/></circle>`)
+    .join("")}</g><g fill='#f8fdff' opacity='.85'>${[10, 33, 57, 81, 104].map((x) => `<circle cx='${x}' cy='42' r='2.6'/>`).join("")}</g><g fill='#ffffff'>${[4, 34, 64, 94].map((x) => `<ellipse cx='${x}' cy='9' rx='2.4' ry='1.4'/>`).join("")}</g></svg>`
+);
+// Auto de perfil mirando a la izquierda (avanza hacia la izquierda).
+const autoPerfil = `<g transform='translate(90 0) scale(-1.25 1.25)'><path d='M4 24 Q4 17 10 16 L20 15 L28 8 Q31 6 36 6 H48 Q52 6 55 9 L61 15 Q68 16 68 22 V25 H4 Z' fill='#2563eb' stroke='#1e3a8a' stroke-width='1'/><path d='M23 15 L30 9 H40 V15 Z M43 15 V9 H48 Q51 9 53 11 L57 15 Z' fill='#bfdbfe'/><path d='M10 18 H60' stroke='rgba(255,255,255,0.55)' stroke-width='1.6' stroke-linecap='round'/><circle cx='18' cy='25' r='5.5' fill='#111827'/><circle cx='18' cy='25' r='2.4' fill='#cbd5e1'/><circle cx='54' cy='25' r='5.5' fill='#111827'/><circle cx='54' cy='25' r='2.4' fill='#cbd5e1'/></g>`;
+// La escena del lavado (dura 14 s y se repite): el auto entra SUCIO por
+// la derecha perseguido por la esponja; a mitad de camino lo alcanza,
+// los dos van a media velocidad mientras la esponja tiembla limpiando,
+// estalla un poco de espuma y el auto sale limpio con estrellitas.
+const LAVADO_T = "dur='14s' repeatCount='indefinite'";
+const LAVADO_AUTO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='82'><svg x='105%' y='27' width='90' height='46' overflow='visible'><animate attributeName='x' values='105%;52%;34%;-30%;-30%' keyTimes='0;0.35;0.62;0.85;1' ${LAVADO_T}/>${autoPerfil}<g fill='#7c5a3a' opacity='.85'><animate attributeName='opacity' values='.85;.85;0;0;.85' keyTimes='0;0.5;0.6;0.99;1' ${LAVADO_T}/><ellipse cx='26' cy='24' rx='7' ry='3.5'/><ellipse cx='50' cy='27' rx='9' ry='3'/><ellipse cx='70' cy='22' rx='5' ry='3'/><ellipse cx='40' cy='12' rx='5' ry='2'/><circle cx='15' cy='29' r='2.2'/><circle cx='80' cy='28' r='2'/></g><g><animateTransform attributeName='transform' type='translate' values='230 -4;72 -4;30 -4;62 -4;26 -4;58 -4;40 -4;40 -4;230 -4' keyTimes='0;0.35;0.4;0.45;0.5;0.55;0.6;0.99;1' ${LAVADO_T}/><g><animate attributeName='opacity' values='1;1;0;0;1' keyTimes='0;0.6;0.66;0.99;1' ${LAVADO_T}/><g><animateTransform attributeName='transform' type='rotate' values='0 15 11;0 15 11;-14 15 11;12 15 11;-14 15 11;12 15 11;-12 15 11;0 15 11;0 15 11' keyTimes='0;0.35;0.39;0.43;0.47;0.51;0.55;0.6;1' ${LAVADO_T}/><rect x='1' y='6' width='28' height='15' rx='4' fill='#facc15' stroke='#a16207' stroke-width='1'/><rect x='1' y='2' width='28' height='6' rx='3' fill='#22c55e' stroke='#15803d' stroke-width='1'/><g fill='#ca8a04'><circle cx='7' cy='12' r='1.4'/><circle cx='14' cy='16' r='1.2'/><circle cx='21' cy='11' r='1.5'/></g></g></g></g><g fill='#f8fdff' stroke='rgba(125,211,252,0.7)' stroke-width='.8'>${[
+    [45, 18, 0],
+    [25, 22, 0.01],
+    [66, 20, 0.02],
+    [38, 6, 0.015],
+    [56, 8, 0.025],
+    [12, 14, 0.03],
+    [80, 12, 0.02],
+  ]
+    .map(([cx, cy, d]) => {
+      const a = (0.56 + d).toFixed(3);
+      const b = (0.6 + d).toFixed(3);
+      const c = (0.68 + d).toFixed(3);
+      return `<circle cx='${cx}' cy='${cy}' r='0' opacity='0'><animate attributeName='r' values='0;0;9;11;0' keyTimes='0;${a};${b};${c};1' ${LAVADO_T}/><animate attributeName='opacity' values='0;0;1;0;0' keyTimes='0;${a};${b};${c};1' ${LAVADO_T}/></circle>`;
+    })
+    .join("")}</g><g opacity='0'><animate attributeName='opacity' values='0;0;1;1;0;0' keyTimes='0;0.6;0.63;0.82;0.86;1' ${LAVADO_T}/>${destello(8, 2, 6, "#ffffff", 1.2, 0)}${destello(48, -4, 5, "#fde047", 1, 0.3)}${destello(82, 4, 6, "#ffffff", 1.4, 0.6)}${destello(30, 12, 3.5, "#ffffff", 0.9, 0.2)}</g></svg></svg>`
+);
+
 const espuma = (S) =>
   construir(S, {
-    raiz: [trama(BURBUJAS_VIVAS, "140px 140px"), capa("radial-gradient(ellipse 900px 420px at 50% -10%, rgba(125,211,252,0.14), transparent 60%)"), capa(AGUA_LAVADO)],
-    // Cabecera: agua con burbujas, un auto recién lavado que brilla y la
-    // espuma abajo (montada sobre la barra de filtros).
-    cabecera: [
-      capa(ESPUMA, "left 0 bottom 0", "90px 30px", "repeat-x"),
-      capa(AUTO_BRILLO, "left 2% bottom 22px", "100px 47px"),
-      capa(ESPONJA, "right 3% bottom 24px", "48px 35px"),
-      trama(BURBUJAS_VIVAS, "140px 140px"),
-      capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)"),
-    ],
-    cabeceraEstilo: "padding-bottom: 60px !important; border-bottom: none !important;",
-    borde: { enCabecera: 14, rellenoCabecera: 56 },
-    pie: [capa(ESPUMA, "left 0 top 0", "90px 30px", "repeat-x"), trama(BURBUJAS_VIVAS, "140px 140px"), capa("linear-gradient(180deg, #0a3561, #03111f)")],
-    pieEstilo: "border-top: none !important; padding-top: 36px !important;",
+    // En la app real el agua y las burbujas las dibuja la ESCENA (fija,
+    // detrás de todo): suben de verdad desde abajo de la pantalla y se
+    // esconden detrás de la barra de filtros. Esto queda para la vista
+    // previa del Perfil.
+    raiz: [trama(GOTAS_AGUA, "60px 60px"), capa(AGUA_LAVADO)],
+    cabecera: [capa(LAVADO_AUTO, "left 0 bottom 0", "100% 82px"), capa("radial-gradient(ellipse 70% 60% at 50% 0%, rgba(186,230,253,0.18), transparent 70%)"), capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)")],
+    cabeceraEstilo: "padding-bottom: 78px !important; border-bottom: none !important;",
+    pie: [capa(ESPUMA_VIVA, "left 0 top -6px", "120px 46px", "repeat-x"), trama(GOTAS_AGUA, "60px 60px"), capa("linear-gradient(180deg, #0a3561, #03111f)")],
+    pieEstilo: "border-top: none !important; padding-top: 44px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.4), transparent 50%)"), capa("linear-gradient(180deg, #38bdf8, #0284c7)")],
     botonEstilo: "border: 1px solid #075985 !important; color: #ffffff !important; box-shadow: 0 3px 10px rgba(2,132,199,0.4) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.35); border-radius: 999px !important;",
     botonPieEstilo: "border-radius: 999px !important; border: 1px solid #075985 !important; color: #ffffff !important; box-shadow: 0 4px 12px rgba(2,132,199,0.45) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.35);",
     panel: [capa(ESPONJA, "right 8px top 7px", "24px 18px"), trama(GOTAS_AGUA, "60px 60px"), capa(VIDRIO_MOJADO)],
     panelEstilo: "border: 1px solid rgba(125,211,252,0.4) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 8px 18px rgba(0,0,0,0.45) !important;",
-    barra: [trama(GOTAS_AGUA, "60px 60px"), capa(VIDRIO_MOJADO)],
     modal: [capa(ESPONJA, "right 12px bottom 12px", "30px 22px"), trama(GOTAS_AGUA, "60px 60px"), capa("linear-gradient(170deg, #0e3a63 0%, #04182c 100%)")],
     modalEstilo: "border: 1px solid rgba(125,211,252,0.55) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;",
-    tituloEstilo: `color: #f0f9ff !important; background: ${ESPUMA} left 0 bottom 0 / 54px 18px repeat-x !important; padding-bottom: 22px;`,
+    tituloEstilo: `color: #f0f9ff !important; background: ${ESPUMA_VIVA} left 0 bottom 0 / 54px 21px repeat-x !important; padding-bottom: 24px;`,
     pestana: [capa("linear-gradient(180deg, #0f4c81, #0a3561)")],
     pestanaEstilo: "border: 1px solid rgba(125,211,252,0.4) !important; color: #e0f2fe !important;",
     activa: [capa("linear-gradient(180deg, #f0abfc, #d946ef)")],
     activaEstilo: "border-color: #86198f !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(240,171,252,0.5) !important;",
     campoEstilo: "background: #04182c !important; border: 1px solid rgba(125,211,252,0.4) !important;",
-    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }`,
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }
+${barraPropia(S, [trama(GOTAS_AGUA, "60px 60px"), capa(VIDRIO_MOJADO)], "padding-top: 34px !important;")}
+${montado(S, { img: ESPUMA_VIVA, tam: "120px 46px", arriba: 22, alto: 46 })}
+/* ---- Escena (solo en la app real; TemaNegocio la dibuja) ---- */
+${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+${en(S, ".tz-esc-agua")} { position: absolute; inset: 0; background: radial-gradient(ellipse 900px 420px at 50% -10%, rgba(125,211,252,0.14), transparent 60%), ${AGUA_LAVADO}; }
+${en(S, ".tz-esc-burbuja")} {
+  position: absolute; bottom: -40px; left: var(--x);
+  width: var(--tam); height: var(--tam); border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, rgba(255,255,255,0.95) 0 13%, rgba(186,230,253,0.28) 16% 55%, rgba(186,230,253,0.10) 72%, rgba(255,255,255,0.55) 100%);
+  box-shadow: inset 0 0 3px rgba(255,255,255,0.6);
+  animation: tz-esp-subir var(--dur) linear var(--delay) infinite;
+  will-change: transform;
+}
+@keyframes tz-esp-subir {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(12px, -28vh); }
+  50% { transform: translate(-10px, -56vh); }
+  75% { transform: translate(9px, -84vh); }
+  100% { transform: translate(0, -118vh); }
+}`,
   });
+
+const ESCENA_ESPUMA = [
+  { clase: "tz-esc-agua" },
+  ...[
+    ["4%", "14px", "13s", "-1s"],
+    ["10%", "22px", "17s", "-9s"],
+    ["17%", "9px", "11s", "-4s"],
+    ["25%", "28px", "19s", "-14s"],
+    ["33%", "12px", "12s", "-7s"],
+    ["41%", "18px", "15s", "-2s"],
+    ["49%", "10px", "10s", "-6s"],
+    ["57%", "24px", "18s", "-11s"],
+    ["64%", "13px", "13s", "-3s"],
+    ["72%", "20px", "16s", "-12s"],
+    ["79%", "9px", "11s", "-8s"],
+    ["86%", "26px", "20s", "-5s"],
+    ["93%", "15px", "14s", "-10s"],
+    ["97%", "11px", "12s", "-1.5s"],
+  ].map(([x, tam, dur, delay]) => ({ clase: "tz-esc-burbuja", estilo: { "--x": x, "--tam": tam, "--dur": dur, "--delay": delay } })),
+];
 
 // =====================================================================
 // LIBRERÍA Y BAZAR — "Cuaderno" (claro: hoja rayada con margen, espiral,
@@ -2174,35 +2261,52 @@ const WASHI = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 16'><g transform='rotate(-8 22 8)'><path d='M3 3 L5 5 L3 7 L5 9 L3 11 L5 13 H39 L41 11 L39 9 L41 7 L39 5 L41 3 Z' fill='rgba(244,114,182,0.75)'/><path d='M10 3 V13 M18 3 V13 M26 3 V13 M34 3 V13' stroke='rgba(255,255,255,0.55)' stroke-width='2.5'/></g></svg>`
 );
 const CLIPS = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='26'>${[["#ef4444", 6], ["#3b82f6", 24], ["#22c55e", 42], ["#facc15", 60]]
+  `<svg xmlns='http://www.w3.org/2000/svg' width='72' height='34'>${[["#ef4444", 6], ["#3b82f6", 24], ["#22c55e", 42], ["#facc15", 60]]
     .map(([c, x], i) => `<g transform='translate(${x} ${i % 2 ? 4 : 1}) rotate(${i % 2 ? 8 : -6})'><path d='M3 20 V5 Q3 1 6 1 Q9 1 9 5 V18 Q9 22 6 22 Q2 22 2 18 V8' stroke='${c}' stroke-width='1.8' fill='none' stroke-linecap='round'/></g>`)
     .join("")}</svg>`
 );
 const KRAFT = "linear-gradient(180deg, #d1a777 0%, #b88b5a 100%)";
 
+// Lápices cortos acostados dentro de la barra de filtros.
+const LAPICES_CORTOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='28'>${[
+    ["#ef4444", 2],
+    ["#f97316", 4],
+    ["#facc15", 1],
+    ["#22c55e", 5],
+    ["#3b82f6", 0],
+    ["#a855f7", 3],
+  ]
+    .map(([c, dy], i) => {
+      const x = 4 + i * 20;
+      return `<g transform='translate(${x} ${dy})'><rect x='0' y='0' width='12' height='14' fill='${c}'/><rect x='4' y='0' width='4' height='14' fill='rgba(255,255,255,0.22)'/><rect x='0' y='0' width='12' height='2.5' fill='rgba(0,0,0,0.15)'/><path d='M0 14 L6 22 L12 14 Z' fill='#f5d0a9'/><path d='M3.8 19 L6 22 L8.2 19 Z' fill='${c}'/></g>`;
+    })
+    .join("")}</svg>`
+);
+// Útiles que caen por el fondo (escena).
+const UTIL_LAPIZ = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 12'><rect x='8' y='1' width='46' height='10' fill='#facc15' stroke='#a16207' stroke-width='.8'/><rect x='54' y='1' width='8' height='10' rx='1.5' fill='#f9a8d4'/><rect x='51' y='1' width='3' height='10' fill='#cbd5e1'/><path d='M8 1 L0 6 L8 11 Z' fill='#f5d0a9'/><path d='M3 4.2 L0 6 L3 7.8 Z' fill='#1f2937'/></svg>`);
+const UTIL_CUADERNO = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 34 42'><rect x='4' y='1' width='29' height='40' rx='2' fill='#3b82f6' stroke='#1e40af' stroke-width='1'/><rect x='12' y='10' width='16' height='8' rx='1' fill='#ffffff'/>${[5, 11, 17, 23, 29, 35].map((y) => `<circle cx='4' cy='${y}' r='2.4' fill='none' stroke='#94a3b8' stroke-width='1.4'/>`).join("")}</svg>`);
+const UTIL_CARTUCHERA = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 56 24'><rect x='1' y='3' width='54' height='20' rx='9' fill='#ec4899' stroke='#9d174d' stroke-width='1'/><path d='M8 8 H48' stroke='#1f2937' stroke-width='1.6' stroke-dasharray='2 1.4'/><rect x='44' y='5' width='6' height='5' rx='1' fill='#cbd5e1'/><circle cx='18' cy='15' r='3' fill='#fde047'/><circle cx='30' cy='16' r='2.4' fill='#a5f3fc'/></svg>`);
+const UTIL_REGLA = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 14'><rect x='1' y='1' width='70' height='12' rx='1.5' fill='rgba(186,230,253,0.85)' stroke='#0284c7' stroke-width='.8'/>${Array.from({ length: 14 }, (_, i) => `<path d='M${5 + i * 5} 1 V${i % 2 ? 4.5 : 7}' stroke='#0369a1' stroke-width='.8'/>`).join("")}</svg>`);
+const UTIL_PLUMON = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 52 14'><rect x='14' y='2' width='36' height='10' rx='3' fill='#f8fafc' stroke='#64748b' stroke-width='.8'/><rect x='30' y='2' width='8' height='10' fill='#22c55e'/><rect x='4' y='2' width='12' height='10' rx='2' fill='#22c55e' stroke='#15803d' stroke-width='.8'/><path d='M4 5 L0 7 L4 9 Z' fill='#15803d'/></svg>`);
+const UTIL_BORRADOR = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 16'><rect x='1' y='2' width='30' height='12' rx='2.5' fill='#fda4af' stroke='#e11d48' stroke-width='.8'/><rect x='17' y='2' width='14' height='12' rx='2' fill='#60a5fa'/></svg>`);
+const UTIL_PELOTA = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='-12 -12 24 24'><circle r='11' fill='#ffffff' stroke='#1f2937' stroke-width='.8'/><path d='M0 -11 A11 11 0 0 1 9.5 -5.5 L0 0 Z' fill='#ef4444'/><path d='M9.5 5.5 A11 11 0 0 1 0 11 L0 0 Z' fill='#3b82f6'/><path d='M-9.5 5.5 A11 11 0 0 1 -9.5 -5.5 L0 0 Z' fill='#facc15'/><circle r='2.2' fill='#22c55e'/></svg>`);
+const UTIL_ESTRELLA = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 1 l3.2 6.6 7.3 1 -5.3 5.1 1.3 7.2 -6.5-3.4 -6.5 3.4 1.3-7.2 -5.3-5.1 7.3-1z' fill='#facc15' stroke='#ca8a04' stroke-width='1'/></svg>`);
+
 const cuaderno = (S) =>
   construir(S, {
+    // En la app real la hoja y los útiles que caen los dibuja la ESCENA.
     raiz: [capa(MARGEN), capa(RENGLONES), capa(HOJA_PAPEL)],
-    // Cabecera = hoja de cuaderno con espiral arriba; los lápices de
-    // colores quedan montados con la punta sobre la barra de filtros.
-    cabecera: [
-      capa(LAPICES, "left 0 bottom 0", "120px 42px", "repeat-x"),
-      capa(ESPIRAL, "left 0 top 0", "28px 24px", "repeat-x"),
-      capa(MARGEN),
-      capa(RENGLONES),
-      capa(HOJA_PAPEL),
-    ],
-    cabeceraEstilo: "padding-top: 32px !important; padding-bottom: 56px !important; border-bottom: none !important; box-shadow: 0 6px 16px rgba(30,41,59,0.10);",
-    borde: { enCabecera: 26, rellenoCabecera: 40 },
-    pie: [capa(CLIPS, "left 0 top 4px", "72px 26px", "repeat-x"), capa(KRAFT)],
-    pieEstilo: "border-top: 3px solid #8a6238 !important; padding-top: 36px !important;",
+    cabecera: [capa(ESPIRAL, "left 0 top 0", "28px 24px", "repeat-x"), capa(MARGEN), capa(RENGLONES), capa(HOJA_PAPEL)],
+    cabeceraEstilo: "padding-top: 32px !important; border-bottom: 2px solid #bfdbfe !important; box-shadow: 0 6px 16px rgba(30,41,59,0.10);",
+    // Pie de cartón con clips (el dibujo es más alto: ningún clip se corta).
+    pie: [capa(CLIPS, "left 0 top 4px", "72px 34px", "repeat-x"), capa(KRAFT)],
+    pieEstilo: "border-top: 3px solid #8a6238 !important; padding-top: 44px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.35), transparent 55%)"), capa("linear-gradient(180deg, #fde047, #facc15)")],
     botonEstilo: "border: 1px solid #a16207 !important; color: #1f2937 !important; box-shadow: 0 2px 6px rgba(161,98,7,0.25) !important; font-weight: 800;",
     botonPieEstilo: "border-radius: 8px !important; border: 1px solid #a16207 !important; color: #1f2937 !important; box-shadow: 0 3px 8px rgba(80,50,10,0.3) !important; font-weight: 800;",
-    // Paneles = hojas sueltas con un pedazo de cinta adhesiva.
     panel: [capa(WASHI, "right 6px top -2px", "40px 15px"), capa(RENGLONES), capa(HOJA_PAPEL)],
     panelEstilo: "border: 1px solid #e7e2cf !important; box-shadow: 0 1px 0 #ddd6bd, 0 6px 14px rgba(30,41,59,0.10) !important;",
-    barra: [capa(HOJA_PAPEL)],
     modal: [capa(MARGEN), capa(RENGLONES), capa(HOJA_PAPEL)],
     modalEstilo: "border: 1px solid #e7e2cf !important; box-shadow: 0 20px 60px rgba(30,41,59,0.22) !important;",
     tituloEstilo: "color: #1e3a8a !important; border-bottom: 2px solid rgba(239,68,68,0.55); padding-bottom: 8px;",
@@ -2215,8 +2319,44 @@ const cuaderno = (S) =>
 ${en(S, ".tz-header .tz-subtitle")} { color: #1d4ed8 !important; text-shadow: none !important; }
 ${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 6px rgba(30,41,59,0.15); }
 ${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(30,41,59,0.25)) !important; }
-${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 14px !important; }`,
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 14px !important; }
+/* Los lápices van acostados DENTRO de la barra (más alta arriba). */
+${barraPropia(S, [capa(LAPICES_CORTOS, "left 0 top 8px", "120px 28px", "repeat-x"), capa(HOJA_PAPEL)], "padding-top: 46px !important;")}
+/* ---- Escena: hoja + útiles que caen de vez en cuando ---- */
+${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+${en(S, ".tz-esc-hoja")} { position: absolute; inset: 0; background: ${MARGEN}, ${RENGLONES}, ${HOJA_PAPEL}; }
+${en(S, ".tz-esc-util")} {
+  position: absolute; top: -70px; left: var(--x);
+  width: var(--w); height: var(--h);
+  background: var(--img) center / contain no-repeat;
+  opacity: 0.9;
+  animation: tz-cua-caer var(--dur) linear var(--delay) infinite;
+  will-change: transform;
+}
+@keyframes tz-cua-caer {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  72% { transform: translate(var(--dx), 118vh) rotate(var(--giro)); }
+  100% { transform: translate(var(--dx), 118vh) rotate(var(--giro)); }
+}`,
   });
+
+// Caen pocos a la vez (cada uno cae y luego espera un rato fuera).
+const ESCENA_CUADERNO = [
+  { clase: "tz-esc-hoja" },
+  ...[
+    ["6%", UTIL_LAPIZ, "54px", "11px", "26s", "-3s", "30px", "220deg"],
+    ["18%", UTIL_CUADERNO, "28px", "35px", "30s", "-16s", "-20px", "-140deg"],
+    ["31%", UTIL_REGLA, "60px", "12px", "24s", "-9s", "24px", "180deg"],
+    ["44%", UTIL_BORRADOR, "26px", "13px", "28s", "-21s", "-16px", "260deg"],
+    ["57%", UTIL_CARTUCHERA, "46px", "20px", "32s", "-6s", "18px", "-120deg"],
+    ["69%", UTIL_PLUMON, "44px", "12px", "27s", "-13s", "-26px", "200deg"],
+    ["80%", UTIL_PELOTA, "20px", "20px", "25s", "-19s", "14px", "360deg"],
+    ["91%", UTIL_ESTRELLA, "20px", "20px", "29s", "-1s", "-18px", "-300deg"],
+  ].map(([x, img, w, h, dur, delay, dx, giro]) => ({
+    clase: "tz-esc-util",
+    estilo: { "--x": x, "--img": img, "--w": w, "--h": h, "--dur": dur, "--delay": delay, "--dx": dx, "--giro": giro },
+  })),
+];
 
 // =====================================================================
 // JUGUETERÍA — "Bloques" (claro: cielo con cometas, bloques de
@@ -2244,18 +2384,40 @@ const CONFETI_JUGUETES = svg(
 );
 const CIELO_JUGUETE = "linear-gradient(180deg, #7dd3fc 0%, #bae6fd 55%, #e0f2fe 100%)";
 
+// Cielo vivo de la cabecera (SMIL, a todo el ancho): nubes que avanzan
+// lento y cometas que vuelan por el cielo a distintas distancias.
+const cometaMarca = (a, b, c) =>
+  `<g><animateTransform attributeName='transform' type='rotate' values='-7 20 20; 7 20 20; -7 20 20' dur='4s' repeatCount='indefinite'/><path d='M20 2 L36 20 L20 40 L4 20 Z' fill='${a}' stroke='#1f2937' stroke-width='1'/><path d='M20 2 L36 20 L20 20 Z' fill='${b}'/><path d='M4 20 L20 40 L20 20 Z' fill='${b}'/><path d='M20 2 V40 M4 20 H36' stroke='#1f2937' stroke-width='.8'/><path d='M20 40 Q14 48 20 54 Q26 60 20 68' stroke='#1f2937' stroke-width='1' fill='none'/><g fill='${c}'><path d='M17 47 L20 45 L23 47 L20 49 Z'/><path d='M17 57 L20 55 L23 57 L20 59 Z'/></g></g>`;
+const nubeMarca = `<g fill='#ffffff'><ellipse cx='60' cy='30' rx='42' ry='13'/><ellipse cx='42' cy='22' rx='20' ry='14'/><ellipse cx='70' cy='16' rx='24' ry='16'/></g>`;
+const CIELO_VIVO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%'>${[
+    ["4%", 120, 0.95, 95, 10],
+    ["14%", 90, 0.8, 130, 70],
+    ["26%", 150, 0.9, 110, 40],
+    ["40%", 70, 0.65, 150, 100],
+  ]
+    .map(
+      ([y, w, op, dur, delay]) =>
+        `<svg x='-20%' y='${y}' width='${w}' height='${(w * 0.4).toFixed(0)}' viewBox='0 0 120 46' opacity='${op}' overflow='visible'><animate attributeName='x' values='-20%;105%' dur='${dur}s' begin='-${delay}s' repeatCount='indefinite'/>${nubeMarca}</svg>`
+    )
+    .join("")}${[
+    ["#ef4444", "#facc15", "#3b82f6", 62, 1, 30, "6%;28%;52%;74%;88%;62%;34%;6%", "30%;14%;34%;12%;36%;20%;40%;30%"],
+    ["#3b82f6", "#22c55e", "#ef4444", 44, 0.85, 38, "84%;62%;40%;18%;8%;30%;60%;84%", "10%;26%;8%;24%;10%;30%;14%;10%"],
+    ["#a855f7", "#f97316", "#facc15", 28, 0.65, 46, "46%;70%;90%;66%;36%;14%;24%;46%", "6%;16%;4%;20%;8%;14%;4%;6%"],
+  ]
+    .map(
+      ([a, b, c, w, op, dur, xs, ys]) =>
+        `<svg x='0' y='0' width='${w}' height='${(w * 1.75).toFixed(0)}' viewBox='0 0 40 70' opacity='${op}' overflow='visible'><animate attributeName='x' values='${xs}' dur='${dur}s' repeatCount='indefinite' calcMode='spline' keySplines='${Array(7).fill(".45 0 .55 1").join(";")}'/><animate attributeName='y' values='${ys}' dur='${dur}s' repeatCount='indefinite' calcMode='spline' keySplines='${Array(7).fill(".45 0 .55 1").join(";")}'/>${cometaMarca(a, b, c)}</svg>`
+    )
+    .join("")}</svg>`
+);
+
 const bloques = (S) =>
   construir(S, {
     raiz: [trama(CONFETI_JUGUETES, "110px 110px"), capa("linear-gradient(180deg, #fffdf5 0%, #fff4dc 100%)")],
-    // Cabecera = cielo con cometas que se mecen y una fila de bloques
-    // abajo (montada sobre la barra de filtros).
-    cabecera: [
-      capa(LADRILLOS_JUGUETE, "left 0 bottom 0", "128px 30px", "repeat-x"),
-      capa(COMETA_ROJA, "left 3% bottom 30px", "46px 80px"),
-      capa(COMETA_AZUL, "right 3% bottom 36px", "40px 70px"),
-      capa(NUBES_CIELO, "left 0 top 6px", "320px 70px", "repeat-x"),
-      capa(CIELO_JUGUETE),
-    ],
+    // Cabecera = cielo vivo (nubes y cometas en movimiento) y una fila de
+    // bloques abajo, montada sobre la barra de filtros.
+    cabecera: [capa(LADRILLOS_JUGUETE, "left 0 bottom 0", "128px 30px", "repeat-x"), capa(CIELO_VIVO, "0 0", "100% 100%"), capa(CIELO_JUGUETE)],
     cabeceraEstilo: "padding-bottom: 44px !important; border-bottom: none !important;",
     borde: { enCabecera: 15, rellenoCabecera: 30 },
     pie: [capa(MURO_JUGUETE, "0 0", "128px 46px", "repeat")],
@@ -2279,7 +2441,10 @@ const bloques = (S) =>
 ${en(S, ".tz-header .tz-subtitle")} { color: #1e3a8a !important; text-shadow: none !important; background: rgba(255,255,255,0.85); padding: 2px 10px; border-radius: 999px; }
 ${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 6px rgba(30,64,175,0.2); }
 ${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(30,64,175,0.3)) !important; }
-${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !important; }`,
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !important; }
+/* La barra con los bloques encima va recta a todo el ancho: sin
+   esquinas redondas ni bordes laterales que se crucen con los bloques. */
+${BARRA(S)} { border-radius: 0 !important; border-left: none !important; border-right: none !important; border-width: 0 0 2px 0 !important; box-shadow: 0 4px 0 #f59e0b !important; }`,
   });
 
 // =====================================================================
@@ -2382,29 +2547,56 @@ const TABLAS_GRANERO = "repeating-linear-gradient(90deg, #9b1c1c 0 26px, #7f1d1d
 const PRADERA = "linear-gradient(180deg, #16290f 0%, #0f1a0c 100%)";
 const MADERA_ESTABLO = "linear-gradient(170deg, #3b2a1a 0%, #2a1d12 100%)";
 
+// Animales de perfil (mirando a la derecha). `pasta` = baja la cabeza a
+// comer pasto (SMIL).
+const vaca = (pasta) =>
+  `<path d='M9 14 Q2 18 4 27' stroke='#374151' stroke-width='1.6' fill='none'/><circle cx='4' cy='28' r='1.8' fill='#374151'/>${[14, 20, 40, 46].map((x) => `<rect x='${x}' y='26' width='4.5' height='12' fill='#f8fafc' stroke='#94a3b8' stroke-width='.6'/><rect x='${x}' y='36' width='4.5' height='3' fill='#374151'/>`).join("")}<rect x='8' y='10' width='42' height='20' rx='9' fill='#ffffff' stroke='#94a3b8' stroke-width='.8'/><g fill='#1f2937'><ellipse cx='20' cy='16' rx='6.5' ry='4.5'/><ellipse cx='35' cy='23' rx='5' ry='4'/><ellipse cx='43' cy='13' rx='3.5' ry='3'/></g><ellipse cx='38' cy='30' rx='3.5' ry='2' fill='#f9a8d4'/><g>${pasta ? "<animateTransform attributeName='transform' type='rotate' values='0 50 12;0 50 12;40 50 12;34 50 12;40 50 12;0 50 12' keyTimes='0;0.3;0.38;0.55;0.75;1' dur='6s' repeatCount='indefinite'/>" : ""}<path d='M51 6 Q50 1 53 2 M59 6 Q61 1 58 2' stroke='#e7d8b5' stroke-width='1.6' fill='none'/><ellipse cx='49' cy='9' rx='3' ry='1.8' fill='#f8fafc' stroke='#94a3b8' stroke-width='.6'/><rect x='50' y='5' width='12' height='16' rx='5' fill='#ffffff' stroke='#94a3b8' stroke-width='.8'/><ellipse cx='57' cy='18.5' rx='5.5' ry='3.6' fill='#f9a8d4'/><g fill='#9d174d'><circle cx='55.5' cy='18.5' r='.8'/><circle cx='59' cy='18.5' r='.8'/></g><circle cx='56' cy='10.5' r='1.2' fill='#111827'/></g>`;
+const VACA = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 42'>${vaca(false)}</svg>`);
+const OVEJA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 34'>${[12, 18, 30, 36].map((x) => `<rect x='${x}' y='22' width='3.5' height='11' rx='1' fill='#374151'/>`).join("")}<g fill='#ffffff' stroke='#d1d5db' stroke-width='.8'><circle cx='14' cy='17' r='8'/><circle cx='22' cy='12' r='9'/><circle cx='31' cy='13' r='9'/><circle cx='37' cy='18' r='7'/><circle cx='20' cy='21' r='8'/><circle cx='31' cy='22' r='8'/></g><ellipse cx='42' cy='14' rx='5' ry='6.5' fill='#4b5563'/><ellipse cx='39' cy='9' rx='3' ry='1.6' fill='#4b5563' transform='rotate(-25 39 9)'/><circle cx='44' cy='12.5' r='1.1' fill='#ffffff'/></svg>`
+);
+const GALLINA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'><path d='M11 23 V29 M16 23 V29 M9 29 H13 M14 29 H18' stroke='#f59e0b' stroke-width='1.4'/><path d='M4 12 Q0 6 3 4 Q6 8 8 11 Z' fill='#e5e7eb'/><ellipse cx='13' cy='17' rx='9.5' ry='7' fill='#ffffff' stroke='#d1d5db' stroke-width='.8'/><path d='M8 16 Q12 20 17 16' stroke='#e5e7eb' stroke-width='1.4' fill='none'/><circle cx='21' cy='9' r='5' fill='#ffffff' stroke='#d1d5db' stroke-width='.8'/><path d='M18 4.5 Q19 1 21 3.5 Q22 1 24 4 Q25 2 25.5 5.5 Z' fill='#ef4444'/><path d='M25.5 9 L29 10.5 L25.5 11.5 Z' fill='#f59e0b'/><ellipse cx='24.5' cy='13.5' rx='1.2' ry='2' fill='#ef4444'/><circle cx='22.5' cy='8' r='.9' fill='#111827'/></svg>`
+);
+const CERDO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 32'>${[12, 18, 28, 34].map((x) => `<rect x='${x}' y='22' width='4' height='9' rx='1.5' fill='#f472b6'/>`).join("")}<path d='M7 14 q-4 -3 -2 -6 q3 -1 2 3' stroke='#f472b6' stroke-width='1.4' fill='none'/><ellipse cx='22' cy='17' rx='16' ry='10' fill='#f9a8d4' stroke='#ec4899' stroke-width='.8'/><circle cx='37' cy='14' r='8' fill='#f9a8d4' stroke='#ec4899' stroke-width='.8'/><path d='M33 7 L35 2 L38 7 Z' fill='#f472b6'/><ellipse cx='44.5' cy='16' rx='3.5' ry='3.2' fill='#f472b6' stroke='#db2777' stroke-width='.6'/><g fill='#9d174d'><circle cx='43.6' cy='16' r='.7'/><circle cx='45.6' cy='16' r='.7'/></g><circle cx='39' cy='12' r='1.1' fill='#111827'/></svg>`
+);
+// Vacas pastando detrás del cerco de la barra (avanzan muy lento).
+const VACAS_BARRA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='52'>${[
+    [false, 110, 0, "-10%;105%", 1.2],
+    [true, 140, 60, "105%;-10%", 1.1],
+    [false, 170, 120, "-10%;105%", 1],
+  ]
+    .map(
+      ([izq, dur, delay, xs, k]) =>
+        `<svg x='0' y='${izq ? 4 : 2}' width='${(64 * k).toFixed(0)}' height='${(42 * k).toFixed(0)}' viewBox='0 0 64 42' overflow='visible'><animate attributeName='x' values='${xs}' dur='${dur}s' begin='-${delay}s' repeatCount='indefinite'/>${izq ? `<g transform='translate(64 0) scale(-1 1)'>${vaca(true)}</g>` : vaca(true)}</svg>`
+    )
+    .join("")}</svg>`
+);
+const PASTO_FRENTE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='44' height='18'><path d='M0 18 L2 8 L4 18 L6 3 L9 18 L11 9 L13 18 L16 4 L18 18 L21 10 L23 18 L26 2 L28 18 L31 8 L33 18 L36 5 L38 18 L41 9 L44 18 Z' fill='#4caf2e'/><path d='M6 3 L7 12 M16 4 L16.5 12 M26 2 L26.5 12 M36 5 L36.5 12' stroke='#86e05a' stroke-width='.8'/></svg>`
+);
+const PASTO_TRAMA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='70' height='70'><g stroke='rgba(20,83,45,0.35)' stroke-width='1.3' stroke-linecap='round'><path d='M10 20 l-2 -6 M12 20 l1 -7 M14 20 l3 -5'/><path d='M48 52 l-2 -6 M50 52 l1 -7 M52 52 l3 -5'/><path d='M40 14 l-1 -5 M42 14 l2 -5'/></g><g fill='#fde047'><circle cx='26' cy='44' r='1.6'/><circle cx='60' cy='24' r='1.4'/></g><g fill='#ffffff'><circle cx='28' cy='42' r='1'/><circle cx='24' cy='42' r='1'/></g></svg>`
+);
+const PASTO_VIVO = "linear-gradient(180deg, #8be05a 0%, #5cbf3a 45%, #47a52e 100%)";
+const PRADERA_VIVA = "linear-gradient(180deg, #3aa33a 0%, #2f9134 50%, #257d2b 100%)";
+
 const granja = (S) =>
   construir(S, {
-    raiz: [trama(HUELLAS_VACA, "100px 100px"), capa("radial-gradient(ellipse 900px 420px at 50% -10%, rgba(253,230,138,0.10), transparent 60%)"), capa(PRADERA)],
-    // Cabecera = pared de granero; abajo el cerco de madera montado
-    // sobre la barra de filtros, el granero y un saco de alimento.
-    cabecera: [
-      capa(CERCO, "left 0 bottom 0", "80px 46px", "repeat-x"),
-      capa(GRANERO, "left 2.5% bottom 36px", "70px 56px"),
-      capa(SACO, "right 3% bottom 36px", "40px 47px"),
-      capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.4))"),
-      capa(TABLAS_GRANERO),
-    ],
-    cabeceraEstilo: "padding-bottom: 66px !important; border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.5);",
-    borde: { enCabecera: 26, rellenoCabecera: 52 },
-    pie: [capa(CERCO, "left 0 top 0", "80px 46px", "repeat-x"), capa(HUELLAS_VACA, "0 0", "100px 100px", "repeat"), capa(PRADERA)],
-    pieEstilo: "border-top: none !important; padding-top: 52px !important;",
+    // En la app real el prado con los animales lo dibuja la ESCENA.
+    raiz: [trama(PASTO_TRAMA, "70px 70px"), capa(PRADERA_VIVA)],
+    cabecera: [capa("linear-gradient(180deg, #f8fafc, #e5e7eb)", "left 0 bottom 0", "100% 6px"), capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.4))"), capa(TABLAS_GRANERO)],
+    cabeceraEstilo: "border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.35);",
+    // Pie: solo pasto con el cerco plantado.
+    pie: [capa(PASTO_FRENTE, "left 0 top 40px", "44px 18px", "repeat-x"), capa(CERCO, "left 0 top 4px", "80px 46px", "repeat-x"), trama(PASTO_TRAMA, "70px 70px"), capa(PASTO_VIVO)],
+    pieEstilo: "border-top: none !important; padding-top: 62px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.3), transparent 55%)"), capa("linear-gradient(180deg, #fde68a, #eab308)")],
     botonEstilo: "border: 1px solid #854d0e !important; color: #3b2a06 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.4) !important; font-weight: 800;",
     botonPieEstilo: "border-radius: 8px !important; border: 1px solid #854d0e !important; color: #3b2a06 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.45) !important; font-weight: 800;",
-    // Paneles = madera del establo con una herradura.
     panel: [capa(HERRADURA, "right 8px top 7px", "20px 20px"), trama(VETA, "120px 34px"), capa(MADERA_ESTABLO)],
     panelEstilo: "border: 1px solid #1a120a !important; box-shadow: inset 0 1px 0 rgba(255,230,180,0.1), 0 8px 18px rgba(0,0,0,0.45) !important;",
-    barra: [trama(VETA, "120px 34px"), capa(MADERA_ESTABLO)],
     modal: [capa(HERRADURA, "right 12px bottom 12px", "24px 24px"), trama(VETA, "120px 34px"), capa(MADERA_ESTABLO)],
     modalEstilo: "border: 2px solid #a16207 !important; box-shadow: 0 20px 60px rgba(0,0,0,0.7) !important;",
     tituloEstilo: "color: #fde68a !important; border-bottom: 3px solid #b91c1c; padding-bottom: 8px;",
@@ -2416,8 +2608,56 @@ const granja = (S) =>
     extra: (S) => `
 ${en(S, ".tz-header .tz-subtitle")} { color: #fde68a !important; background: rgba(40,10,10,0.75); padding: 2px 10px; border-radius: 999px; }
 ${en(S, ".tz-header .tz-conn-indicator")} { background: rgba(20,12,6,0.85) !important; }
-${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !important; }`,
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !important; }
+/* Barra = césped vivo: el granero y el saco parados en el pasto, vacas
+   pastando detrás del cerco plantado y matas de pasto delante. */
+${barraPropia(
+  S,
+  [
+    capa(SACO, "right 3% top 30px", "40px 47px"),
+    capa(PASTO_FRENTE, "left 0 top 58px", "44px 18px", "repeat-x"),
+    capa(CERCO, "left 0 top 24px", "80px 46px", "repeat-x"),
+    capa(GRANERO, "left 1.5% top 6px", "74px 59px"),
+    capa(VACAS_BARRA, "left 0 top 2px", "100% 52px"),
+    trama(PASTO_TRAMA, "70px 70px"),
+    capa(PASTO_VIVO),
+  ],
+  "padding-top: 82px !important;"
+)}
+${BARRA(S, " .tz-admin-filter-label")} { color: #14532d !important; text-shadow: none !important; background: rgba(255,255,255,0.8); padding: 1px 10px; border-radius: 999px; }
+/* ---- Escena: prado con animales paseando (estilo granja) ---- */
+${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+${en(S, ".tz-esc-prado")} { position: absolute; inset: 0; background: ${PASTO_TRAMA} 0 0 / 70px 70px repeat, ${PRADERA_VIVA}; }
+${en(S, ".tz-esc-animal")} {
+  position: absolute; left: 0; top: var(--y);
+  width: var(--w); height: var(--h);
+  background: var(--img) center / contain no-repeat;
+  animation: tz-gra-der var(--dur) linear var(--delay) infinite, tz-gra-paso var(--paso, 0.5s) ease-in-out infinite alternate;
+  will-change: translate;
+}
+${en(S, ".tz-esc-izq")} { scale: -1 1; animation-name: tz-gra-izq, tz-gra-paso; }
+@keyframes tz-gra-der { 0% { translate: -14vw 0; } 40% { translate: 38vw 0; } 56% { translate: 38vw 0; } 100% { translate: 112vw 0; } }
+@keyframes tz-gra-izq { 0% { translate: 112vw 0; } 44% { translate: 56vw 0; } 60% { translate: 56vw 0; } 100% { translate: -14vw 0; } }
+@keyframes tz-gra-paso { from { rotate: -2.5deg; } to { rotate: 2.5deg; } }`,
   });
+
+const ESCENA_GRANJA = [
+  { clase: "tz-esc-prado" },
+  ...[
+    ["", VACA, "70px", "46px", "22%", "70s", "-10s"],
+    ["izq", OVEJA, "48px", "34px", "34%", "60s", "-25s"],
+    ["", GALLINA, "28px", "28px", "44%", "38s", "-5s", "0.28s"],
+    ["izq", CERDO, "48px", "32px", "52%", "64s", "-40s"],
+    ["", OVEJA, "44px", "31px", "61%", "56s", "-30s"],
+    ["izq", VACA, "64px", "42px", "70%", "80s", "-55s"],
+    ["", CERDO, "44px", "29px", "80%", "58s", "-18s"],
+    ["izq", GALLINA, "26px", "26px", "88%", "34s", "-12s", "0.26s"],
+    ["", GALLINA, "24px", "24px", "92%", "42s", "-30s", "0.3s"],
+  ].map(([dir, img, w, h, y, dur, delay, paso]) => ({
+    clase: `tz-esc-animal${dir ? " tz-esc-izq" : ""}`,
+    estilo: { "--img": img, "--w": w, "--h": h, "--y": y, "--dur": dur, "--delay": delay, ...(paso ? { "--paso": paso } : {}) },
+  })),
+];
 
 // =====================================================================
 // LAVANDERÍA — "Tendedero" (claro: ropa colgada sobre la barra, burbujas
@@ -2464,17 +2704,13 @@ const AIRE_LIMPIO = "linear-gradient(180deg, #cdeef7 0%, #e3f6fb 100%)";
 const tendedero = (S) =>
   construir(S, {
     raiz: [trama(BURBUJAS_JABON, "150px 150px"), capa("linear-gradient(180deg, #f5fbfd 0%, #e6f4f8 100%)")],
-    // Cabecera celeste con burbujas de jabón, la lavadora girando y la
-    // canasta; abajo la cuerda con la ropa colgada sobre la barra.
     cabecera: [
-      capa(TENDEDERO_ROPA, "left 0 bottom 0", "240px 64px", "repeat-x"),
-      capa(LAVADORA, "left 2.5% bottom 52px", "58px 66px"),
-      capa(CANASTA, "right 2.5% bottom 52px", "64px 50px"),
+      capa(LAVADORA, "left 2.5% bottom 12px", "58px 66px"),
+      capa(CANASTA, "right 2.5% bottom 12px", "64px 50px"),
       trama(BURBUJAS_JABON, "150px 150px"),
       capa(AIRE_LIMPIO),
     ],
-    cabeceraEstilo: "padding-bottom: 84px !important; border-bottom: none !important;",
-    borde: { enCabecera: 21, rellenoCabecera: 56 },
+    cabeceraEstilo: "border-bottom: none !important;",
     pie: [capa("linear-gradient(180deg, #38bdf8, #0ea5e9)", "left 0 top 0", "100% 4px"), trama(AZULEJO_CLARO, "30px 30px")],
     pieEstilo: "border-top: none !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.35), transparent 55%)"), capa("linear-gradient(180deg, #22d3ee, #0891b2)")],
@@ -2482,7 +2718,6 @@ const tendedero = (S) =>
     botonPieEstilo: "border-radius: 999px !important; border: 1px solid #0e7490 !important; color: #ffffff !important; box-shadow: 0 4px 10px rgba(8,145,178,0.35) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.25);",
     panel: [capa(JABON_ICONO, "right 8px top 6px", "26px 22px"), capa("linear-gradient(180deg, #ffffff, #f7fcfe)")],
     panelEstilo: "border: 1px solid #bfe6ef !important; box-shadow: 0 6px 16px rgba(14,116,144,0.10) !important;",
-    barra: [capa("linear-gradient(180deg, #ffffff, #f7fcfe)")],
     modal: [capa(JABON_ICONO, "right 12px bottom 12px", "30px 26px"), trama(BURBUJAS_JABON, "150px 150px"), capa("linear-gradient(180deg, #ffffff, #f2fafd)")],
     modalEstilo: "border: 1px solid #a5dcea !important; box-shadow: 0 20px 60px rgba(14,116,144,0.2) !important;",
     tituloEstilo: "color: #0e7490 !important; border-bottom: 2px dashed #f9a8d4; padding-bottom: 8px;",
@@ -2495,7 +2730,10 @@ const tendedero = (S) =>
 ${en(S, ".tz-header .tz-subtitle")} { color: #0e7490 !important; text-shadow: none !important; background: rgba(255,255,255,0.85); padding: 2px 10px; border-radius: 999px; }
 ${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 6px rgba(14,116,144,0.2); }
 ${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(14,116,144,0.3)) !important; }
-${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }`,
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }
+/* La cuerda va justo en la línea de arriba de la barra y la ropa cuelga
+   dentro de ella. */
+${barraPropia(S, [capa(TENDEDERO_ROPA, "left 0 top -5px", "240px 64px", "repeat-x"), capa("linear-gradient(180deg, #ffffff, #f7fcfe)")], "padding-top: 70px !important;")}`,
   });
 
 // =====================================================================
@@ -2536,21 +2774,42 @@ const CORAZONCITO = svg(
 );
 const SATEN_NEGRO = "linear-gradient(160deg, #1f0a1a 0%, #12050f 55%, #0b0309 100%)";
 
+// Besos que aparecen en cualquier parte de la cabecera: se encienden en
+// neón, mandan un corazoncito que sube y se desvanecen (SMIL).
+const LABIOS_PATH = "M4 19 Q16 4 26 9 Q33 4 40 9 Q50 4 62 19 Q50 34 33 34 Q16 34 4 19 Z";
+const BESOS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%'><defs>${BRILLO_NEON}</defs>${[
+    [5, 22, "#ff4fa3", 44, 7, 0],
+    [19, 64, "#c084fc", 34, 9, 2.5],
+    [32, 20, "#fb7185", 30, 8, 5],
+    [61, 14, "#ff4fa3", 36, 10, 1.2],
+    [70, 66, "#c084fc", 42, 7.5, 3.8],
+    [84, 28, "#fb7185", 38, 9.5, 6.2],
+    [91, 70, "#ff4fa3", 30, 8.5, 4.4],
+    [11, 80, "#fb7185", 28, 11, 7.5],
+    [46, 76, "#c084fc", 26, 9, 8.6],
+    [78, 6, "#ff4fa3", 26, 10.5, 0.6],
+  ]
+    .map(([x, y, c, w, dur, begin]) => {
+      const t = `dur='${dur}s' begin='${begin}s' repeatCount='indefinite'`;
+      const a = Math.round(w * 1.45);
+      return `<svg x='${x}%' y='${y}%' width='${a}' height='${(a * 0.58).toFixed(0)}' viewBox='0 0 66 38' overflow='visible'><g opacity='0'><animate attributeName='opacity' values='0;0;1;1;0;0' keyTimes='0;0.04;0.1;0.36;0.58;1' ${t}/><g filter='url(#n)'><path d='${LABIOS_PATH}' fill='${c}'/><path d='M4 19 Q20 21 33 19 Q46 21 62 19' stroke='#2a0618' stroke-width='2.4' fill='none'/></g><path d='${LABIOS_PATH}' fill='none' stroke='#ffffff' stroke-width='1.6' opacity='0'><animate attributeName='opacity' values='0;0;0.9;0;0' keyTimes='0;0.08;0.12;0.22;1' ${t}/></path><g opacity='0'><animate attributeName='opacity' values='0;0;1;0;0' keyTimes='0;0.12;0.2;0.5;1' ${t}/><animateTransform attributeName='transform' type='translate' values='0 0;0 0;10 -34;10 -34' keyTimes='0;0.12;0.5;1' ${t}/><path d='M56 14 C51 10 49 8 49 6 A3 3 0 0 1 56 4.5 A3 3 0 0 1 63 6 C63 8 61 10 56 14 Z' fill='${c}' filter='url(#n)'/></g></g></svg>`;
+    })
+    .join("")}</svg>`
+);
+
 const neonIntimo = (S) =>
   construir(S, {
     raiz: [trama(CORAZONES_TENUES, "130px 130px"), capa("radial-gradient(ellipse 700px 380px at 15% 0%, rgba(255,79,163,0.14), transparent 65%)"), capa("radial-gradient(ellipse 700px 380px at 85% 0%, rgba(192,132,252,0.12), transparent 65%)"), capa("linear-gradient(180deg, #0d0409 0%, #0a0408 100%)")],
-    // Cabecera de terciopelo negro con un corazón y unos labios de neón
-    // titilando y la guirnalda de foquitos-corazón sobre la barra.
+    // Cabecera de terciopelo negro con besos de neón que aparecen y se
+    // desvanecen en cualquier parte.
     cabecera: [
-      capa(LUCES_CORAZON, "left 0 bottom 0", "96px 34px", "repeat-x"),
-      capa(NEON_CORAZON, "left 2.5% bottom 38px", "58px 52px"),
-      capa(NEON_LABIOS, "right 2.5% bottom 44px", "66px 38px"),
+      capa(BESOS, "0 0", "100% 100%"),
       trama(CORAZONES_TENUES, "130px 130px"),
       capa("radial-gradient(ellipse 60% 90% at 50% 100%, rgba(255,79,163,0.18), transparent 70%)"),
       capa("linear-gradient(180deg, #170612 0%, #220a1b 100%)"),
     ],
-    cabeceraEstilo: "padding-bottom: 50px !important; border-bottom: none !important; box-shadow: 0 6px 22px rgba(255,79,163,0.15);",
-    borde: { enCabecera: 14, rellenoCabecera: 34 },
+    cabeceraEstilo: "border-bottom: none !important; box-shadow: 0 6px 22px rgba(255,79,163,0.15);",
     pie: [capa(LUCES_CORAZON, "left 0 top 0", "96px 34px", "repeat-x"), capa(ANTIFAZ, "left 4% bottom 12px", "50px 24px"), capa(ANTIFAZ, "right 4% bottom 12px", "50px 24px"), capa(SATEN_NEGRO)],
     pieEstilo: "border-top: 1px solid rgba(255,79,163,0.4) !important; padding-top: 40px !important;",
     boton: [capa(SATEN_NEGRO)],
@@ -2558,7 +2817,6 @@ const neonIntimo = (S) =>
     botonPieEstilo: "border-radius: 999px !important; border: 1.5px solid #c084fc !important; color: #f3e8ff !important; box-shadow: 0 0 12px rgba(192,132,252,0.45), inset 0 0 8px rgba(192,132,252,0.2) !important; text-shadow: 0 0 6px rgba(192,132,252,0.7);",
     panel: [capa(CORAZONCITO, "right 9px top 9px", "18px 16px"), capa("linear-gradient(155deg, rgba(255,255,255,0.05) 0%, transparent 35%)"), capa(SATEN_NEGRO)],
     panelEstilo: "border: 1px solid rgba(255,79,163,0.45) !important; box-shadow: 0 0 14px rgba(255,79,163,0.12), 0 8px 18px rgba(0,0,0,0.55) !important;",
-    barra: [capa("linear-gradient(155deg, rgba(255,255,255,0.05) 0%, transparent 35%)"), capa(SATEN_NEGRO)],
     modal: [capa(ANTIFAZ, "right 12px bottom 12px", "44px 21px"), trama(CORAZONES_TENUES, "130px 130px"), capa(SATEN_NEGRO)],
     modalEstilo: "border: 1px solid #ff4fa3 !important; box-shadow: 0 0 30px rgba(255,79,163,0.25), 0 20px 60px rgba(0,0,0,0.75) !important;",
     tituloEstilo: "color: #ffd1e8 !important; text-shadow: 0 0 10px rgba(255,79,163,0.7); border-bottom: 1px solid rgba(255,79,163,0.6); padding-bottom: 8px;",
@@ -2567,7 +2825,9 @@ const neonIntimo = (S) =>
     activa: [capa("linear-gradient(135deg, #ff4fa3 0%, #c084fc 100%)")],
     activaEstilo: "border-color: #86198f !important; color: #ffffff !important; box-shadow: 0 0 16px rgba(255,79,163,0.55) !important; text-shadow: 0 1px 2px rgba(0,0,0,0.35);",
     campoEstilo: "background: #0b0309 !important; border: 1px solid rgba(255,79,163,0.4) !important;",
-    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 32px !important; }`,
+    extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 32px !important; }
+/* La guirnalda de corazones va DENTRO de la barra, como en el pie. */
+${barraPropia(S, [capa(LUCES_CORAZON, "left 0 top 0", "96px 34px", "repeat-x"), capa("linear-gradient(155deg, rgba(255,255,255,0.05) 0%, transparent 35%)"), capa(SATEN_NEGRO)], "padding-top: 44px !important; border-top: 1px solid rgba(255,79,163,0.4) !important;")}`,
   });
 
 // =====================================================================
@@ -2862,7 +3122,8 @@ export const TEMATICOS = [
     nombre: "Espuma",
     descripcion: "Agua, burbujas que suben, espuma, esponja y un auto que brilla",
     paleta: { id: "tematico-espuma", nombre: "Espuma", modo: "oscuro", principal: "#7dd3fc", secundario: "#f0abfc", acento: "#fde047", botones: "#bae6fd", fondo1: "#03111f", fondo2: "#0a2340" },
-    muestra: `${AUTO_BRILLO} right 8px top 8px / 44px 21px no-repeat, ${ESPUMA} left 0 bottom 0 / 60px 20px repeat-x, ${BURBUJAS_VIVAS} 0 0 / 100px 100px, linear-gradient(180deg, #0f4c81, #03111f)`,
+    muestra: `${AUTO_BRILLO} right 8px top 8px / 44px 21px no-repeat, ${ESPUMA_VIVA} left 0 bottom 0 / 80px 31px repeat-x, ${GOTAS_AGUA} 0 0 / 50px 50px, linear-gradient(180deg, #0f4c81, #03111f)`,
+    escena: ESCENA_ESPUMA,
     css: espuma,
   },
   {
@@ -2872,6 +3133,7 @@ export const TEMATICOS = [
     descripcion: "Hoja rayada con espiral, lápices de colores, cinta y clips",
     paleta: { id: "tematico-cuaderno", nombre: "Cuaderno", modo: "claro", principal: "#1d4ed8", secundario: "#be123c", acento: "#a16207", botones: "#1e3a8a", fondo1: "#fdfdf8", fondo2: "#f3f1e6" },
     muestra: `${ESPIRAL} left 0 top 0 / 20px 17px repeat-x, ${LAPICES} left 0 bottom 0 / 90px 31px repeat-x, ${MARGEN}, ${RENGLONES}, ${HOJA_PAPEL}`,
+    escena: ESCENA_CUADERNO,
     css: cuaderno,
   },
   {
@@ -2899,6 +3161,7 @@ export const TEMATICOS = [
     descripcion: "Granero rojo, cerco de madera, huellas, herradura y sacos",
     paleta: { id: "tematico-granja", nombre: "Granja", modo: "oscuro", principal: "#fde68a", secundario: "#fca5a5", acento: "#bbf7d0", botones: "#fde68a", fondo1: "#0f1a0c", fondo2: "#1f3318" },
     muestra: `${GRANERO} right 8px top 6px / 34px 27px no-repeat, ${CERCO} left 0 bottom 0 / 60px 35px repeat-x, ${TABLAS_GRANERO}`,
+    escena: ESCENA_GRANJA,
     css: granja,
   },
   {
