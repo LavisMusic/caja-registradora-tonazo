@@ -125,6 +125,40 @@ const montado = (S, { img, tam, arriba, alto }) => `
 ${BARRA(S)} { position: relative; overflow: visible !important; }
 ${BARRA(S, "::before")} { content: ""; position: absolute; left: 0; right: 0; top: ${-arriba}px; height: ${alto}px; background: ${img} left 0 top 0 / ${tam} repeat-x; pointer-events: none; z-index: 2; }`;
 
+// CELULAR (pantallas angostas): la cabecera pone los botones en dos
+// columnas que llegan casi hasta abajo — los adornos de las esquinas de
+// abajo chocarían con ellos, así que se ocultan (las franjas, las
+// animaciones a todo el ancho y los adornos de arriba se quedan). Los
+// medidores son angostos: van sin el objeto de la esquina y con relleno
+// normal, para que no tapen la etiqueta ni aprieten los números.
+const esObjetoAbajo = (c) => esObjeto(c) && /bottom/.test(c.pos || "") && !String(c.size || "").startsWith("100%");
+// (Si la cabecera anima las posiciones de sus capas —Marino— no se
+// toca: quitar capas descuadraría la animación.)
+const cabeceraMovil = (d) =>
+  /animation\s*:/.test(d.cabeceraEstilo || "") ? d.cabecera : d.cabecera.filter((c, i) => (d.borde && i === 0) || !esObjetoAbajo(c));
+function movil(S, d) {
+  const cab = cabeceraMovil(d);
+  const cambia = cab.length !== d.cabecera.length;
+  let conBarra = "";
+  if (!cambia) {
+    // Sin capas que quitar: no se vuelve a declarar el fondo (un
+    // !important congelaría las animaciones de posición de la cabecera).
+  } else if (d.puente) {
+    const { img, ancho, alto, enCabecera, x = "right 18px" } = d.puente;
+    conBarra = `${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { ${fondo([capa(img, `${x} bottom ${enCabecera - alto}px`, `${ancho}px ${alto}px`), ...cab])} }`;
+  } else if (d.borde) {
+    const alto = parseFloat(cab[0].size.split(" ")[1]);
+    const pos = cab.map((c, i) => (i === 0 ? `left 0 bottom ${d.borde.enCabecera - alto}px` : c.pos || "0 0")).join(", ");
+    conBarra = `${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { ${fondo(cab)} background-position: ${pos} !important; }`;
+  }
+  return `
+@media (max-width: 560px) {
+  ${cambia ? `${en(S, ".tz-header")} { ${fondo(cab)} }` : ""}
+  ${conBarra}
+  ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { ${fondo(sinObjetos(d.panel))} padding-left: 10px !important; padding-right: 10px !important; }
+}`;
+}
+
 function construir(S, d) {
   return `
 ${en(S)} { ${fondo(d.raiz)} }
@@ -145,6 +179,7 @@ ${CAMPOS(S)} { ${d.campoEstilo || ""} }
 ${d.puente ? puente(S, d) : ""}
 ${d.borde ? borde(S, d) : ""}
 ${d.extra ? d.extra(S) : ""}
+${movil(S, d)}
 `;
 }
 
@@ -2138,15 +2173,16 @@ const ESPUMA_VIVA = svg(
     .map(([x, y, r, dur, delay]) => `<circle cx='${x}' cy='${y}' r='${r}'><animate attributeName='r' values='${r};${(r * 1.1).toFixed(1)};${r}' dur='${dur.toFixed(1)}s' begin='-${delay.toFixed(1)}s' repeatCount='indefinite'/></circle>`)
     .join("")}</g><g fill='#f8fdff' opacity='.85'>${[10, 33, 57, 81, 104].map((x) => `<circle cx='${x}' cy='42' r='2.6'/>`).join("")}</g><g fill='#ffffff'>${[4, 34, 64, 94].map((x) => `<ellipse cx='${x}' cy='9' rx='2.4' ry='1.4'/>`).join("")}</g></svg>`
 );
-// Auto de perfil mirando a la izquierda (avanza hacia la izquierda).
-const autoPerfil = `<g transform='translate(90 0) scale(-1.25 1.25)'><path d='M4 24 Q4 17 10 16 L20 15 L28 8 Q31 6 36 6 H48 Q52 6 55 9 L61 15 Q68 16 68 22 V25 H4 Z' fill='#2563eb' stroke='#1e3a8a' stroke-width='1'/><path d='M23 15 L30 9 H40 V15 Z M43 15 V9 H48 Q51 9 53 11 L57 15 Z' fill='#bfdbfe'/><path d='M10 18 H60' stroke='rgba(255,255,255,0.55)' stroke-width='1.6' stroke-linecap='round'/><circle cx='18' cy='25' r='5.5' fill='#111827'/><circle cx='18' cy='25' r='2.4' fill='#cbd5e1'/><circle cx='54' cy='25' r='5.5' fill='#111827'/><circle cx='54' cy='25' r='2.4' fill='#cbd5e1'/></g>`;
+// Auto de perfil: el dibujo ya mira a la izquierda (capó largo a la
+// izquierda), hacia donde avanza.
+const autoPerfil = `<g transform='scale(1.25)'><path d='M4 24 Q4 17 10 16 L20 15 L28 8 Q31 6 36 6 H48 Q52 6 55 9 L61 15 Q68 16 68 22 V25 H4 Z' fill='#2563eb' stroke='#1e3a8a' stroke-width='1'/><path d='M23 15 L30 9 H40 V15 Z M43 15 V9 H48 Q51 9 53 11 L57 15 Z' fill='#bfdbfe'/><path d='M10 18 H60' stroke='rgba(255,255,255,0.55)' stroke-width='1.6' stroke-linecap='round'/><circle cx='18' cy='25' r='5.5' fill='#111827'/><circle cx='18' cy='25' r='2.4' fill='#cbd5e1'/><circle cx='54' cy='25' r='5.5' fill='#111827'/><circle cx='54' cy='25' r='2.4' fill='#cbd5e1'/></g>`;
 // La escena del lavado (dura 14 s y se repite): el auto entra SUCIO por
 // la derecha perseguido por la esponja; a mitad de camino lo alcanza,
 // los dos van a media velocidad mientras la esponja tiembla limpiando,
 // estalla un poco de espuma y el auto sale limpio con estrellitas.
 const LAVADO_T = "dur='14s' repeatCount='indefinite'";
 const LAVADO_AUTO = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='82'><svg x='105%' y='27' width='90' height='46' overflow='visible'><animate attributeName='x' values='105%;52%;34%;-30%;-30%' keyTimes='0;0.35;0.62;0.85;1' ${LAVADO_T}/>${autoPerfil}<g fill='#7c5a3a' opacity='.85'><animate attributeName='opacity' values='.85;.85;0;0;.85' keyTimes='0;0.5;0.6;0.99;1' ${LAVADO_T}/><ellipse cx='26' cy='24' rx='7' ry='3.5'/><ellipse cx='50' cy='27' rx='9' ry='3'/><ellipse cx='70' cy='22' rx='5' ry='3'/><ellipse cx='40' cy='12' rx='5' ry='2'/><circle cx='15' cy='29' r='2.2'/><circle cx='80' cy='28' r='2'/></g><g><animateTransform attributeName='transform' type='translate' values='230 -4;72 -4;30 -4;62 -4;26 -4;58 -4;40 -4;40 -4;230 -4' keyTimes='0;0.35;0.4;0.45;0.5;0.55;0.6;0.99;1' ${LAVADO_T}/><g><animate attributeName='opacity' values='1;1;0;0;1' keyTimes='0;0.6;0.66;0.99;1' ${LAVADO_T}/><g><animateTransform attributeName='transform' type='rotate' values='0 15 11;0 15 11;-14 15 11;12 15 11;-14 15 11;12 15 11;-12 15 11;0 15 11;0 15 11' keyTimes='0;0.35;0.39;0.43;0.47;0.51;0.55;0.6;1' ${LAVADO_T}/><rect x='1' y='6' width='28' height='15' rx='4' fill='#facc15' stroke='#a16207' stroke-width='1'/><rect x='1' y='2' width='28' height='6' rx='3' fill='#22c55e' stroke='#15803d' stroke-width='1'/><g fill='#ca8a04'><circle cx='7' cy='12' r='1.4'/><circle cx='14' cy='16' r='1.2'/><circle cx='21' cy='11' r='1.5'/></g></g></g></g><g fill='#f8fdff' stroke='rgba(125,211,252,0.7)' stroke-width='.8'>${[
+  `<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='82'><svg x='105%' y='34' width='90' height='46' overflow='visible'><animate attributeName='x' values='105%;52%;34%;-30%;-30%' keyTimes='0;0.35;0.62;0.85;1' ${LAVADO_T}/>${autoPerfil}<g fill='#7c5a3a' opacity='.85'><animate attributeName='opacity' values='.85;.85;0;0;.85' keyTimes='0;0.5;0.6;0.99;1' ${LAVADO_T}/><ellipse cx='26' cy='24' rx='7' ry='3.5'/><ellipse cx='50' cy='27' rx='9' ry='3'/><ellipse cx='70' cy='22' rx='5' ry='3'/><ellipse cx='40' cy='12' rx='5' ry='2'/><circle cx='15' cy='29' r='2.2'/><circle cx='80' cy='28' r='2'/></g><g><animateTransform attributeName='transform' type='translate' values='230 -4;72 -4;30 -4;62 -4;26 -4;58 -4;40 -4;40 -4;230 -4' keyTimes='0;0.35;0.4;0.45;0.5;0.55;0.6;0.99;1' ${LAVADO_T}/><g><animate attributeName='opacity' values='1;1;0;0;1' keyTimes='0;0.6;0.66;0.99;1' ${LAVADO_T}/><g><animateTransform attributeName='transform' type='rotate' values='0 15 11;0 15 11;-14 15 11;12 15 11;-14 15 11;12 15 11;-12 15 11;0 15 11;0 15 11' keyTimes='0;0.35;0.39;0.43;0.47;0.51;0.55;0.6;1' ${LAVADO_T}/><rect x='1' y='6' width='28' height='15' rx='4' fill='#facc15' stroke='#a16207' stroke-width='1'/><rect x='1' y='2' width='28' height='6' rx='3' fill='#22c55e' stroke='#15803d' stroke-width='1'/><g fill='#ca8a04'><circle cx='7' cy='12' r='1.4'/><circle cx='14' cy='16' r='1.2'/><circle cx='21' cy='11' r='1.5'/></g></g></g></g><g fill='#f8fdff' stroke='rgba(125,211,252,0.7)' stroke-width='.8'>${[
     [45, 18, 0],
     [25, 22, 0.01],
     [66, 20, 0.02],
@@ -2173,8 +2209,8 @@ const espuma = (S) =>
     raiz: [trama(GOTAS_AGUA, "60px 60px"), capa(AGUA_LAVADO)],
     cabecera: [capa(LAVADO_AUTO, "left 0 bottom 0", "100% 82px"), capa("radial-gradient(ellipse 70% 60% at 50% 0%, rgba(186,230,253,0.18), transparent 70%)"), capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)")],
     cabeceraEstilo: "padding-bottom: 78px !important; border-bottom: none !important;",
-    pie: [capa(ESPUMA_VIVA, "left 0 top -6px", "120px 46px", "repeat-x"), trama(GOTAS_AGUA, "60px 60px"), capa("linear-gradient(180deg, #0a3561, #03111f)")],
-    pieEstilo: "border-top: none !important; padding-top: 44px !important;",
+    pie: [capa(ESPUMA_VIVA, "left 0 top 0", "120px 46px", "repeat-x"), trama(GOTAS_AGUA, "60px 60px"), capa("linear-gradient(180deg, #0a3561, #03111f)")],
+    pieEstilo: "border-top: none !important; padding-top: 50px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.4), transparent 50%)"), capa("linear-gradient(180deg, #38bdf8, #0284c7)")],
     botonEstilo: "border: 1px solid #075985 !important; color: #ffffff !important; box-shadow: 0 3px 10px rgba(2,132,199,0.4) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.35); border-radius: 999px !important;",
     botonPieEstilo: "border-radius: 999px !important; border: 1px solid #075985 !important; color: #ffffff !important; box-shadow: 0 4px 12px rgba(2,132,199,0.45) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.35);",
@@ -2269,17 +2305,17 @@ const KRAFT = "linear-gradient(180deg, #d1a777 0%, #b88b5a 100%)";
 
 // Lápices cortos acostados dentro de la barra de filtros.
 const LAPICES_CORTOS = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='28'>${[
-    ["#ef4444", 2],
-    ["#f97316", 4],
-    ["#facc15", 1],
-    ["#22c55e", 5],
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='34'>${[
+    ["#ef4444", 0],
+    ["#f97316", 0],
+    ["#facc15", 0],
+    ["#22c55e", 0],
     ["#3b82f6", 0],
-    ["#a855f7", 3],
+    ["#a855f7", 0],
   ]
     .map(([c, dy], i) => {
       const x = 4 + i * 20;
-      return `<g transform='translate(${x} ${dy})'><rect x='0' y='0' width='12' height='14' fill='${c}'/><rect x='4' y='0' width='4' height='14' fill='rgba(255,255,255,0.22)'/><rect x='0' y='0' width='12' height='2.5' fill='rgba(0,0,0,0.15)'/><path d='M0 14 L6 22 L12 14 Z' fill='#f5d0a9'/><path d='M3.8 19 L6 22 L8.2 19 Z' fill='${c}'/></g>`;
+      return `<g transform='translate(${x} ${dy})'><rect x='0' y='0' width='12' height='22' fill='${c}'/><rect x='4' y='0' width='4' height='22' fill='rgba(255,255,255,0.22)'/><rect x='0' y='0' width='12' height='2.5' fill='rgba(0,0,0,0.15)'/><path d='M0 22 L6 30 L12 22 Z' fill='#f5d0a9'/><path d='M3.8 27 L6 30 L8.2 27 Z' fill='${c}'/></g>`;
     })
     .join("")}</svg>`
 );
@@ -2321,7 +2357,7 @@ ${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-
 ${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(30,41,59,0.25)) !important; }
 ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 14px !important; }
 /* Los lápices van acostados DENTRO de la barra (más alta arriba). */
-${barraPropia(S, [capa(LAPICES_CORTOS, "left 0 top 8px", "120px 28px", "repeat-x"), capa(HOJA_PAPEL)], "padding-top: 46px !important;")}
+${barraPropia(S, [capa(LAPICES_CORTOS, "left 0 top 0", "120px 34px", "repeat-x"), capa(HOJA_PAPEL)], "padding-top: 46px !important;")}
 /* ---- Escena: hoja + útiles que caen de vez en cuando ---- */
 ${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
 ${en(S, ".tz-esc-hoja")} { position: absolute; inset: 0; background: ${MARGEN}, ${RENGLONES}, ${HOJA_PAPEL}; }
@@ -2580,17 +2616,47 @@ const PASTO_FRENTE = svg(
 const PASTO_TRAMA = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' width='70' height='70'><g stroke='rgba(20,83,45,0.35)' stroke-width='1.3' stroke-linecap='round'><path d='M10 20 l-2 -6 M12 20 l1 -7 M14 20 l3 -5'/><path d='M48 52 l-2 -6 M50 52 l1 -7 M52 52 l3 -5'/><path d='M40 14 l-1 -5 M42 14 l2 -5'/></g><g fill='#fde047'><circle cx='26' cy='44' r='1.6'/><circle cx='60' cy='24' r='1.4'/></g><g fill='#ffffff'><circle cx='28' cy='42' r='1'/><circle cx='24' cy='42' r='1'/></g></svg>`
 );
+// Pasto con matas en posiciones "al azar" (generador fijo, así siempre
+// sale igual): dos baldosas de tamaños que no coinciden, sin patrón a
+// la vista.
+const azar = (semilla) => {
+  let x = semilla;
+  return () => (x = (x * 9301 + 49297) % 233280) / 233280;
+};
+const pastoAlAzar = (w, h, n, semilla, flores) => {
+  const r = azar(semilla);
+  let m = "";
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(r() * w);
+    const y = Math.round(r() * h);
+    m += `<path d='M${x} ${y} l-2 -6 M${x + 2} ${y} l1 -7 M${x + 4} ${y} l3 -5' stroke='rgba(20,83,45,${(0.25 + r() * 0.2).toFixed(2)})' stroke-width='1.3' stroke-linecap='round'/>`;
+  }
+  for (let i = 0; i < flores; i++) {
+    const x = Math.round(r() * w);
+    const y = Math.round(r() * h);
+    m += r() > 0.5 ? `<circle cx='${x}' cy='${y}' r='1.6' fill='#fde047'/>` : `<g fill='#ffffff'><circle cx='${x}' cy='${y}' r='1.1'/><circle cx='${x + 2.4}' cy='${y}' r='1.1'/><circle cx='${x + 1.2}' cy='${y - 2}' r='1.1'/></g>`;
+  }
+  return svg(`<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}'>${m}</svg>`);
+};
+const PASTO_AZAR_A = pastoAlAzar(331, 287, 18, 7, 6);
+const PASTO_AZAR_B = pastoAlAzar(229, 263, 12, 41, 4);
+// Hojas de pasto que sobresalen de la barra sobre la madera de la
+// cabecera (franja montada; abajo, del mismo verde de la barra).
+const PASTO_ALTO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='60' height='30'><rect x='0' y='22' width='60' height='8' fill='#4fb535'/><path d='M0 30 L2 16 L4 24 L7 8 L10 24 L12 14 L14 24 L17 4 L20 24 L22 12 L25 24 L28 6 L31 24 L33 15 L35 24 L38 2 L41 24 L43 13 L46 24 L49 7 L52 24 L54 16 L56 24 L58 9 L60 24 V30 Z' fill='#4fb535'/><path d='M7 8 L8 22 M17 4 L17.5 22 M28 6 L28.5 22 M38 2 L38.5 22 M49 7 L49.5 22 M58 9 L58.5 22' stroke='#7fdc56' stroke-width='.9'/><path d='M2 16 L3 24 M12 14 L12.5 24 M22 12 L22.5 24 M33 15 L33.5 24 M43 13 L43.5 24 M54 16 L54.5 24' stroke='#3a9a26' stroke-width='.9'/></svg>`
+);
+const PASTO_BLOQUE = "#4fb535";
 const PASTO_VIVO = "linear-gradient(180deg, #8be05a 0%, #5cbf3a 45%, #47a52e 100%)";
 const PRADERA_VIVA = "linear-gradient(180deg, #3aa33a 0%, #2f9134 50%, #257d2b 100%)";
 
 const granja = (S) =>
   construir(S, {
     // En la app real el prado con los animales lo dibuja la ESCENA.
-    raiz: [trama(PASTO_TRAMA, "70px 70px"), capa(PRADERA_VIVA)],
-    cabecera: [capa("linear-gradient(180deg, #f8fafc, #e5e7eb)", "left 0 bottom 0", "100% 6px"), capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.4))"), capa(TABLAS_GRANERO)],
+    raiz: [trama(PASTO_AZAR_A, "331px 287px"), capa(PASTO_AZAR_B, "97px 61px", "229px 263px", "repeat"), capa(PRADERA_VIVA)],
+    cabecera: [capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.4))"), capa(TABLAS_GRANERO)],
     cabeceraEstilo: "border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.35);",
     // Pie: solo pasto con el cerco plantado.
-    pie: [capa(PASTO_FRENTE, "left 0 top 40px", "44px 18px", "repeat-x"), capa(CERCO, "left 0 top 4px", "80px 46px", "repeat-x"), trama(PASTO_TRAMA, "70px 70px"), capa(PASTO_VIVO)],
+    pie: [capa(PASTO_FRENTE, "left 0 top 40px", "44px 18px", "repeat-x"), capa(CERCO, "left 0 top 4px", "80px 46px", "repeat-x"), trama(PASTO_AZAR_B, "229px 263px"), capa(PASTO_BLOQUE)],
     pieEstilo: "border-top: none !important; padding-top: 62px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.3), transparent 55%)"), capa("linear-gradient(180deg, #fde68a, #eab308)")],
     botonEstilo: "border: 1px solid #854d0e !important; color: #3b2a06 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.4) !important; font-weight: 800;",
@@ -2609,50 +2675,63 @@ const granja = (S) =>
 ${en(S, ".tz-header .tz-subtitle")} { color: #fde68a !important; background: rgba(40,10,10,0.75); padding: 2px 10px; border-radius: 999px; }
 ${en(S, ".tz-header .tz-conn-indicator")} { background: rgba(20,12,6,0.85) !important; }
 ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !important; }
-/* Barra = césped vivo: el granero y el saco parados en el pasto, vacas
-   pastando detrás del cerco plantado y matas de pasto delante. */
+/* Barra = un solo bloque de césped con el cerco plantado; el pasto
+   sobresale por arriba, sobre la madera de la cabecera. */
 ${barraPropia(
   S,
   [
-    capa(SACO, "right 3% top 30px", "40px 47px"),
-    capa(PASTO_FRENTE, "left 0 top 58px", "44px 18px", "repeat-x"),
-    capa(CERCO, "left 0 top 24px", "80px 46px", "repeat-x"),
-    capa(GRANERO, "left 1.5% top 6px", "74px 59px"),
-    capa(VACAS_BARRA, "left 0 top 2px", "100% 52px"),
-    trama(PASTO_TRAMA, "70px 70px"),
-    capa(PASTO_VIVO),
+    capa(PASTO_FRENTE, "left 0 top 50px", "44px 18px", "repeat-x"),
+    capa(CERCO, "left 0 top 14px", "80px 46px", "repeat-x"),
+    trama(PASTO_AZAR_B, "229px 263px"),
+    capa(PASTO_BLOQUE),
   ],
-  "padding-top: 82px !important;"
+  "padding-top: 74px !important;"
 )}
+${montado(S, { img: PASTO_ALTO, tam: "60px 30px", arriba: 20, alto: 30 })}
+${BARRA(S, " .tz-admin-filter-tag")} { background: #14532d !important; color: #ecfccb !important; border-color: #86efac !important; box-shadow: 0 2px 6px rgba(0,0,0,0.25) !important; }
 ${BARRA(S, " .tz-admin-filter-label")} { color: #14532d !important; text-shadow: none !important; background: rgba(255,255,255,0.8); padding: 1px 10px; border-radius: 999px; }
 /* ---- Escena: prado con animales paseando (estilo granja) ---- */
 ${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
-${en(S, ".tz-esc-prado")} { position: absolute; inset: 0; background: ${PASTO_TRAMA} 0 0 / 70px 70px repeat, ${PRADERA_VIVA}; }
+${en(S, ".tz-esc-prado")} { position: absolute; inset: 0; background: ${PASTO_AZAR_A} 0 0 / 331px 287px repeat, ${PASTO_AZAR_B} 97px 61px / 229px 263px repeat, ${PRADERA_VIVA}; }
 ${en(S, ".tz-esc-animal")} {
   position: absolute; left: 0; top: var(--y);
   width: var(--w); height: var(--h);
   background: var(--img) center / contain no-repeat;
+  --nod: 9deg;
   animation: tz-gra-der var(--dur) linear var(--delay) infinite, tz-gra-paso var(--paso, 0.5s) ease-in-out infinite alternate;
-  will-change: translate;
+  will-change: translate, transform;
 }
-${en(S, ".tz-esc-izq")} { scale: -1 1; animation-name: tz-gra-izq, tz-gra-paso; }
-@keyframes tz-gra-der { 0% { translate: -14vw 0; } 40% { translate: 38vw 0; } 56% { translate: 38vw 0; } 100% { translate: 112vw 0; } }
-@keyframes tz-gra-izq { 0% { translate: 112vw 0; } 44% { translate: 56vw 0; } 60% { translate: 56vw 0; } 100% { translate: -14vw 0; } }
-@keyframes tz-gra-paso { from { rotate: -2.5deg; } to { rotate: 2.5deg; } }`,
+${en(S, ".tz-esc-izq")} { scale: -1 1; --nod: -9deg; animation-name: tz-gra-izq, tz-gra-paso; }
+/* Caminan, se detienen a comer (bajan la cabeza unas veces) y siguen. */
+@keyframes tz-gra-der {
+  0% { translate: -16vw 0; rotate: 0deg; }
+  17% { translate: 12vw 0; rotate: 0deg; } 19% { rotate: var(--nod); } 21% { rotate: 0deg; } 23% { rotate: var(--nod); } 25% { translate: 12vw 0; rotate: 0deg; }
+  45% { translate: 42vw 0; rotate: 0deg; } 47% { rotate: var(--nod); } 49% { rotate: 0deg; } 51% { rotate: var(--nod); } 53% { translate: 42vw 0; rotate: 0deg; }
+  73% { translate: 74vw 0; rotate: 0deg; } 75% { rotate: var(--nod); } 77% { rotate: 0deg; } 79% { rotate: var(--nod); } 81% { translate: 74vw 0; rotate: 0deg; }
+  100% { translate: 114vw 0; rotate: 0deg; }
+}
+@keyframes tz-gra-izq {
+  0% { translate: 114vw 0; rotate: 0deg; }
+  17% { translate: 82vw 0; rotate: 0deg; } 19% { rotate: var(--nod); } 21% { rotate: 0deg; } 23% { rotate: var(--nod); } 25% { translate: 82vw 0; rotate: 0deg; }
+  45% { translate: 50vw 0; rotate: 0deg; } 47% { rotate: var(--nod); } 49% { rotate: 0deg; } 51% { rotate: var(--nod); } 53% { translate: 50vw 0; rotate: 0deg; }
+  73% { translate: 18vw 0; rotate: 0deg; } 75% { rotate: var(--nod); } 77% { rotate: 0deg; } 79% { rotate: var(--nod); } 81% { translate: 18vw 0; rotate: 0deg; }
+  100% { translate: -16vw 0; rotate: 0deg; }
+}
+@keyframes tz-gra-paso { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }`,
   });
 
 const ESCENA_GRANJA = [
   { clase: "tz-esc-prado" },
   ...[
-    ["", VACA, "70px", "46px", "22%", "70s", "-10s"],
-    ["izq", OVEJA, "48px", "34px", "34%", "60s", "-25s"],
-    ["", GALLINA, "28px", "28px", "44%", "38s", "-5s", "0.28s"],
-    ["izq", CERDO, "48px", "32px", "52%", "64s", "-40s"],
-    ["", OVEJA, "44px", "31px", "61%", "56s", "-30s"],
-    ["izq", VACA, "64px", "42px", "70%", "80s", "-55s"],
-    ["", CERDO, "44px", "29px", "80%", "58s", "-18s"],
-    ["izq", GALLINA, "26px", "26px", "88%", "34s", "-12s", "0.26s"],
-    ["", GALLINA, "24px", "24px", "92%", "42s", "-30s", "0.3s"],
+    ["", VACA, "112px", "74px", "22%", "80s", "-10s"],
+    ["izq", OVEJA, "78px", "55px", "34%", "70s", "-25s"],
+    ["", GALLINA, "44px", "44px", "44%", "50s", "-5s", "0.28s"],
+    ["izq", CERDO, "78px", "52px", "52%", "74s", "-40s"],
+    ["", OVEJA, "72px", "51px", "61%", "66s", "-30s"],
+    ["izq", VACA, "104px", "68px", "70%", "90s", "-55s"],
+    ["", CERDO, "72px", "48px", "80%", "68s", "-18s"],
+    ["izq", GALLINA, "42px", "42px", "88%", "46s", "-12s", "0.26s"],
+    ["", GALLINA, "38px", "38px", "92%", "54s", "-30s", "0.3s"],
   ].map(([dir, img, w, h, y, dur, delay, paso]) => ({
     clase: `tz-esc-animal${dir ? " tz-esc-izq" : ""}`,
     estilo: { "--img": img, "--w": w, "--h": h, "--y": y, "--dur": dur, "--delay": delay, ...(paso ? { "--paso": paso } : {}) },
@@ -2671,6 +2750,10 @@ const pinzaRopa = (x) => `<rect x='${x}' y='2' width='3' height='8' rx='1' fill=
 // Cuerda con ropa colgada (franja repeat-x; la cuerda empalma a y = 6).
 const TENDEDERO_ROPA = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' width='180' height='48'><path d='M0 6 Q90 12 180 6' stroke='#64748b' stroke-width='1.4' fill='none'/>${toalla(8, 8, "#7dd3fc")}${pinzaRopa(10)}${pinzaRopa(22)}${polo(32, 9, "#fda4af", 1.05)}${pinzaRopa(40)}${pinzaRopa(53)}${calcetin(66, 10, "#c4b5fd", -4)}${calcetin(78, 10, "#c4b5fd", 4)}${pinzaRopa(68)}${pinzaRopa(80)}${toalla(98, 10, "#fde68a")}${pinzaRopa(100)}${pinzaRopa(112)}${polo(124, 9, "#86efac", 1.05)}${pinzaRopa(132)}${pinzaRopa(145)}${calcetin(158, 9, "#7dd3fc", 2)}${pinzaRopa(160)}</svg>`
+);
+// Sin cuerda: las pinzas se agarran del borde superior de la barra.
+const TENDEDERO_BORDE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='180' height='48'>${toalla(8, 8, "#7dd3fc")}${pinzaRopa(10)}${pinzaRopa(22)}${polo(32, 9, "#fda4af", 1.05)}${pinzaRopa(40)}${pinzaRopa(53)}${calcetin(66, 10, "#c4b5fd", -4)}${calcetin(78, 10, "#c4b5fd", 4)}${pinzaRopa(68)}${pinzaRopa(80)}${toalla(98, 10, "#fde68a")}${pinzaRopa(100)}${pinzaRopa(112)}${polo(124, 9, "#86efac", 1.05)}${pinzaRopa(132)}${pinzaRopa(145)}${calcetin(158, 9, "#7dd3fc", 2)}${pinzaRopa(160)}</svg>`
 );
 // Burbujas de jabón tornasoladas que suben (SMIL).
 const BURBUJAS_JABON = svg(
@@ -2704,12 +2787,7 @@ const AIRE_LIMPIO = "linear-gradient(180deg, #cdeef7 0%, #e3f6fb 100%)";
 const tendedero = (S) =>
   construir(S, {
     raiz: [trama(BURBUJAS_JABON, "150px 150px"), capa("linear-gradient(180deg, #f5fbfd 0%, #e6f4f8 100%)")],
-    cabecera: [
-      capa(LAVADORA, "left 2.5% bottom 12px", "58px 66px"),
-      capa(CANASTA, "right 2.5% bottom 12px", "64px 50px"),
-      trama(BURBUJAS_JABON, "150px 150px"),
-      capa(AIRE_LIMPIO),
-    ],
+    cabecera: [trama(BURBUJAS_JABON, "150px 150px"), capa(AIRE_LIMPIO)],
     cabeceraEstilo: "border-bottom: none !important;",
     pie: [capa("linear-gradient(180deg, #38bdf8, #0ea5e9)", "left 0 top 0", "100% 4px"), trama(AZULEJO_CLARO, "30px 30px")],
     pieEstilo: "border-top: none !important;",
@@ -2733,7 +2811,7 @@ ${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(14,116,144,0.3)) !imp
 ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }
 /* La cuerda va justo en la línea de arriba de la barra y la ropa cuelga
    dentro de ella. */
-${barraPropia(S, [capa(TENDEDERO_ROPA, "left 0 top -5px", "240px 64px", "repeat-x"), capa("linear-gradient(180deg, #ffffff, #f7fcfe)")], "padding-top: 70px !important;")}`,
+${barraPropia(S, [capa(TENDEDERO_BORDE, "left 0 top -4px", "240px 64px", "repeat-x"), capa("linear-gradient(180deg, #ffffff, #f7fcfe)")], "padding-top: 70px !important; border-top: 3px solid #64748b !important;")}`,
   });
 
 // =====================================================================
