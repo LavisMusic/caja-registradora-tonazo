@@ -1520,7 +1520,7 @@ export default function Styles() {
       /* Etiqueta "Estrella": por FUERA de la esquina superior derecha. */
       .tz-star-ribbon {
         position: absolute;
-        top: -15px;
+        top: -16px;
         right: -8px;
         z-index: 3;
         display: flex;
