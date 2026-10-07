@@ -7504,11 +7504,15 @@ export default function App() {
                "Administración Global" si todavía no eligió ninguna (en
                vez de mostrar un texto estático genérico que no dice
                nada sobre dónde está parado). */}
-            <p className="tz-subtitle">
-              {isCajero
-                ? sucursales.find((s) => s.id === authSucursalId)?.nombre || "Caja Registradora"
-                : sucursales.find((s) => s.id === sucursalActivaId)?.nombre || "Administración Global"}
-            </p>
+            {/* Hueco de alto fijo entre el logo y la etiqueta de estado:
+               el nombre queda centrado ahí con 1 o 2 líneas. */}
+            <div className="tz-subtitle-hueco">
+              <p className="tz-subtitle">
+                {isCajero
+                  ? sucursales.find((s) => s.id === authSucursalId)?.nombre || "Caja Registradora"
+                  : sucursales.find((s) => s.id === sucursalActivaId)?.nombre || "Administración Global"}
+              </p>
+            </div>
             {/* Semáforo de conexión: exclusivo de admin/cajero — un
                cliente nunca llega a montar App.jsx (tiene su propia
                vista, ClienteFiadoView), pero este chequeo se deja

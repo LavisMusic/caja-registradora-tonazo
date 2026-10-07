@@ -6777,8 +6777,29 @@ export default function Styles() {
       /* Caja: el nombre de la sucursal y la etiqueta de estado suben un
          poco (el logo cuadrado deja aire transparente abajo); así la
          cabecera queda más baja. La tienda centra su texto aparte. */
-      .tz-header-center > .tz-subtitle:not(.tz-subtitle-maquina) { margin-top: -18px; }
+      .tz-subtitle-hueco {
+        height: 42px;
+        margin-top: -34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        max-width: 100%;
+      }
       .tz-header-center > .tz-conn-indicator { margin-top: 0; }
+      /* Más de ~20 caracteres → pasa a una 2.ª línea (como máximo 2), en
+         la caja y en los mensajes programados de la tienda. */
+      .tz-subtitle-hueco .tz-subtitle,
+      .tz-header .tz-subtitle-maquina {
+        max-width: min(100%, 230px);
+        box-sizing: border-box;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        line-height: 1.4;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
       /* Celular (todos los diseños): el texto no pasa del espacio entre
          las dos columnas de botones; si no entra, baja a una 2.ª línea. */
       @media (max-width: 767px) {
