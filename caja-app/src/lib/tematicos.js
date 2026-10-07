@@ -126,9 +126,8 @@ const barraPropia = (S, capas, estilo = "") =>
 // `corre` (px por vuelta = ancho de la baldosa) + `dur`: la franja avanza
 // en horizontal sin costura.
 const montado = (S, { img, tam, arriba, alto, corre, dur = "4s" }) => `
-${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { --tz-sobre-barra: ${arriba}px; }
-${BARRA(S)} { position: relative; overflow: visible !important; }
-${BARRA(S, "::before")} { content: ""; position: absolute; left: 0; right: 0; top: ${-arriba}px; height: ${alto}px; background: ${img} left 0 top 0 / ${tam} repeat-x; pointer-events: none; z-index: 2; ${corre ? `animation: tz-montado-corre ${dur} linear infinite;` : ""} }
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { --tz-sobre-barra: ${arriba}px; position: relative; }
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)::after")} { content: ""; position: absolute; left: 0; right: 0; bottom: ${arriba - alto}px; height: ${alto}px; background: ${img} left 0 top 0 / ${tam} repeat-x; pointer-events: none; z-index: 2; ${corre ? `animation: tz-montado-corre ${dur} linear infinite;` : ""} }
 ${corre ? `@keyframes tz-montado-corre { from { background-position: 0 0; } to { background-position: ${corre}px 0; } }` : ""}`;
 
 // CELULAR (pantallas angostas): la cabecera pone los botones en dos
@@ -169,15 +168,14 @@ function movil(S, d) {
 // que se escriben en la tienda) va en una pastilla negra semitransparente
 // con texto claro — igual en todos los temáticos, oscuros o claros (va
 // después de los ajustes propios de cada tema, así gana).
-// Borde inferior SUAVE de la barra de filtros (igual en todos): sin línea,
-// el pie de la barra se funde con el color de fondo del cuerpo y una
-// sombra suave sigue hacia abajo. Va con sombras (no con ::before/::after,
-// que usan los adornos montados) y después de los ajustes de cada tema.
-// El color hacia el que se funde es el del cuerpo: el fondo base, salvo
-// en los temas con escena (agua, prado…), que lo indican con `cuerpo`.
-const bordeSuaveBarra = (S, d) => `
-${d.cuerpo ? `${en(S)} { --tz-cuerpo-rgb: ${d.cuerpo}; }` : ""}
-${en(S, ".tz-admin-filterbar")}, ${BARRA(S)} { border-bottom: none !important; box-shadow: inset 0 -26px 22px -14px rgba(var(--tz-cuerpo-rgb, var(--base-rgb)), 0.95), 0 16px 22px -8px rgba(var(--tz-cuerpo-rgb, var(--base-rgb)), 0.85) !important; }`;
+// La barra de filtros pegada a la cabecera se DESVANECE hacia el cuerpo
+// (igual en todos): su parte de abajo se vuelve transparente poco a poco
+// (máscara), sin línea ni sombra, con espacio abajo para que solo se
+// desvanezca el fondo y no los campos. Por eso los adornos que suben
+// sobre la barra (franjas montadas, el auto) van en ::before/::after de
+// la CABECERA: la máscara recorta lo que sale de la barra.
+const bordeSuaveBarra = (S) =>
+  `${BARRA(S)} { border-bottom: none !important; box-shadow: none !important; padding-bottom: 40px !important; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); }`;
 const pastillaSubtitulo = (S) =>
   `${en(S, ".tz-header .tz-subtitle")} { background: rgba(10,8,14,0.62) !important; color: #fff6e0 !important; text-shadow: 0 0 8px rgba(255,255,255,0.25) !important; padding: 3px 12px !important; border-radius: 14px !important; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }`;
 
@@ -202,7 +200,7 @@ ${d.puente ? puente(S, d) : ""}
 ${d.borde ? borde(S, d) : ""}
 ${d.extra ? d.extra(S) : ""}
 ${pastillaSubtitulo(S)}
-${bordeSuaveBarra(S, d)}
+${bordeSuaveBarra(S)}
 ${movil(S, d)}
 `;
 }
@@ -504,7 +502,6 @@ const ARENA_MOJADA = "linear-gradient(180deg, transparent 0%, rgba(150,110,60,0.
 
 const marino = (S) =>
   construir(S, {
-    cuerpo: "9, 80, 110",
     // En la app real el agua la dibuja la ESCENA (fija, detrás de todo);
     // este fondo queda para la vista previa del Perfil.
     raiz: [capa(SUPERFICIE), capa(RAYOS), capa(AGUA_PROFUNDA)],
@@ -876,7 +873,6 @@ const BARNIZ = "linear-gradient(180deg, rgba(255,235,200,0.16), transparent 42%)
 
 const cafe = (S) =>
   construir(S, {
-    cuerpo: "19, 53, 26",
     // En la app real el campo lo dibuja la ESCENA (fija, detrás de
     // todo); este fondo queda para la vista previa del Perfil.
     raiz: [trama(HOJAS_TRAMA, "110px 110px"), capa(CAMPO)],
@@ -2229,7 +2225,6 @@ const LAVADO_AUTO = svg(
 
 const espuma = (S) =>
   construir(S, {
-    cuerpo: "8, 38, 66",
     // En la app real el agua y las burbujas las dibuja la ESCENA (fija,
     // detrás de todo): suben de verdad desde abajo de la pantalla y se
     // esconden detrás de la barra de filtros. Esto queda para la vista
@@ -2258,8 +2253,8 @@ const espuma = (S) =>
 ${barraPropia(S, [trama(GOTAS_AGUA, "60px 60px"), capa(VIDRIO_MOJADO)], "padding-top: 34px !important;")}
 ${montado(S, { img: ESPUMA_VIVA, tam: "120px 46px", arriba: 22, alto: 46, corre: 120, dur: "14s" })}
 /* El auto y la esponja ruedan ENCIMA de la espuma (capa de arriba), con
-   las llantas en el medio de la pista. */
-${BARRA(S, "::after")} { content: ""; position: absolute; left: 0; right: 0; top: -68px; height: 82px; background: ${LAVADO_AUTO} left 0 top 0 / 100% 82px no-repeat; pointer-events: none; z-index: 3; }
+   las llantas en el medio de la pista (::before de la cabecera). */
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)::before")} { content: ""; position: absolute; left: 0; right: 0; bottom: -14px; height: 82px; background: ${LAVADO_AUTO} left 0 top 0 / 100% 82px no-repeat; pointer-events: none; z-index: 3; }
 ${en(S, ".tz-header:not(:has(+ .tz-admin-filterbar))")} { ${fondo([capa(LAVADO_AUTO, "left 0 bottom 13px", "100% 82px"), capa(ESPUMA_VIVA, "left 0 bottom 0", "120px 46px", "repeat-x"), capa("radial-gradient(ellipse 70% 60% at 50% 0%, rgba(186,230,253,0.18), transparent 70%)"), capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)")])} padding-bottom: 78px !important; }
 /* ---- Escena (solo en la app real; TemaNegocio la dibuja) ---- */
 ${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
@@ -2685,7 +2680,6 @@ const PRADERA_VIVA = "linear-gradient(180deg, #3aa33a 0%, #2f9134 50%, #257d2b 1
 
 const granja = (S) =>
   construir(S, {
-    cuerpo: "47, 145, 52",
     // En la app real el prado con los animales lo dibuja la ESCENA.
     raiz: [trama(PASTO_AZAR_A, "331px 287px"), capa(PASTO_AZAR_B, "97px 61px", "229px 263px", "repeat"), capa(PRADERA_VIVA)],
     cabecera: [capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.4))"), capa(TABLAS_GRANERO)],

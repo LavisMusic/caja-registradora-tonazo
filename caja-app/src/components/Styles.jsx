@@ -635,11 +635,20 @@ export default function Styles() {
         gap: 14px;
         padding: 14px 16px;
         background: linear-gradient(180deg, rgba(var(--cyan-rgb),0.06), rgba(var(--base-rgb),0.4));
-        /* Borde inferior suave: sin línea; la parte de abajo se funde con
-           el color de fondo del cuerpo y una sombra suave sigue hacia
-           abajo (los temáticos repiten esto en lib/tematicos.js). */
+        border-bottom: 1px solid rgba(var(--cyan-rgb),0.22);
+        box-shadow: 0 4px 24px rgba(var(--cyan-rgb),0.08) inset;
+      }
+      /* La barra pegada a la cabecera se DESVANECE hacia el cuerpo: su
+         parte de abajo se vuelve transparente poco a poco (máscara), sin
+         línea ni sombra. Tiene más espacio abajo para que solo se
+         desvanezca el fondo, no los campos. (Los temáticos repiten esto
+         en lib/tematicos.js; la barra de filtros de los modales no.) */
+      .tz-header + .tz-admin-filterbar {
         border-bottom: none;
-        box-shadow: inset 0 -26px 22px -14px rgba(var(--base-rgb),0.95), 0 16px 22px -8px rgba(var(--base-rgb),0.85);
+        box-shadow: none;
+        padding-bottom: 40px;
+        -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
+        mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
       }
       /* Localidad + Sucursal + botón Taxi-PE, agrupados juntos — así
          tz-admin-filterbar (arriba) solo tiene que centrar ESTE bloque
