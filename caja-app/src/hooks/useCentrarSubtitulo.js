@@ -32,7 +32,10 @@ export function useCentrarSubtitulo() {
       const sobreBarra = parseFloat(getComputedStyle(header).getPropertyValue("--tz-sobre-barra")) || 0;
       const limite = barra?.classList.contains("tz-admin-filterbar") ? barra.getBoundingClientRect().top - sobreBarra : header.getBoundingClientRect().bottom;
       const arribaSinMover = rs.top - actual;
-      const objetivo = rl.bottom + (limite - rl.bottom - rs.height) / 2;
+      // --tz-sub-ajuste (Styles.jsx): corrimiento fino sobre el centro,
+      // para afinarlo a ojo (negativo = más arriba).
+      const ajuste = parseFloat(getComputedStyle(sub).getPropertyValue("--tz-sub-ajuste")) || 0;
+      const objetivo = rl.bottom + (limite - rl.bottom - rs.height) / 2 + ajuste;
       const dy = Math.round(objetivo - arribaSinMover);
       if (dy !== actual) sub.style.setProperty("--tz-sub-dy", `${dy}px`);
     };

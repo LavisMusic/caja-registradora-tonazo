@@ -6773,7 +6773,7 @@ export default function Styles() {
       /* --tz-sub-dy: en la tienda se centra entre el logo y la barra de
          filtros (CatalogPage lo mide); "translate" no toca a "transform"
          ni mueve nada más. */
-      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); }
+      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); --tz-sub-ajuste: -20px; }
       /* Caja: el nombre de la sucursal y la etiqueta de estado suben un
          poco (el logo cuadrado deja aire transparente abajo); así la
          cabecera queda más baja. La tienda centra su texto aparte. */
