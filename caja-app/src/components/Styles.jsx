@@ -6774,6 +6774,11 @@ export default function Styles() {
          filtros (CatalogPage lo mide); "translate" no toca a "transform"
          ni mueve nada más. */
       .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); }
+      /* Caja: el nombre de la sucursal y la etiqueta de estado suben un
+         poco (el logo cuadrado deja aire transparente abajo); así la
+         cabecera queda más baja. La tienda centra su texto aparte. */
+      .tz-header-center > .tz-subtitle:not(.tz-subtitle-maquina) { margin-top: -18px; }
+      .tz-header-center > .tz-conn-indicator { margin-top: 0; }
       /* Celular (todos los diseños): el texto no pasa del espacio entre
          las dos columnas de botones; si no entra, baja a una 2.ª línea. */
       @media (max-width: 767px) {

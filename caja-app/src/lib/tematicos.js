@@ -2225,7 +2225,7 @@ const espuma = (S) =>
     cabecera: [capa("radial-gradient(ellipse 70% 60% at 50% 0%, rgba(186,230,253,0.18), transparent 70%)"), capa("linear-gradient(180deg, #0f4c81 0%, #0a3561 100%)")],
     // El auto va encima de la espuma (::after de la barra): la cabecera
     // solo deja el lugar justo para la espuma y el techo del auto.
-    cabeceraEstilo: "padding-bottom: 44px !important; border-bottom: none !important;",
+    cabeceraEstilo: "padding-bottom: 38px !important; border-bottom: none !important;",
     pie: [capa(ESPUMA_VIVA, "left 0 top 0", "120px 46px", "repeat-x"), capa("linear-gradient(180deg, transparent 0 22px, #0a3561 22px, #03111f 100%)")],
     pieEstilo: "border-top: none !important; padding-top: 50px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.4), transparent 50%)"), capa("linear-gradient(180deg, #38bdf8, #0284c7)")],
