@@ -169,6 +169,15 @@ function movil(S, d) {
 // que se escriben en la tienda) va en una pastilla negra semitransparente
 // con texto claro — igual en todos los temáticos, oscuros o claros (va
 // después de los ajustes propios de cada tema, así gana).
+// Borde inferior SUAVE de la barra de filtros (igual en todos): sin línea,
+// el pie de la barra se funde con el color de fondo del cuerpo y una
+// sombra suave sigue hacia abajo. Va con sombras (no con ::before/::after,
+// que usan los adornos montados) y después de los ajustes de cada tema.
+// El color hacia el que se funde es el del cuerpo: el fondo base, salvo
+// en los temas con escena (agua, prado…), que lo indican con `cuerpo`.
+const bordeSuaveBarra = (S, d) => `
+${d.cuerpo ? `${en(S)} { --tz-cuerpo-rgb: ${d.cuerpo}; }` : ""}
+${en(S, ".tz-admin-filterbar")}, ${BARRA(S)} { border-bottom: none !important; box-shadow: inset 0 -26px 22px -14px rgba(var(--tz-cuerpo-rgb, var(--base-rgb)), 0.95), 0 16px 22px -8px rgba(var(--tz-cuerpo-rgb, var(--base-rgb)), 0.85) !important; }`;
 const pastillaSubtitulo = (S) =>
   `${en(S, ".tz-header .tz-subtitle")} { background: rgba(10,8,14,0.62) !important; color: #fff6e0 !important; text-shadow: 0 0 8px rgba(255,255,255,0.25) !important; padding: 3px 12px !important; border-radius: 14px !important; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }`;
 
@@ -193,6 +202,7 @@ ${d.puente ? puente(S, d) : ""}
 ${d.borde ? borde(S, d) : ""}
 ${d.extra ? d.extra(S) : ""}
 ${pastillaSubtitulo(S)}
+${bordeSuaveBarra(S, d)}
 ${movil(S, d)}
 `;
 }
@@ -494,6 +504,7 @@ const ARENA_MOJADA = "linear-gradient(180deg, transparent 0%, rgba(150,110,60,0.
 
 const marino = (S) =>
   construir(S, {
+    cuerpo: "9, 80, 110",
     // En la app real el agua la dibuja la ESCENA (fija, detrás de todo);
     // este fondo queda para la vista previa del Perfil.
     raiz: [capa(SUPERFICIE), capa(RAYOS), capa(AGUA_PROFUNDA)],
@@ -865,6 +876,7 @@ const BARNIZ = "linear-gradient(180deg, rgba(255,235,200,0.16), transparent 42%)
 
 const cafe = (S) =>
   construir(S, {
+    cuerpo: "19, 53, 26",
     // En la app real el campo lo dibuja la ESCENA (fija, detrás de
     // todo); este fondo queda para la vista previa del Perfil.
     raiz: [trama(HOJAS_TRAMA, "110px 110px"), capa(CAMPO)],
@@ -2217,6 +2229,7 @@ const LAVADO_AUTO = svg(
 
 const espuma = (S) =>
   construir(S, {
+    cuerpo: "8, 38, 66",
     // En la app real el agua y las burbujas las dibuja la ESCENA (fija,
     // detrás de todo): suben de verdad desde abajo de la pantalla y se
     // esconden detrás de la barra de filtros. Esto queda para la vista
@@ -2672,6 +2685,7 @@ const PRADERA_VIVA = "linear-gradient(180deg, #3aa33a 0%, #2f9134 50%, #257d2b 1
 
 const granja = (S) =>
   construir(S, {
+    cuerpo: "47, 145, 52",
     // En la app real el prado con los animales lo dibuja la ESCENA.
     raiz: [trama(PASTO_AZAR_A, "331px 287px"), capa(PASTO_AZAR_B, "97px 61px", "229px 263px", "repeat"), capa(PRADERA_VIVA)],
     cabecera: [capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.4))"), capa(TABLAS_GRANERO)],

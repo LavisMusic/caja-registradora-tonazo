@@ -635,8 +635,11 @@ export default function Styles() {
         gap: 14px;
         padding: 14px 16px;
         background: linear-gradient(180deg, rgba(var(--cyan-rgb),0.06), rgba(var(--base-rgb),0.4));
-        border-bottom: 1px solid rgba(var(--cyan-rgb),0.22);
-        box-shadow: 0 4px 24px rgba(var(--cyan-rgb),0.08) inset;
+        /* Borde inferior suave: sin línea; la parte de abajo se funde con
+           el color de fondo del cuerpo y una sombra suave sigue hacia
+           abajo (los temáticos repiten esto en lib/tematicos.js). */
+        border-bottom: none;
+        box-shadow: inset 0 -26px 22px -14px rgba(var(--base-rgb),0.95), 0 16px 22px -8px rgba(var(--base-rgb),0.85);
       }
       /* Localidad + Sucursal + botón Taxi-PE, agrupados juntos — así
          tz-admin-filterbar (arriba) solo tiene que centrar ESTE bloque
