@@ -121,9 +121,12 @@ const barraPropia = (S, capas, estilo = "") =>
 // (`arriba` px sobre la cabecera, el resto sobre la barra) en una sola
 // pieza — sin costura ni recortes. Va en ::before de la barra (que la
 // app no usa) y no tapa los textos (la barra deja su padding arriba).
-const montado = (S, { img, tam, arriba, alto }) => `
+// `corre` (px por vuelta = ancho de la baldosa) + `dur`: la franja avanza
+// en horizontal sin costura.
+const montado = (S, { img, tam, arriba, alto, corre, dur = "4s" }) => `
 ${BARRA(S)} { position: relative; overflow: visible !important; }
-${BARRA(S, "::before")} { content: ""; position: absolute; left: 0; right: 0; top: ${-arriba}px; height: ${alto}px; background: ${img} left 0 top 0 / ${tam} repeat-x; pointer-events: none; z-index: 2; }`;
+${BARRA(S, "::before")} { content: ""; position: absolute; left: 0; right: 0; top: ${-arriba}px; height: ${alto}px; background: ${img} left 0 top 0 / ${tam} repeat-x; pointer-events: none; z-index: 2; ${corre ? `animation: tz-montado-corre ${dur} linear infinite;` : ""} }
+${corre ? `@keyframes tz-montado-corre { from { background-position: 0 0; } to { background-position: ${corre}px 0; } }` : ""}`;
 
 // CELULAR (pantallas angostas): la cabecera pone los botones en dos
 // columnas que llegan casi hasta abajo — los adornos de las esquinas de
@@ -2162,7 +2165,8 @@ const AGUA_LAVADO = "linear-gradient(180deg, #0a2a4a 0%, #062039 55%, #03111f 10
 const VIDRIO_MOJADO = "linear-gradient(170deg, rgba(14,58,99,0.88) 0%, rgba(6,30,56,0.94) 100%)";
 
 // Espuma viva (franja montada sobre la unión cabecera/barra): burbujas
-// apretadas, sin huecos, que se inflan y desinflan (SMIL). Todas caben
+// apretadas, sin huecos, que se inflan, se desinflan y suben y bajan
+// (SMIL); en la barra además la franja corre como una pista. Todas caben
 // dentro del dibujo, así ningún borde redondo sale cortado.
 const ESPUMA_VIVA = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='46'><g fill='#f8fdff' stroke='rgba(125,211,252,0.5)' stroke-width='.8'>${[
@@ -2170,7 +2174,7 @@ const ESPUMA_VIVA = svg(
     ...[-7.5, 7.5, 22.5, 37.5, 52.5, 67.5, 82.5, 97.5, 112.5].map((x, i) => [x, 31, 9.5, 2.4 + (i % 2) * 0.8, i * 0.4]),
     ...[8, 38, 68, 98].map((x, i) => [x, 12, 7.5, 2.8, i * 0.5]),
   ]
-    .map(([x, y, r, dur, delay]) => `<circle cx='${x}' cy='${y}' r='${r}'><animate attributeName='r' values='${r};${(r * 1.1).toFixed(1)};${r}' dur='${dur.toFixed(1)}s' begin='-${delay.toFixed(1)}s' repeatCount='indefinite'/></circle>`)
+    .map(([x, y, r, dur, delay]) => `<circle cx='${x}' cy='${y}' r='${r}'><animate attributeName='r' values='${r};${(r * 1.18).toFixed(1)};${(r * 0.94).toFixed(1)};${r}' dur='${dur.toFixed(1)}s' begin='-${delay.toFixed(1)}s' repeatCount='indefinite'/><animate attributeName='cy' values='${y};${y - 1.6};${y + 1};${y}' dur='${(dur * 1.3).toFixed(1)}s' begin='-${delay.toFixed(1)}s' repeatCount='indefinite'/></circle>`)
     .join("")}</g><g fill='#f8fdff' opacity='.85'>${[10, 33, 57, 81, 104].map((x) => `<circle cx='${x}' cy='42' r='2.6'/>`).join("")}</g><g fill='#ffffff'>${[4, 34, 64, 94].map((x) => `<ellipse cx='${x}' cy='9' rx='2.4' ry='1.4'/>`).join("")}</g></svg>`
 );
 // Auto de perfil: el dibujo ya mira a la izquierda (capó largo a la
@@ -2226,7 +2230,7 @@ const espuma = (S) =>
     campoEstilo: "background: #04182c !important; border: 1px solid rgba(125,211,252,0.4) !important;",
     extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }
 ${barraPropia(S, [trama(GOTAS_AGUA, "60px 60px"), capa(VIDRIO_MOJADO)], "padding-top: 34px !important;")}
-${montado(S, { img: ESPUMA_VIVA, tam: "120px 46px", arriba: 22, alto: 46 })}
+${montado(S, { img: ESPUMA_VIVA, tam: "120px 46px", arriba: 22, alto: 46, corre: 120, dur: "3.5s" })}
 /* ---- Escena (solo en la app real; TemaNegocio la dibuja) ---- */
 ${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
 ${en(S, ".tz-esc-agua")} { position: absolute; inset: 0; background: radial-gradient(ellipse 900px 420px at 50% -10%, rgba(125,211,252,0.14), transparent 60%), ${AGUA_LAVADO}; }
