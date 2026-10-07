@@ -6778,8 +6778,10 @@ export default function Styles() {
          poco (el logo cuadrado deja aire transparente abajo); así la
          cabecera queda más baja. La tienda centra su texto aparte. */
       .tz-subtitle-hueco {
-        height: 42px;
-        margin-top: -34px;
+        /* El centro del hueco (donde va el texto) queda 20 px más arriba;
+           su borde de abajo —y la etiqueta de estado— no se mueven. */
+        height: 82px;
+        margin-top: -74px;
         display: flex;
         align-items: center;
         justify-content: center;
