@@ -11,6 +11,7 @@ import { supabase } from "../supabaseClient";
 import LoginModal from "../components/LoginModal";
 import AnimacionNeonBienvenida from "../components/AnimacionNeonBienvenida";
 import { useBienvenidaNeon } from "../hooks/useBienvenidaNeon";
+import { useCentrarSubtitulo } from "../hooks/useCentrarSubtitulo";
 import ClienteFiadoView from "./ClienteFiadoView";
 import Styles from "../components/Styles";
 import CardDetail from "../components/CardDetail";
@@ -98,6 +99,8 @@ export default function CatalogPage() {
      mostrar el catálogo de OTRO negocio por error — termina en un
      estado de error explícito, nunca en una lista vacía silenciosa. */
   const { slug } = useParams();
+  // El texto bajo el logo queda centrado entre el logo y la barra.
+  const headerRef = useCentrarSubtitulo();
   const [negocio, setNegocio] = useState(null);
   const [negocioLoading, setNegocioLoading] = useState(true);
   const [negocioError, setNegocioError] = useState("");
@@ -568,7 +571,7 @@ export default function CatalogPage() {
           onTerminar={marcarBienvenidaVista}
         />
       )}
-      <header className="tz-header">
+      <header className="tz-header" ref={headerRef}>
         <div className="tz-header-row">
           <div className="tz-header-side tz-header-side-left">
             {fiadosAnim !== "hidden" && (

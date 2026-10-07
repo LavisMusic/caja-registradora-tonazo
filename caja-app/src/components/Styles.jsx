@@ -347,10 +347,17 @@ export default function Styles() {
       .tz-header-btn {
         flex: 0 0 auto;
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
         align-items: center;
         justify-content: center;
-        gap: 3px;
+        gap: 0;
+        position: relative;
+        /* Celular: mantener presionado + deslizar (lib/despliegueBotones)
+           sin que la página se desplace ni salga el menú del navegador. */
+        touch-action: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
         background: rgba(var(--orange-rgb),0.06);
         border: 1px solid rgba(var(--orange-rgb),0.45);
         color: var(--orange);
@@ -370,13 +377,34 @@ export default function Styles() {
         background: rgba(var(--orange-rgb),0.16);
         box-shadow: 0 0 16px rgba(var(--orange-rgb),0.4);
       }
+      /* Botones de la cabecera: solo el ícono; el nombre se DESPLIEGA
+         (el botón se estira con animación). PC: al pasar el cursor.
+         Celular: manteniendo presionado (y deslizando por los demás) —
+         clase .tz-hbtn-abierto, ver lib/despliegueBotones.js. Las
+         columnas reparten el ancho fijo, así que estirarse no mueve el
+         logo: los de la izquierda se abren a la derecha y los de la
+         derecha a la izquierda, por encima de todo. */
       .tz-header-btn-label {
-        display: none;
-        font-size: 9px;
+        display: inline-block;
+        max-width: 0;
+        opacity: 0;
+        overflow: hidden;
+        margin-left: 0;
+        vertical-align: middle;
+        font-size: 10px;
         letter-spacing: 0.04em;
         text-transform: uppercase;
         font-weight: 700;
         white-space: nowrap;
+        transition: max-width 0.28s ease, opacity 0.2s ease, margin-left 0.28s ease;
+      }
+      .tz-header-btn.tz-hbtn-abierto,
+      .tz-header-btn:focus-visible { z-index: 30; }
+      .tz-header-btn.tz-hbtn-abierto .tz-header-btn-label,
+      .tz-header-btn:focus-visible .tz-header-btn-label { max-width: 220px; opacity: 1; margin-left: 7px; }
+      @media (hover: hover) and (pointer: fine) {
+        .tz-header-btn:hover { z-index: 30; }
+        .tz-header-btn:hover .tz-header-btn-label { max-width: 220px; opacity: 1; margin-left: 7px; }
       }
 
       .tz-header-payment-wrap { position: relative; flex: 0 0 auto; }
@@ -1477,10 +1505,12 @@ export default function Styles() {
         border-color: var(--pink);
         box-shadow: 0 0 10px rgba(var(--pink-rgb),0.4);
       }
+      /* Etiqueta "Estrella": por FUERA de la esquina superior derecha. */
       .tz-star-ribbon {
         position: absolute;
-        top: -13px;
-        left: 18px;
+        top: -12px;
+        right: -8px;
+        z-index: 3;
         display: flex;
         align-items: center;
         gap: 5px;
@@ -1490,9 +1520,9 @@ export default function Styles() {
         font-size: 10px;
         font-weight: 800;
         letter-spacing: 0.08em;
-        padding: 5px 10px 4px;
-        border-radius: 7px 7px 0 0;
-        box-shadow: 0 0 16px rgba(var(--yellow-rgb),0.55);
+        padding: 5px 11px 4px;
+        border-radius: 999px;
+        box-shadow: 0 0 16px rgba(var(--yellow-rgb),0.55), 0 2px 6px rgba(0,0,0,0.35);
       }
 
       /* Fila horizontal: imagen (cuadrado fijo, .tz-product-image) a la
@@ -5177,11 +5207,8 @@ export default function Styles() {
           max-width: 700px;
           margin: 0 auto;
         }
-        .tz-header-btn {
-          flex-direction: row;
-          padding: 9px 14px;
-        }
-        .tz-header-btn-label { display: inline; font-size: 11px; }
+        .tz-header-btn { padding: 9px 12px; }
+        .tz-header-btn-label { font-size: 11px; }
         .tz-main {
           max-width: 700px;
           margin: 0 auto;
@@ -6743,7 +6770,27 @@ export default function Styles() {
 
       /* ---- Texto debajo del logo de la tienda: mensajes en secuencia
          que se escriben desde el centro y se borran al revés. ---- */
-      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; }
+      /* --tz-sub-dy: en la tienda se centra entre el logo y la barra de
+         filtros (CatalogPage lo mide); "translate" no toca a "transform"
+         ni mueve nada más. */
+      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); }
+      /* Celular (todos los diseños): el texto no pasa del espacio entre
+         las dos columnas de botones; si no entra, baja a una 2.ª línea. */
+      @media (max-width: 767px) {
+        .tz-header .tz-subtitle {
+          white-space: pre-wrap;
+          max-width: 100%;
+          box-sizing: border-box;
+          overflow-wrap: anywhere;
+          font-size: 10px;
+          letter-spacing: 0.05em;
+          line-height: 1.4;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+      }
       .tz-subtitle-cursor {
         display: inline-block;
         width: 2px;

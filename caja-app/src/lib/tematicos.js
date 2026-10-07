@@ -105,7 +105,7 @@ function borde(S, d) {
   const alto = parseFloat(franja.size.split(" ")[1]);
   const pos = d.cabecera.map((c, i) => (i === 0 ? `left 0 bottom ${enCabecera - alto}px` : c.pos || "0 0")).join(", ");
   return `
-${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: ${pos} !important; ${rellenoCabecera ? `padding-bottom: ${rellenoCabecera}px !important;` : ""} }
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: ${pos} !important; ${rellenoCabecera ? `padding-bottom: ${rellenoCabecera}px !important;` : ""} --tz-sobre-barra: ${enCabecera}px; }
 ${en(S, ".tz-header + .tz-admin-filterbar")} {
   ${fondo([capa(franja.img, `left 0 top ${-enCabecera}px`, franja.size, "repeat-x"), ...(d.barra || d.panel)])}
   border-top-color: transparent !important; padding-top: ${rellenoBarra || alto - enCabecera + 10}px !important;
@@ -117,6 +117,8 @@ ${en(S, ".tz-header + .tz-admin-filterbar")} {
 const BARRA = (S, sub = "") => en(S, `.tz-header + .tz-admin-filterbar${sub}`);
 const barraPropia = (S, capas, estilo = "") =>
   `${BARRA(S)} { ${fondo(capas)} border-top-color: transparent !important; ${estilo} }`;
+// (--tz-sobre-barra: cuánto sube la franja sobre la barra; la tienda lo
+// usa para centrar el texto bajo el logo contra la línea que se ve.)
 // MONTADO: una franja en PRIMERA CAPA que cruza la unión cabecera/barra
 // (`arriba` px sobre la cabecera, el resto sobre la barra) en una sola
 // pieza — sin costura ni recortes. Va en ::before de la barra (que la
@@ -124,6 +126,7 @@ const barraPropia = (S, capas, estilo = "") =>
 // `corre` (px por vuelta = ancho de la baldosa) + `dur`: la franja avanza
 // en horizontal sin costura.
 const montado = (S, { img, tam, arriba, alto, corre, dur = "4s" }) => `
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { --tz-sobre-barra: ${arriba}px; }
 ${BARRA(S)} { position: relative; overflow: visible !important; }
 ${BARRA(S, "::before")} { content: ""; position: absolute; left: 0; right: 0; top: ${-arriba}px; height: ${alto}px; background: ${img} left 0 top 0 / ${tam} repeat-x; pointer-events: none; z-index: 2; ${corre ? `animation: tz-montado-corre ${dur} linear infinite;` : ""} }
 ${corre ? `@keyframes tz-montado-corre { from { background-position: 0 0; } to { background-position: ${corre}px 0; } }` : ""}`;
@@ -162,6 +165,13 @@ function movil(S, d) {
 }`;
 }
 
+// El texto debajo del logo (nombre de la sucursal en la caja; mensajes
+// que se escriben en la tienda) va en una pastilla negra semitransparente
+// con texto claro — igual en todos los temáticos, oscuros o claros (va
+// después de los ajustes propios de cada tema, así gana).
+const pastillaSubtitulo = (S) =>
+  `${en(S, ".tz-header .tz-subtitle")} { background: rgba(10,8,14,0.62) !important; color: #fff6e0 !important; text-shadow: 0 0 8px rgba(255,255,255,0.25) !important; padding: 3px 12px !important; border-radius: 14px !important; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }`;
+
 function construir(S, d) {
   return `
 ${en(S)} { ${fondo(d.raiz)} }
@@ -182,6 +192,7 @@ ${CAMPOS(S)} { ${d.campoEstilo || ""} }
 ${d.puente ? puente(S, d) : ""}
 ${d.borde ? borde(S, d) : ""}
 ${d.extra ? d.extra(S) : ""}
+${pastillaSubtitulo(S)}
 ${movil(S, d)}
 `;
 }
@@ -1053,7 +1064,7 @@ const tropical = (S) =>
     // barra el chorreado, sin tapar "Localidad" / "Sucursal". La barra va
     // sin frutas adentro.
     extra: (S) => `
-${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: left 0 bottom -9px, 0 0, 0 0, 0 0, 0 0 !important; padding-bottom: 26px !important; }
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: left 0 bottom -9px, 0 0, 0 0, 0 0, 0 0 !important; padding-bottom: 26px !important; --tz-sobre-barra: 9px; }
 ${en(S, ".tz-header + .tz-admin-filterbar")} {
   ${fondo([capa(JUGO, "left 0 top -9px", "120px 18px", "repeat-x"), capa(VIDRIO_TROPICAL)])}
   border-top-color: transparent !important; padding-top: 20px !important;
@@ -1115,7 +1126,7 @@ const helado = (S) =>
     // sin tapar "Localidad" / "Sucursal". Sin barra debajo (cajero,
     // tienda), la cabecera muestra la fila entera.
     extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 14px !important; }
-${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: left 0 bottom -12px, 0 0, 22px 22px, 0 0 !important; padding-bottom: 40px !important; }
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)")} { background-position: left 0 bottom -12px, 0 0, 22px 22px, 0 0 !important; padding-bottom: 40px !important; --tz-sobre-barra: 26px; }
 ${en(S, ".tz-header + .tz-admin-filterbar")} {
   ${fondo([capa(BOLAS, "left 0 top -26px", "108px 38px", "repeat-x"), capa(CONO, "right 10px bottom 8px", "18px 24px"), capa("linear-gradient(180deg, #ffffff, #fbfffd)")])}
   border-top: none !important; padding-top: 24px !important;
