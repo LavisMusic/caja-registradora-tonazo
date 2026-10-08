@@ -2031,7 +2031,7 @@ const CHISPAS_CABECERA = (() => {
     const t = (2.5 + r() * 2.5).toFixed(1);
     const dur = (3 + r() * 4).toFixed(1);
     const delay = (-r() * 7).toFixed(1);
-    const c = ["#7dd3fc", "#38bdf8", "#bae6fd"][i % 3];
+    const c = ["#ffffff", "#e0f2fe", "#ffffff"][i % 3];
     return `<svg x='${x}%' y='${y}%' overflow='visible'><path d='${estrella(0, 0, +t)}' fill='${c}' opacity='0'><animate attributeName='opacity' values='0;0;1;0;0' keyTimes='0;.3;.45;.6;1' dur='${dur}s' begin='${delay}s' repeatCount='indefinite'/><animateTransform attributeName='transform' type='scale' values='.2;.2;1;.2;.2' keyTimes='0;.3;.45;.6;1' dur='${dur}s' begin='${delay}s' repeatCount='indefinite'/></path></svg>`;
   }).join("");
   return svg(`<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%'>${estrellas}</svg>`);
@@ -2040,22 +2040,31 @@ const CHISPAS_CABECERA = (() => {
 // cabecera).
 const HILO_CELESTE = "linear-gradient(90deg, transparent, rgba(56,189,248,0.7), transparent)";
 const BLANCO_PURO = "linear-gradient(180deg, #ffffff 0%, #f6fbfe 100%)";
-const SEDA_CELESTE = "linear-gradient(180deg, #ffffff 0%, #f0f8ff 62%, #e3f2fd 100%)";
+// Estuche celeste (cabecera): celeste cielo intenso, un foco de luz detrás
+// del logo, un satinado en diagonal y un hilo de luz blanca en el borde.
+const ESTUCHE = "linear-gradient(180deg, #7dd3fc 0%, #38bdf8 38%, #0ea5e9 72%, #0284c7 100%)";
+const FOCO = "radial-gradient(ellipse 380px 210px at 50% 34%, rgba(255,255,255,0.5) 0%, rgba(224,242,254,0.2) 42%, transparent 72%)";
+const SATIN = "linear-gradient(115deg, transparent 0 28%, rgba(255,255,255,0.1) 40%, transparent 52%, rgba(255,255,255,0.07) 70%, transparent 82%)";
+const HILO_BLANCO = "linear-gradient(90deg, transparent, rgba(255,255,255,0.95), transparent)";
 const FILETE = "inset 0 0 0 3px #ffffff, inset 0 0 0 4px rgba(56,189,248,0.32)";
 
 const joyero = (S) =>
   construir(S, {
     // En la app real los destellos y las joyas que caen los dibuja la ESCENA.
     raiz: [capa(BLANCO_PURO)],
-    // Cabecera: seda blanca con un velo celeste; el collar (con sus
-    // diamantes meciéndose) cuelga sobre el borde de la barra.
+    // Cabecera = estuche celeste de joyería: filete plateado doble, foco
+    // de luz detrás del logo, destellos blancos sueltos y un reflejo que la
+    // cruza despacio (::before); el collar (con sus diamantes meciéndose)
+    // cuelga del borde sobre la barra blanca.
     cabecera: [
       capa(COLLAR, "left 0 bottom 0", "480px 56px", "repeat-x"),
-      capa(HILO_CELESTE, "left 0 bottom 0", "100% 1px"),
+      capa(HILO_BLANCO, "left 0 bottom 0", "100% 1px"),
       capa(CHISPAS_CABECERA, "0 0", "100% 100%"),
-      capa(SEDA_CELESTE),
+      capa(FOCO),
+      capa(SATIN),
+      capa(ESTUCHE),
     ],
-    cabeceraEstilo: "padding-bottom: 34px !important; border-bottom: none !important; box-shadow: 0 6px 22px rgba(3,105,161,0.08);",
+    cabeceraEstilo: `padding-bottom: 34px !important; border-bottom: none !important; position: relative; isolation: isolate; box-shadow: 0 8px 22px rgba(3,105,161,0.18) !important;`,
     borde: { enCabecera: 6, rellenoCabecera: 22 },
     // Pie celeste, limpio, con su línea fina arriba.
     pie: [
@@ -2081,7 +2090,34 @@ const joyero = (S) =>
     campoEstilo: "background: #ffffff !important; border: 1px solid rgba(56,189,248,0.45) !important;",
     extra: (S) => `
 ${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 8px rgba(3,105,161,0.15); }
-${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 12px rgba(3,105,161,0.22)) !important; }
+${en(S, ".tz-logo")} { filter: drop-shadow(0 0 16px rgba(255,255,255,0.45)) drop-shadow(0 6px 14px rgba(3,60,110,0.3)) !important; }
+/* Reflejo de luz que cruza el estuche despacio (debajo del contenido). */
+${en(S, ".tz-header::before")} {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(105deg, transparent 42%, rgba(255,255,255,0.3) 50%, transparent 58%) no-repeat;
+  background-size: 260% 100%;
+  animation: tz-joy-reflejo 9s ease-in-out infinite;
+}
+@keyframes tz-joy-reflejo {
+  0% { background-position: 100% 0; }
+  40%, 100% { background-position: 0% 0; }
+}
+/* Filete plateado doble del estuche (por dentro del borde). */
+${en(S, ".tz-header::after")} {
+  content: ""; position: absolute; inset: 9px; z-index: -1; pointer-events: none;
+  border: 1px solid rgba(255,255,255,0.7); border-radius: 10px;
+  outline: 1px solid rgba(241,245,249,0.4); outline-offset: 4px;
+}
+@media (max-width: 560px) {
+  ${en(S, ".tz-header::after")} { inset: 6px; outline-offset: 3px; border-radius: 8px; }
+}
+/* Botones de la cabecera: cristal blanco con aro plateado. */
+${en(S, ".tz-header .tz-header-btn")} {
+  background: linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.12)) !important;
+  border: 1.5px solid rgba(241,245,249,0.9) !important; color: #ffffff !important;
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 4px 12px rgba(3,60,110,0.25) !important;
+}
 ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }
 /* ---- Escena: destellos libres + joyas que caen ---- */
 ${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
