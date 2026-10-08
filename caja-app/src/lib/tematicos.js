@@ -19,6 +19,11 @@
 // pestañas y campos.
 export const en = (S, sub = "") => S.map((s) => `${s}${sub ? " " + sub : ""}`).join(", ");
 const svg = (s) => `url("data:image/svg+xml,${encodeURIComponent(s)}")`;
+// Números "al azar" con semilla fija (siempre salen iguales).
+const azar = (semilla) => {
+  let x = semilla;
+  return () => (x = (x * 9301 + 49297) % 233280) / 233280;
+};
 
 // Capas de fondo: [{ img, pos, size, rep }] → declaraciones CSS.
 function fondo(capas) {
@@ -1832,24 +1837,60 @@ const destello = (x, y, r, c, dur, delay) =>
 const gotaCristal = (x, y, k = 1) =>
   `<g transform='translate(${x} ${y}) scale(${k})'><path d='M0 0 C5 6 7 11 7 15 A7 7 0 0 1 -7 15 C-7 11 -5 6 0 0 Z' fill='#7dd3fc' stroke='#0284c7' stroke-width='.7'/><path d='M0 0 L-3 12 L0 22 L3 12 Z' fill='#bae6fd' opacity='.9'/><path d='M-7 15 L-3 12 M7 15 L3 12' stroke='#e0f2fe' stroke-width='.6'/><ellipse cx='-2.6' cy='10' rx='1.2' ry='2.4' fill='#ffffff' opacity='.85'/></g>`;
 
-// Collar fino: cadena de eslabones plateada con piedritas celestes y un
-// dije de gota en el centro de cada tramo (franja repeat-x; la cadena
-// empalma a la misma altura en las puntas).
-const COLLAR = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='240' height='34'><path d='M0 6 Q120 18 240 6' stroke='#94a3b8' stroke-width='1.8' fill='none' stroke-dasharray='2.6 1.4' stroke-linecap='round'/><path d='M0 5.4 Q120 17.4 240 5.4' stroke='#f1f5f9' stroke-width='.6' fill='none' stroke-dasharray='1.2 2.8'/>${[40, 80, 160, 200]
-    .map((x) => {
-      const y = 6 + 12 * (1 - Math.pow((x - 120) / 120, 2));
-      return `<circle cx='${x}' cy='${y.toFixed(1)}' r='1.9' fill='#38bdf8' stroke='#0369a1' stroke-width='.4'/><circle cx='${x - 0.6}' cy='${(y - 0.6).toFixed(1)}' r='.6' fill='#ffffff'/>`;
-    })
-    .join("")}<circle cx='120' cy='12.5' r='1.6' fill='none' stroke='#94a3b8' stroke-width='1'/>${gotaCristal(120, 14.5, 0.78)}</svg>`
-);
+// Curva SMIL suave (entra y sale despacio) para `values` de 3 puntos.
+const SUAVE = "calcMode='spline' keyTimes='0;.5;1' keySplines='.45 0 .55 1;.45 0 .55 1'";
 
-// Reloj de esfera celeste, correa de malla plateada y segundero que gira.
+// Diamante que cuelga de un eslabón: se mece como péndulo desde su
+// enganche, gira sobre su eje (se angosta y se ensancha) y destella
+// cuando da la cara. (x, y) = enganche, `l` = largo del eslabón.
+// Estrella de 4 puntas (contorno de `destello`, sin animación).
+const estrella = (x, y, r) =>
+  `M${x} ${y - r} L${x + r * 0.22} ${y - r * 0.22} L${x + r} ${y} L${x + r * 0.22} ${y + r * 0.22} L${x} ${y + r} L${x - r * 0.22} ${y + r * 0.22} L${x - r} ${y} L${x - r * 0.22} ${y - r * 0.22} Z`;
+const colgante = (x, y, l, k, ang, vaiven, giro, fase) =>
+  `<g transform='translate(${x} ${y})'><g><animateTransform attributeName='transform' type='rotate' values='${-ang};${ang};${-ang}' ${SUAVE} dur='${vaiven}s' begin='${-fase}s' repeatCount='indefinite'/><circle r='1.3' fill='none' stroke='#94a3b8' stroke-width='.8'/><path d='M0 1.3 V${l + 2 * k}' stroke='#94a3b8' stroke-width='.9'/><g transform='translate(0 ${l})'><g><animateTransform attributeName='transform' type='scale' values='1 1;.3 1;1 1' ${SUAVE} dur='${giro}s' begin='${-fase}s' repeatCount='indefinite'/>${diamante(-17 * k, 0, k)}</g><path d='${estrella(+(9 * k).toFixed(1), +(4 * k).toFixed(1), +(9 * k).toFixed(1))}' fill='#ffffff' stroke='#7dd3fc' stroke-width='.4'><animate attributeName='opacity' values='1;0;0;0;1' keyTimes='0;.14;.5;.86;1' dur='${giro}s' begin='${-fase}s' repeatCount='indefinite'/></path></g></g></g>`;
+
+// Collar fino (franja repeat-x de 480 px = dos tramos): cadena de
+// eslabones plateada que cae en curva, dos diamantes chicos y uno grande
+// colgando en cada tramo. La cadena "respira" (baja y sube un poquito) y
+// todo lo que cuelga baja con ella; las puntas no se mueven, así los
+// tramos empalman siempre.
+const COLLAR = (() => {
+  const Y0 = 6;
+  const SAG = [32, 36]; // control de la curva: reposo / estirada
+  const RESPIRA = 5;
+  const curva = (c) => `M0 ${Y0} Q120 ${c} 240 ${Y0} Q360 ${c} 480 ${Y0}`;
+  const alto = (t, c) => Y0 + 2 * t * (1 - t) * (c - Y0);
+  const piezas = [
+    // [x, largo, escala, ángulo, vaivén, giro, fase]
+    [60, 6, 0.26, 9, 2.4, 4.2, 0.3],
+    [120, 13, 0.54, 7, 3.3, 5.6, 1.1],
+    [180, 6, 0.26, 9, 2.7, 4.6, 2.0],
+    [300, 6, 0.26, 9, 2.2, 3.9, 0.8],
+    [360, 13, 0.5, 7, 3.7, 6.2, 2.6],
+    [420, 6, 0.26, 9, 2.9, 4.8, 1.5],
+  ]
+    .map(([x, l, k, ang, vaiven, giro, fase]) => {
+      const t = (x % 240) / 240;
+      const y = alto(t, SAG[0]);
+      const dy = (alto(t, SAG[1]) - y).toFixed(2);
+      return `<g><animateTransform attributeName='transform' type='translate' values='0 0;0 ${dy};0 0' ${SUAVE} dur='${RESPIRA}s' repeatCount='indefinite'/>${colgante(x, y.toFixed(1), l, k, ang, vaiven, giro, fase)}</g>`;
+    })
+    .join("");
+  const cadena = (extra) =>
+    `<path d='${curva(SAG[0])}' ${extra}><animate attributeName='d' values='${curva(SAG[0])};${curva(SAG[1])};${curva(SAG[0])}' ${SUAVE} dur='${RESPIRA}s' repeatCount='indefinite'/></path>`;
+  return svg(
+    `<svg xmlns='http://www.w3.org/2000/svg' width='480' height='56'>${cadena("stroke='#94a3b8' stroke-width='1.8' fill='none' stroke-dasharray='2.6 1.4' stroke-linecap='round'")}${cadena("stroke='#f1f5f9' stroke-width='.6' fill='none' stroke-dasharray='1.2 2.8' transform='translate(0 -.6)'")}${piezas}</svg>`
+  );
+})();
+
+// Reloj de esfera celeste, correa de malla plateada y segundero que gira
+// (cae por el fondo).
 const RELOJ = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 50'><defs><radialGradient id='e' cx='.4' cy='.35' r='.75'><stop offset='0' stop-color='#f0f9ff'/><stop offset='1' stop-color='#7dd3fc'/></radialGradient></defs><path d='M9 1 H21 L20 13 H10 Z M10 37 H20 L21 49 H9 Z' fill='#e2e8f0' stroke='#94a3b8' stroke-width='.7'/><path d='M10 4 H20 M10 7 H20 M10 10 H20 M10 40 H20 M10 43 H20 M10 46 H20' stroke='#cbd5e1' stroke-width='.6'/><rect x='26' y='23' width='2.4' height='4' rx='.8' fill='#cbd5e1' stroke='#94a3b8' stroke-width='.5'/><circle cx='15' cy='25' r='12' fill='#f8fafc' stroke='#94a3b8' stroke-width='1.2'/><circle cx='15' cy='25' r='9.6' fill='url(#e)'/>${Array.from({ length: 12 }, (_, i) => `<rect x='14.6' y='16.2' width='.8' height='${i % 3 ? 1.2 : 2}' fill='#0369a1' transform='rotate(${i * 30} 15 25)'/>`).join("")}<path d='M15 25 L15 19' stroke='#0c4a6e' stroke-width='1.1' stroke-linecap='round'/><path d='M15 25 L19.5 25' stroke='#0c4a6e' stroke-width='1.3' stroke-linecap='round'/><path d='M15 26.5 L15 17.4' stroke='#0284c7' stroke-width='.5' stroke-linecap='round'><animateTransform attributeName='transform' type='rotate' from='0 15 25' to='360 15 25' dur='60s' repeatCount='indefinite'/></path><circle cx='15' cy='25' r='.9' fill='#0c4a6e'/></svg>`
 );
 
-// Par de aretes colgantes: gancho, brillante y gota de cristal.
+// Par de aretes colgantes: gancho, brillante y gota de cristal (caen por
+// el fondo).
 const aretes = (x, y, k) =>
   `<g transform='translate(${x} ${y}) scale(${k})'><path d='M0 6 C0 0 6 0 6 4' stroke='#94a3b8' stroke-width='1.1' fill='none'/><circle cx='0' cy='8' r='2.2' fill='#f8fafc' stroke='#94a3b8' stroke-width='.6'/><circle cx='-.6' cy='7.4' r='.7' fill='#ffffff'/><path d='M0 10 V15' stroke='#94a3b8' stroke-width='.8'/>${gotaCristal(0, 15, 0.82)}</g>`;
 const ARETES = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 46'>${aretes(12, 2, 1)}${aretes(29, 6, 0.9)}</svg>`);
@@ -1887,24 +1928,77 @@ const DIJE = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='-9 -4 18 30'>
 const FACETAS = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'>${destello(30, 40, 3.2, "#7dd3fc", 3.2, 0)}${destello(150, 24, 2.4, "#bae6fd", 2.6, 1.1)}${destello(96, 128, 3.6, "#7dd3fc", 3.8, 2)}${destello(190, 170, 2.6, "#bae6fd", 2.9, 0.6)}${destello(46, 192, 2.2, "#7dd3fc", 3.4, 1.6)}</svg>`
 );
+// Collar suelto (cae por el fondo): cadena en U con cuentas y un
+// diamante colgando al centro.
+const COLLAR_SUELTO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 70 46'><path d='M7 3 C3 40 67 40 63 3' stroke='#94a3b8' stroke-width='1.8' fill='none' stroke-dasharray='2.6 1.4' stroke-linecap='round'/><path d='M7 2.4 C3 39.4 67 39.4 63 2.4' stroke='#f1f5f9' stroke-width='.6' fill='none' stroke-dasharray='1.2 2.8'/><rect x='4.5' y='0.5' width='5' height='3.4' rx='1' fill='#cbd5e1' stroke='#94a3b8' stroke-width='.5'/>${[
+    [9.5, 17],
+    [17, 25.5],
+    [53, 25.5],
+    [60.5, 17],
+  ]
+    .map(([x, y]) => `<circle cx='${x}' cy='${y}' r='2' fill='#38bdf8' stroke='#0369a1' stroke-width='.4'/><circle cx='${x - 0.6}' cy='${y - 0.6}' r='.6' fill='#ffffff'/>`)
+    .join("")}<circle cx='35' cy='30.6' r='1.4' fill='none' stroke='#94a3b8' stroke-width='.9'/>${diamante(28.2, 31.5, 0.4)}</svg>`
+);
+
+// Destello que se prende y se apaga (encima de cada joya que cae).
+const brilloJoya = (dur, delay) =>
+  svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='-10 -10 20 20'><path d='${estrella(0, 0, 9)}' fill='#ffffff' stroke='#7dd3fc' stroke-width='.6'><animate attributeName='opacity' values='0;0;1;0;0' keyTimes='0;.7;.8;.9;1' dur='${dur}s' begin='${delay}s' repeatCount='indefinite'/></path></svg>`);
+
+// Destellos sueltos del fondo (cada uno con su lugar, tamaño y ritmo).
+const CHISPAS_CELESTES = ["#7dd3fc", "#38bdf8", "#bae6fd"].map((c) => svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='-10 -10 20 20'><path d='${estrella(0, 0, 10)}' fill='${c}'/></svg>`));
+
+// Escena: destellos que parpadean libres y joyas que caen despacio
+// (desde debajo de la barra hasta perderse detrás del pie), meciéndose
+// como si flotaran. Cada joya cae y luego espera un rato fuera, así hay
+// pocas a la vez. En celular caen menos (las "extra" se ocultan).
+const ESCENA_JOYERO = (() => {
+  const r = azar(23);
+  const chispas = Array.from({ length: 18 }, (_, i) => ({
+    clase: "tz-esc-chispa",
+    estilo: {
+      "--x": `${(2 + r() * 95).toFixed(1)}%`,
+      "--y": `${(6 + r() * 88).toFixed(1)}%`,
+      "--s": `${Math.round(8 + r() * 10)}px`,
+      "--dur": `${(3 + r() * 5).toFixed(1)}s`,
+      "--delay": `${(-r() * 8).toFixed(1)}s`,
+      "--img": CHISPAS_CELESTES[i % 3],
+    },
+  }));
+  const joyas = [
+    // [x, imagen, ancho, alto, caída, retraso, vaivén, giro, mecer]
+    ["5%", COLLAR_SUELTO, "58px", "38px", "40s", "-4s", "18px", "14deg", "6.5s"],
+    ["19%", RELOJ, "24px", "40px", "44s", "-26s", "14px", "22deg", "5.5s"],
+    ["33%", ARETES, "32px", "37px", "38s", "-15s", "20px", "18deg", "7s"],
+    ["48%", PULSERA_CUARZO, "30px", "30px", "42s", "-34s", "16px", "30deg", "6s"],
+    ["63%", SOLITARIO, "24px", "28px", "36s", "-9s", "22px", "26deg", "5s"],
+    ["78%", PULSERA_ESLABONES, "56px", "23px", "46s", "-20s", "18px", "16deg", "7.5s"],
+    ["90%", COLLAR_SUELTO, "52px", "34px", "41s", "-31s", "16px", "12deg", "6.8s"],
+    ["41%", ARETES, "28px", "32px", "45s", "-39s", "20px", "20deg", "6.2s"],
+    ["71%", RELOJ, "22px", "37px", "39s", "-1s", "14px", "24deg", "5.8s"],
+  ].map(([x, img, w, h, dur, delay, dx, giro, mecer], i) => ({
+    clase: i < 6 ? "tz-esc-joya" : "tz-esc-joya tz-esc-joya-extra",
+    estilo: { "--x": x, "--img": img, "--w": w, "--h": h, "--dur": dur, "--delay": delay, "--dx": dx, "--giro": giro, "--mecer": mecer, "--brillo": brilloJoya(3.5 + (i % 4) * 1.3, -i * 0.9) },
+  }));
+  return [{ clase: "tz-esc-seda" }, ...chispas, ...joyas];
+})();
 const BLANCO_PURO = "linear-gradient(180deg, #ffffff 0%, #f6fbfe 100%)";
 const SEDA_CELESTE = "linear-gradient(180deg, #ffffff 0%, #f0f8ff 62%, #e3f2fd 100%)";
 const FILETE = "inset 0 0 0 3px #ffffff, inset 0 0 0 4px rgba(56,189,248,0.32)";
 
 const joyero = (S) =>
   construir(S, {
-    raiz: [trama(FACETAS, "220px 220px"), capa(BLANCO_PURO)],
-    // Cabecera: seda blanca con un velo celeste, un reloj (izquierda) y
-    // un par de aretes (derecha); el collar cuelga sobre la barra.
+    // En la app real los destellos y las joyas que caen los dibuja la ESCENA.
+    raiz: [capa(BLANCO_PURO)],
+    // Cabecera: seda blanca con un velo celeste; el collar (con sus
+    // diamantes meciéndose) cuelga sobre el borde de la barra.
     cabecera: [
-      capa(COLLAR, "left 0 bottom 0", "240px 34px", "repeat-x"),
-      capa(RELOJ, "left 3% bottom 20px", "34px 57px"),
-      capa(ARETES, "right 3% bottom 20px", "46px 53px"),
+      capa(COLLAR, "left 0 bottom 0", "480px 56px", "repeat-x"),
       trama(FACETAS, "220px 220px"),
       capa(SEDA_CELESTE),
     ],
     cabeceraEstilo: "padding-bottom: 34px !important; border-bottom: none !important; box-shadow: 0 6px 22px rgba(3,105,161,0.08);",
-    borde: { enCabecera: 14, rellenoCabecera: 22 },
+    borde: { enCabecera: 9, rellenoCabecera: 22 },
     // Pie celeste con una pulsera de eslabones y un anillo solitario.
     pie: [
       capa(PULSERA_ESLABONES, "left 4% bottom 14px", "84px 34px"),
@@ -1932,7 +2026,42 @@ const joyero = (S) =>
     extra: (S) => `
 ${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-shadow: 0 2px 8px rgba(3,105,161,0.15); }
 ${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 12px rgba(3,105,161,0.22)) !important; }
-${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }`,
+${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }
+/* ---- Escena: destellos libres + joyas que caen ---- */
+${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+${en(S, ".tz-esc-seda")} { position: absolute; inset: 0; background: ${BLANCO_PURO}; }
+${en(S, ".tz-esc-chispa")} {
+  position: absolute; left: var(--x); top: var(--y);
+  width: var(--s); height: var(--s);
+  background: var(--img) center / contain no-repeat;
+  opacity: 0;
+  animation: tz-joy-chispa var(--dur) ease-in-out var(--delay) infinite;
+}
+@keyframes tz-joy-chispa {
+  0%, 100% { opacity: 0; transform: scale(0.2) rotate(0deg); }
+  20% { opacity: 1; transform: scale(1) rotate(45deg); }
+  40% { opacity: 0; transform: scale(0.2) rotate(90deg); }
+}
+${en(S, ".tz-esc-joya")} {
+  position: absolute; top: -90px; left: var(--x);
+  width: var(--w); height: var(--h);
+  background: var(--brillo) right 0 top 0 / 14px 14px no-repeat, var(--img) center / contain no-repeat;
+  filter: drop-shadow(0 4px 6px rgba(3,105,161,0.14));
+  animation: tz-joy-caer var(--dur) linear var(--delay) infinite, tz-joy-mecer var(--mecer) ease-in-out var(--delay) infinite alternate;
+  will-change: transform, translate;
+}
+@keyframes tz-joy-caer {
+  0% { translate: 0 0; }
+  60%, 100% { translate: 0 calc(100vh + 140px); }
+}
+@keyframes tz-joy-mecer {
+  from { transform: translateX(calc(var(--dx) * -1)) rotate(calc(var(--giro) * -1)); }
+  to { transform: translateX(var(--dx)) rotate(var(--giro)); }
+}
+@media (max-width: 560px) {
+  ${en(S, ".tz-esc-joya-extra")} { display: none; }
+  ${en(S, ".tz-esc-joya")} { scale: 0.8; }
+}`,
   });
 
 // =====================================================================
@@ -2702,10 +2831,6 @@ const PASTO_TRAMA = svg(
 // Pasto con matas en posiciones "al azar" (generador fijo, así siempre
 // sale igual): dos baldosas de tamaños que no coinciden, sin patrón a
 // la vista.
-const azar = (semilla) => {
-  let x = semilla;
-  return () => (x = (x * 9301 + 49297) % 233280) / 233280;
-};
 const pastoAlAzar = (w, h, n, semilla, flores) => {
   const r = azar(semilla);
   let m = "";
@@ -3238,6 +3363,7 @@ export const TEMATICOS = [
     nombre: "Joyero Celeste",
     descripcion: "Blanco puro y celeste cielo: collar, reloj, aretes y pulsera de cuarzo",
     paleta: { id: "tematico-joyero", nombre: "Joyero Celeste", modo: "claro", principal: "#0284c7", secundario: "#0369a1", acento: "#0e7490", botones: "#0284c7", fondo1: "#ffffff", fondo2: "#f3f9fd" },
+    escena: ESCENA_JOYERO,
     muestra: `${RELOJ} left 10px bottom 8px / 17px 28px no-repeat, ${ARETES} right 10px bottom 8px / 22px 25px no-repeat, ${COLLAR} left 0 top 30% / 160px 23px repeat-x, ${FACETAS} 0 0 / 150px 150px, linear-gradient(180deg, #ffffff, #e3f2fd)`,
     css: joyero,
   },
