@@ -1895,25 +1895,23 @@ const aretes = (x, y, k) =>
   `<g transform='translate(${x} ${y}) scale(${k})'><path d='M0 6 C0 0 6 0 6 4' stroke='#94a3b8' stroke-width='1.1' fill='none'/><circle cx='0' cy='8' r='2.2' fill='#f8fafc' stroke='#94a3b8' stroke-width='.6'/><circle cx='-.6' cy='7.4' r='.7' fill='#ffffff'/><path d='M0 10 V15' stroke='#94a3b8' stroke-width='.8'/>${gotaCristal(0, 15, 0.82)}</g>`;
 const ARETES = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 46'>${aretes(12, 2, 1)}${aretes(29, 6, 0.9)}</svg>`);
 
-// Pulsera de cuarzo: cuentas translúcidas celestes y blancas en círculo.
-const PULSERA_CUARZO = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'><defs><radialGradient id='q' cx='.35' cy='.3' r='.75'><stop offset='0' stop-color='#ffffff'/><stop offset='1' stop-color='#7dd3fc'/></radialGradient><radialGradient id='b' cx='.35' cy='.3' r='.75'><stop offset='0' stop-color='#ffffff'/><stop offset='1' stop-color='#e2e8f0'/></radialGradient></defs><ellipse cx='18' cy='18' rx='12' ry='11' fill='none' stroke='#cbd5e1' stroke-width='.6'/>${Array.from({ length: 12 }, (_, i) => {
-    const a = (i * Math.PI) / 6;
-    const x = 18 + 12 * Math.cos(a);
-    const y = 18 + 11 * Math.sin(a);
-    const grande = i === 3;
-    return `<circle cx='${x.toFixed(1)}' cy='${y.toFixed(1)}' r='${grande ? 4.2 : 3.1}' fill='url(#${i % 2 || grande ? "q" : "b"})' stroke='${grande ? "#0284c7" : "#94a3b8"}' stroke-width='.5' opacity='.95'/>`;
-  }).join("")}</svg>`
+// Metal pulido (plata con reflejos) para las pulseras.
+const METAL = "<linearGradient id='m' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#f8fafc'/><stop offset='.3' stop-color='#94a3b8'/><stop offset='.55' stop-color='#f1f5f9'/><stop offset='.8' stop-color='#64748b'/><stop offset='1' stop-color='#cbd5e1'/></linearGradient>";
+
+// Brazalete rígido de metal: aro pulido visto en ángulo, con su línea de
+// brillo y un filete grabado.
+const BRAZALETE = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 30'><defs>${METAL}</defs><ellipse cx='18' cy='15' rx='14.5' ry='10.5' fill='none' stroke='#64748b' stroke-width='5.6'/><ellipse cx='18' cy='15' rx='14.5' ry='10.5' fill='none' stroke='url(#m)' stroke-width='4.4'/><ellipse cx='18' cy='15' rx='14.5' ry='10.5' fill='none' stroke='rgba(100,116,139,0.55)' stroke-width='.5' stroke-dasharray='.1 1.6' stroke-linecap='round'/><path d='M7 9.5 A14.5 10.5 0 0 1 22 4.7' stroke='#ffffff' stroke-width='1.1' fill='none' stroke-linecap='round' opacity='.9'/></svg>`
 );
 
-// Pulsera de eslabones plateada (curva).
-const PULSERA_ESLABONES = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 26'>${Array.from({ length: 9 }, (_, i) => {
-    const x = 6 + i * 6.5;
-    const y = 8 + 10 * Math.sin((Math.PI * i) / 8);
-    const r = (i - 4) * -9;
-    return `<ellipse cx='${x.toFixed(1)}' cy='${y.toFixed(1)}' rx='4' ry='2.6' fill='none' stroke='#94a3b8' stroke-width='1.6' transform='rotate(${r} ${x.toFixed(1)} ${y.toFixed(1)})'/><ellipse cx='${x.toFixed(1)}' cy='${(y - 0.6).toFixed(1)}' rx='3' ry='1.6' fill='none' stroke='#f1f5f9' stroke-width='.5' transform='rotate(${r} ${x.toFixed(1)} ${y.toFixed(1)})'/>`;
-  }).join("")}<rect x='56' y='5' width='6' height='4' rx='1' fill='#cbd5e1' stroke='#94a3b8' stroke-width='.5'/></svg>`
+// Esclava abierta (cuff) de metal con un diamantito celeste en cada punta.
+const ESCLAVA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 30'><defs>${METAL}</defs><path d='M28.6 6.6 A15 11 0 1 0 28.6 23.4' fill='none' stroke='#64748b' stroke-width='5.4' stroke-linecap='round'/><path d='M28.6 6.6 A15 11 0 1 0 28.6 23.4' fill='none' stroke='url(#m)' stroke-width='4.2' stroke-linecap='round'/><path d='M8 9 A15 11 0 0 1 20 4.1' stroke='#ffffff' stroke-width='1' fill='none' stroke-linecap='round' opacity='.9'/>${[
+    [30.4, 6.2],
+    [30.4, 23.8],
+  ]
+    .map(([x, y]) => `<circle cx='${x}' cy='${y}' r='2.9' fill='#7dd3fc' stroke='#0284c7' stroke-width='.6'/><circle cx='${x - 0.9}' cy='${y - 0.9}' r='.9' fill='#ffffff'/>`)
+    .join("")}</svg>`
 );
 
 // Anillo solitario: aro plateado y brillante celeste.
@@ -1965,23 +1963,49 @@ const ESCENA_JOYERO = (() => {
       "--img": CHISPAS_CELESTES[i % 3],
     },
   }));
+  // Caen a la misma velocidad de antes (~22 s de arriba abajo) pero
+  // esperan menos fuera: entra una cada ~2 s. En celular, solo 8.
   const joyas = [
-    // [x, imagen, ancho, alto, caída, retraso, vaivén, giro, mecer]
-    ["5%", COLLAR_SUELTO, "58px", "38px", "40s", "-4s", "18px", "14deg", "6.5s"],
-    ["19%", RELOJ, "24px", "40px", "44s", "-26s", "14px", "22deg", "5.5s"],
-    ["33%", ARETES, "32px", "37px", "38s", "-15s", "20px", "18deg", "7s"],
-    ["48%", PULSERA_CUARZO, "30px", "30px", "42s", "-34s", "16px", "30deg", "6s"],
-    ["63%", SOLITARIO, "24px", "28px", "36s", "-9s", "22px", "26deg", "5s"],
-    ["78%", PULSERA_ESLABONES, "56px", "23px", "46s", "-20s", "18px", "16deg", "7.5s"],
-    ["90%", COLLAR_SUELTO, "52px", "34px", "41s", "-31s", "16px", "12deg", "6.8s"],
-    ["41%", ARETES, "28px", "32px", "45s", "-39s", "20px", "20deg", "6.2s"],
-    ["71%", RELOJ, "22px", "37px", "39s", "-1s", "14px", "24deg", "5.8s"],
+    // [x, imagen, ancho, alto, ciclo, retraso, vaivén, giro, mecer]
+    ["4%", COLLAR_SUELTO, "58px", "38px", "28s", "-4s", "18px", "14deg", "6.5s"],
+    ["14%", RELOJ, "24px", "40px", "30s", "-24s", "14px", "22deg", "5.5s"],
+    ["25%", ARETES, "32px", "37px", "27s", "-14s", "20px", "18deg", "7s"],
+    ["36%", BRAZALETE, "32px", "27px", "29s", "-20s", "16px", "30deg", "6s"],
+    ["50%", SOLITARIO, "24px", "28px", "26s", "-9s", "22px", "26deg", "5s"],
+    ["62%", ESCLAVA, "36px", "27px", "31s", "-1s", "18px", "20deg", "7.5s"],
+    ["76%", COLLAR_SUELTO, "52px", "34px", "29s", "-17s", "16px", "12deg", "6.8s"],
+    ["90%", BRAZALETE, "28px", "24px", "28s", "-11s", "18px", "28deg", "6.4s"],
+    ["9%", ESCLAVA, "32px", "24px", "30s", "-13s", "16px", "18deg", "7.2s"],
+    ["20%", SOLITARIO, "22px", "26px", "27s", "-22s", "20px", "24deg", "5.4s"],
+    ["43%", ARETES, "28px", "32px", "31s", "-27s", "20px", "20deg", "6.2s"],
+    ["56%", RELOJ, "22px", "37px", "28s", "-6s", "14px", "24deg", "5.8s"],
+    ["69%", BRAZALETE, "30px", "25px", "30s", "-29s", "16px", "26deg", "6.6s"],
+    ["83%", COLLAR_SUELTO, "54px", "36px", "27s", "-19s", "18px", "14deg", "7s"],
   ].map(([x, img, w, h, dur, delay, dx, giro, mecer], i) => ({
-    clase: i < 6 ? "tz-esc-joya" : "tz-esc-joya tz-esc-joya-extra",
+    clase: i < 8 ? "tz-esc-joya" : "tz-esc-joya tz-esc-joya-extra",
     estilo: { "--x": x, "--img": img, "--w": w, "--h": h, "--dur": dur, "--delay": delay, "--dx": dx, "--giro": giro, "--mecer": mecer, "--brillo": brilloJoya(3.5 + (i % 4) * 1.3, -i * 0.9) },
   }));
   return [{ clase: "tz-esc-seda" }, ...chispas, ...joyas];
 })();
+// Destellos de la cabecera: sueltos a lo ancho (cada uno en su lugar y
+// con su ritmo), en un dibujo del tamaño de la cabecera que no se
+// deforma (cada estrella va en su propio <svg> ubicado en %).
+const CHISPAS_CABECERA = (() => {
+  const r = azar(57);
+  const estrellas = Array.from({ length: 14 }, (_, i) => {
+    const x = (2 + r() * 96).toFixed(1);
+    const y = (6 + r() * 70).toFixed(1);
+    const t = (2.5 + r() * 2.5).toFixed(1);
+    const dur = (3 + r() * 4).toFixed(1);
+    const delay = (-r() * 7).toFixed(1);
+    const c = ["#7dd3fc", "#38bdf8", "#bae6fd"][i % 3];
+    return `<svg x='${x}%' y='${y}%' overflow='visible'><path d='${estrella(0, 0, +t)}' fill='${c}' opacity='0'><animate attributeName='opacity' values='0;0;1;0;0' keyTimes='0;.3;.45;.6;1' dur='${dur}s' begin='${delay}s' repeatCount='indefinite'/><animateTransform attributeName='transform' type='scale' values='.2;.2;1;.2;.2' keyTimes='0;.3;.45;.6;1' dur='${dur}s' begin='${delay}s' repeatCount='indefinite'/></path></svg>`;
+  }).join("");
+  return svg(`<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%'>${estrellas}</svg>`);
+})();
+// Línea fina celeste que se desvanece hacia los lados (pie y borde de la
+// cabecera).
+const HILO_CELESTE = "linear-gradient(90deg, transparent, rgba(56,189,248,0.7), transparent)";
 const BLANCO_PURO = "linear-gradient(180deg, #ffffff 0%, #f6fbfe 100%)";
 const SEDA_CELESTE = "linear-gradient(180deg, #ffffff 0%, #f0f8ff 62%, #e3f2fd 100%)";
 const FILETE = "inset 0 0 0 3px #ffffff, inset 0 0 0 4px rgba(56,189,248,0.32)";
@@ -1994,25 +2018,24 @@ const joyero = (S) =>
     // diamantes meciéndose) cuelga sobre el borde de la barra.
     cabecera: [
       capa(COLLAR, "left 0 bottom 0", "480px 56px", "repeat-x"),
-      trama(FACETAS, "220px 220px"),
+      capa(HILO_CELESTE, "left 0 bottom 0", "100% 1px"),
+      capa(CHISPAS_CABECERA, "0 0", "100% 100%"),
       capa(SEDA_CELESTE),
     ],
     cabeceraEstilo: "padding-bottom: 34px !important; border-bottom: none !important; box-shadow: 0 6px 22px rgba(3,105,161,0.08);",
-    borde: { enCabecera: 9, rellenoCabecera: 22 },
-    // Pie celeste con una pulsera de eslabones y un anillo solitario.
+    borde: { enCabecera: 7, rellenoCabecera: 22 },
+    // Pie celeste, limpio, con su línea fina arriba.
     pie: [
-      capa(PULSERA_ESLABONES, "left 4% bottom 14px", "84px 34px"),
-      capa(SOLITARIO, "right 10% bottom 14px", "32px 36px"),
-      capa("linear-gradient(90deg, transparent, rgba(56,189,248,0.7), transparent)", "left 0 top 0", "100% 1px"),
+      capa(HILO_CELESTE, "left 0 top 0", "100% 1px"),
       capa("linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%)"),
     ],
     pieEstilo: "border-top: none !important;",
     boton: [capa("linear-gradient(180deg, #ffffff, #f0f9ff)")],
     botonEstilo: "border: 1px solid rgba(56,189,248,0.55) !important; color: #0369a1 !important; border-radius: 999px !important; box-shadow: 0 2px 10px rgba(3,105,161,0.12) !important; font-weight: 700; letter-spacing: 0.06em;",
     botonPieEstilo: "border-radius: 999px !important; border: 1px solid rgba(3,105,161,0.35) !important; color: #0369a1 !important; box-shadow: 0 3px 12px rgba(3,105,161,0.18) !important; font-weight: 700; letter-spacing: 0.06em;",
-    // Paneles: blanco con doble filete celeste (interior de estuche) y una
-    // pulsera de cuarzo en la esquina de los medidores.
-    panel: [capa(PULSERA_CUARZO, "right 8px top 7px", "24px 24px"), capa(BLANCO_PURO)],
+    // Paneles: blanco con doble filete celeste (interior de estuche) y un
+    // brazalete de metal en la esquina de los medidores.
+    panel: [capa(BRAZALETE, "right 8px top 8px", "24px 20px"), capa(BLANCO_PURO)],
     panelEstilo: `border: 1px solid rgba(56,189,248,0.45) !important; box-shadow: ${FILETE}, 0 8px 22px rgba(3,105,161,0.08) !important;`,
     barra: [capa("linear-gradient(180deg, #ffffff, #f7fbfe)")],
     modal: [capa(DIJE, "right 14px bottom 12px", "14px 24px"), trama(FACETAS, "220px 220px"), capa(BLANCO_PURO)],
@@ -2052,7 +2075,7 @@ ${en(S, ".tz-esc-joya")} {
 }
 @keyframes tz-joy-caer {
   0% { translate: 0 0; }
-  60%, 100% { translate: 0 calc(100vh + 140px); }
+  80%, 100% { translate: 0 calc(100vh + 140px); }
 }
 @keyframes tz-joy-mecer {
   from { transform: translateX(calc(var(--dx) * -1)) rotate(calc(var(--giro) * -1)); }
@@ -3361,10 +3384,10 @@ export const TEMATICOS = [
     id: "joyero",
     rubro: "joyeria",
     nombre: "Joyero Celeste",
-    descripcion: "Blanco puro y celeste cielo: collar, reloj, aretes y pulsera de cuarzo",
+    descripcion: "Blanco puro y celeste cielo: collar de diamantes y joyas que caen",
     paleta: { id: "tematico-joyero", nombre: "Joyero Celeste", modo: "claro", principal: "#0284c7", secundario: "#0369a1", acento: "#0e7490", botones: "#0284c7", fondo1: "#ffffff", fondo2: "#f3f9fd" },
     escena: ESCENA_JOYERO,
-    muestra: `${RELOJ} left 10px bottom 8px / 17px 28px no-repeat, ${ARETES} right 10px bottom 8px / 22px 25px no-repeat, ${COLLAR} left 0 top 30% / 160px 23px repeat-x, ${FACETAS} 0 0 / 150px 150px, linear-gradient(180deg, #ffffff, #e3f2fd)`,
+    muestra: `${COLLAR} left 0 top 22% / 240px 28px repeat-x, ${SOLITARIO} left 14px bottom 8px / 18px 21px no-repeat, ${BRAZALETE} right 12px bottom 9px / 24px 20px no-repeat, ${FACETAS} 0 0 / 150px 150px, linear-gradient(180deg, #ffffff, #e3f2fd)`,
     css: joyero,
   },
   {
