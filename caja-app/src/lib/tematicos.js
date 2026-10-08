@@ -1898,20 +1898,53 @@ const ARETES = svg(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 46'>
 // Metal pulido (plata con reflejos) para las pulseras.
 const METAL = "<linearGradient id='m' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#f8fafc'/><stop offset='.3' stop-color='#94a3b8'/><stop offset='.55' stop-color='#f1f5f9'/><stop offset='.8' stop-color='#64748b'/><stop offset='1' stop-color='#cbd5e1'/></linearGradient>";
 
-// Brazalete rígido de metal: aro pulido visto en ángulo, con su línea de
-// brillo y un filete grabado.
-const BRAZALETE = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 30'><defs>${METAL}</defs><ellipse cx='18' cy='15' rx='14.5' ry='10.5' fill='none' stroke='#64748b' stroke-width='5.6'/><ellipse cx='18' cy='15' rx='14.5' ry='10.5' fill='none' stroke='url(#m)' stroke-width='4.4'/><ellipse cx='18' cy='15' rx='14.5' ry='10.5' fill='none' stroke='rgba(100,116,139,0.55)' stroke-width='.5' stroke-dasharray='.1 1.6' stroke-linecap='round'/><path d='M7 9.5 A14.5 10.5 0 0 1 22 4.7' stroke='#ffffff' stroke-width='1.1' fill='none' stroke-linecap='round' opacity='.9'/></svg>`
+// Eslabones repartidos en un óvalo visto en ángulo (pulsera cerrada): los
+// de atrás primero y más apagados, los de adelante encima. `eslabon`
+// dibuja uno en (x, y) girado según la cadena (`ang`), `i` = su número.
+const cadenaOval = (cx, cy, rx, ry, n, eslabon, salto = []) => {
+  const piezas = Array.from({ length: n }, (_, i) => {
+    const a = (i / n) * Math.PI * 2;
+    const x = cx + rx * Math.cos(a);
+    const y = cy + ry * Math.sin(a);
+    const ang = (Math.atan2(ry * Math.cos(a), -rx * Math.sin(a)) * 180) / Math.PI;
+    return { i, x: x.toFixed(2), y: y.toFixed(2), ang: ang.toFixed(1), atras: Math.sin(a) < 0 };
+  }).filter((p) => !salto.includes(p.i));
+  return [...piezas.filter((p) => p.atras), ...piezas.filter((p) => !p.atras)].map((p) => eslabon(p)).join("");
+};
+// Broche de langosta plateado (cierre de las pulseras).
+const broche = (x, y) =>
+  `<g transform='translate(${x} ${y})'><path d='M-2.6 -1.6 C-2.6 -4 2.6 -4 2.6 -1.6 L2.2 2.6 C1.4 4 -1.4 4 -2.2 2.6 Z' fill='url(#m)' stroke='#475569' stroke-width='.5'/><path d='M-1 -1.4 V2' stroke='#475569' stroke-width='.4'/></g>`;
+
+// Cadena barbada (cubana): eslabones planos y gruesos entrelazados, en
+// plata pulida, con su broche.
+const CUBANA = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 32'><defs>${METAL}</defs>${cadenaOval(
+    20,
+    15,
+    15,
+    10.5,
+    18,
+    ({ i, x, y, ang, atras }) =>
+      `<g transform='translate(${x} ${y}) rotate(${+ang + (i % 2 ? 22 : -22)})' opacity='${atras ? 0.8 : 1}'><ellipse rx='3.4' ry='2.2' fill='url(#m)' stroke='#475569' stroke-width='.5'/><ellipse rx='1.7' ry='.75' fill='${atras ? "#475569" : "#64748b"}'/><path d='M-2.4 -1.3 Q0 -2.3 2.4 -1.3' stroke='#ffffff' stroke-width='.5' fill='none' opacity='.85'/></g>`,
+    [4, 5]
+  )}${broche(20, 25.6)}</svg>`
 );
 
-// Esclava abierta (cuff) de metal con un diamantito celeste en cada punta.
-const ESCLAVA = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 30'><defs>${METAL}</defs><path d='M28.6 6.6 A15 11 0 1 0 28.6 23.4' fill='none' stroke='#64748b' stroke-width='5.4' stroke-linecap='round'/><path d='M28.6 6.6 A15 11 0 1 0 28.6 23.4' fill='none' stroke='url(#m)' stroke-width='4.2' stroke-linecap='round'/><path d='M8 9 A15 11 0 0 1 20 4.1' stroke='#ffffff' stroke-width='1' fill='none' stroke-linecap='round' opacity='.9'/>${[
-    [30.4, 6.2],
-    [30.4, 23.8],
-  ]
-    .map(([x, y]) => `<circle cx='${x}' cy='${y}' r='2.9' fill='#7dd3fc' stroke='#0284c7' stroke-width='.6'/><circle cx='${x - 0.9}' cy='${y - 0.9}' r='.9' fill='#ffffff'/>`)
-    .join("")}</svg>`
+// Cadena rolo: eslabones redondos finos (de frente y de canto, alternados)
+// en plata, con un diamantito celeste colgando del cierre.
+const ROLO = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><defs>${METAL}</defs>${cadenaOval(
+    20,
+    14,
+    15,
+    10.5,
+    30,
+    ({ i, x, y, ang, atras }) =>
+      i % 2
+        ? `<ellipse cx='${x}' cy='${y}' rx='2.3' ry='.7' transform='rotate(${ang} ${x} ${y})' fill='url(#m)' stroke='#475569' stroke-width='.35' opacity='${atras ? 0.75 : 1}'/>`
+        : `<circle cx='${x}' cy='${y}' r='1.95' fill='none' stroke='#475569' stroke-width='1.4' opacity='${atras ? 0.75 : 1}'/><circle cx='${x}' cy='${y}' r='1.95' fill='none' stroke='url(#m)' stroke-width='.9' opacity='${atras ? 0.75 : 1}'/>`,
+    [7, 8]
+  )}${broche(20, 25.2)}<path d='M20 28.6 V30.4' stroke='#94a3b8' stroke-width='.7'/>${diamante(16.4, 30, 0.21)}</svg>`
 );
 
 // Anillo solitario: aro plateado y brillante celeste.
@@ -1970,16 +2003,16 @@ const ESCENA_JOYERO = (() => {
     ["4%", COLLAR_SUELTO, "58px", "38px", "28s", "-4s", "18px", "14deg", "6.5s"],
     ["14%", RELOJ, "24px", "40px", "30s", "-24s", "14px", "22deg", "5.5s"],
     ["25%", ARETES, "32px", "37px", "27s", "-14s", "20px", "18deg", "7s"],
-    ["36%", BRAZALETE, "32px", "27px", "29s", "-20s", "16px", "30deg", "6s"],
+    ["36%", CUBANA, "36px", "29px", "29s", "-20s", "16px", "30deg", "6s"],
     ["50%", SOLITARIO, "24px", "28px", "26s", "-9s", "22px", "26deg", "5s"],
-    ["62%", ESCLAVA, "36px", "27px", "31s", "-1s", "18px", "20deg", "7.5s"],
+    ["62%", ROLO, "34px", "34px", "31s", "-1s", "18px", "20deg", "7.5s"],
     ["76%", COLLAR_SUELTO, "52px", "34px", "29s", "-17s", "16px", "12deg", "6.8s"],
-    ["90%", BRAZALETE, "28px", "24px", "28s", "-11s", "18px", "28deg", "6.4s"],
-    ["9%", ESCLAVA, "32px", "24px", "30s", "-13s", "16px", "18deg", "7.2s"],
+    ["90%", CUBANA, "32px", "26px", "28s", "-11s", "18px", "28deg", "6.4s"],
+    ["9%", ROLO, "30px", "30px", "30s", "-13s", "16px", "18deg", "7.2s"],
     ["20%", SOLITARIO, "22px", "26px", "27s", "-22s", "20px", "24deg", "5.4s"],
     ["43%", ARETES, "28px", "32px", "31s", "-27s", "20px", "20deg", "6.2s"],
     ["56%", RELOJ, "22px", "37px", "28s", "-6s", "14px", "24deg", "5.8s"],
-    ["69%", BRAZALETE, "30px", "25px", "30s", "-29s", "16px", "26deg", "6.6s"],
+    ["69%", CUBANA, "34px", "27px", "30s", "-29s", "16px", "26deg", "6.6s"],
     ["83%", COLLAR_SUELTO, "54px", "36px", "27s", "-19s", "18px", "14deg", "7s"],
   ].map(([x, img, w, h, dur, delay, dx, giro, mecer], i) => ({
     clase: i < 8 ? "tz-esc-joya" : "tz-esc-joya tz-esc-joya-extra",
@@ -2033,9 +2066,9 @@ const joyero = (S) =>
     boton: [capa("linear-gradient(180deg, #ffffff, #f0f9ff)")],
     botonEstilo: "border: 1px solid rgba(56,189,248,0.55) !important; color: #0369a1 !important; border-radius: 999px !important; box-shadow: 0 2px 10px rgba(3,105,161,0.12) !important; font-weight: 700; letter-spacing: 0.06em;",
     botonPieEstilo: "border-radius: 999px !important; border: 1px solid rgba(3,105,161,0.35) !important; color: #0369a1 !important; box-shadow: 0 3px 12px rgba(3,105,161,0.18) !important; font-weight: 700; letter-spacing: 0.06em;",
-    // Paneles: blanco con doble filete celeste (interior de estuche) y un
-    // brazalete de metal en la esquina de los medidores.
-    panel: [capa(BRAZALETE, "right 8px top 8px", "24px 20px"), capa(BLANCO_PURO)],
+    // Paneles: blanco con doble filete celeste (interior de estuche) y una
+    // pulsera de cadena barbada en la esquina de los medidores.
+    panel: [capa(CUBANA, "right 8px top 7px", "27px 22px"), capa(BLANCO_PURO)],
     panelEstilo: `border: 1px solid rgba(56,189,248,0.45) !important; box-shadow: ${FILETE}, 0 8px 22px rgba(3,105,161,0.08) !important;`,
     barra: [capa("linear-gradient(180deg, #ffffff, #f7fbfe)")],
     modal: [capa(DIJE, "right 14px bottom 12px", "14px 24px"), trama(FACETAS, "220px 220px"), capa(BLANCO_PURO)],
@@ -3387,7 +3420,7 @@ export const TEMATICOS = [
     descripcion: "Blanco puro y celeste cielo: collar de diamantes y joyas que caen",
     paleta: { id: "tematico-joyero", nombre: "Joyero Celeste", modo: "claro", principal: "#0284c7", secundario: "#0369a1", acento: "#0e7490", botones: "#0284c7", fondo1: "#ffffff", fondo2: "#f3f9fd" },
     escena: ESCENA_JOYERO,
-    muestra: `${COLLAR} left 0 top 22% / 240px 28px repeat-x, ${SOLITARIO} left 14px bottom 8px / 18px 21px no-repeat, ${BRAZALETE} right 12px bottom 9px / 24px 20px no-repeat, ${FACETAS} 0 0 / 150px 150px, linear-gradient(180deg, #ffffff, #e3f2fd)`,
+    muestra: `${COLLAR} left 0 top 22% / 240px 28px repeat-x, ${SOLITARIO} left 14px bottom 8px / 18px 21px no-repeat, ${CUBANA} right 12px bottom 8px / 27px 22px no-repeat, ${FACETAS} 0 0 / 150px 150px, linear-gradient(180deg, #ffffff, #e3f2fd)`,
     css: joyero,
   },
   {
