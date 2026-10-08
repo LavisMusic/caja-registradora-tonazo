@@ -1837,52 +1837,9 @@ const destello = (x, y, r, c, dur, delay) =>
 const gotaCristal = (x, y, k = 1) =>
   `<g transform='translate(${x} ${y}) scale(${k})'><path d='M0 0 C5 6 7 11 7 15 A7 7 0 0 1 -7 15 C-7 11 -5 6 0 0 Z' fill='#7dd3fc' stroke='#0284c7' stroke-width='.7'/><path d='M0 0 L-3 12 L0 22 L3 12 Z' fill='#bae6fd' opacity='.9'/><path d='M-7 15 L-3 12 M7 15 L3 12' stroke='#e0f2fe' stroke-width='.6'/><ellipse cx='-2.6' cy='10' rx='1.2' ry='2.4' fill='#ffffff' opacity='.85'/></g>`;
 
-// Curva SMIL suave (entra y sale despacio) para `values` de 3 puntos.
-const SUAVE = "calcMode='spline' keyTimes='0;.5;1' keySplines='.45 0 .55 1;.45 0 .55 1'";
-
-// Diamante que cuelga de un eslabón: se mece como péndulo desde su
-// enganche, gira sobre su eje (se angosta y se ensancha) y destella
-// cuando da la cara. (x, y) = enganche, `l` = largo del eslabón.
 // Estrella de 4 puntas (contorno de `destello`, sin animación).
 const estrella = (x, y, r) =>
   `M${x} ${y - r} L${x + r * 0.22} ${y - r * 0.22} L${x + r} ${y} L${x + r * 0.22} ${y + r * 0.22} L${x} ${y + r} L${x - r * 0.22} ${y + r * 0.22} L${x - r} ${y} L${x - r * 0.22} ${y - r * 0.22} Z`;
-const colgante = (x, y, l, k, ang, vaiven, giro, fase) =>
-  `<g transform='translate(${x} ${y})'><g><animateTransform attributeName='transform' type='rotate' values='${-ang};${ang};${-ang}' ${SUAVE} dur='${vaiven}s' begin='${-fase}s' repeatCount='indefinite'/><circle r='1.3' fill='none' stroke='#94a3b8' stroke-width='.8'/><path d='M0 1.3 V${l + 2 * k}' stroke='#94a3b8' stroke-width='.9'/><g transform='translate(0 ${l})'><g><animateTransform attributeName='transform' type='scale' values='1 1;.3 1;1 1' ${SUAVE} dur='${giro}s' begin='${-fase}s' repeatCount='indefinite'/>${diamante(-17 * k, 0, k)}</g><path d='${estrella(+(9 * k).toFixed(1), +(4 * k).toFixed(1), +(9 * k).toFixed(1))}' fill='#ffffff' stroke='#7dd3fc' stroke-width='.4'><animate attributeName='opacity' values='1;0;0;0;1' keyTimes='0;.14;.5;.86;1' dur='${giro}s' begin='${-fase}s' repeatCount='indefinite'/></path></g></g></g>`;
-
-// Collar fino (franja repeat-x de 480 px = dos tramos): cadena de
-// eslabones plateada que cae en curva, dos diamantes chicos y uno grande
-// colgando en cada tramo. La cadena "respira" (baja y sube un poquito) y
-// todo lo que cuelga baja con ella; las puntas no se mueven, así los
-// tramos empalman siempre.
-const COLLAR = (() => {
-  const Y0 = 6;
-  const SAG = [32, 36]; // control de la curva: reposo / estirada
-  const RESPIRA = 5;
-  const curva = (c) => `M0 ${Y0} Q120 ${c} 240 ${Y0} Q360 ${c} 480 ${Y0}`;
-  const alto = (t, c) => Y0 + 2 * t * (1 - t) * (c - Y0);
-  const piezas = [
-    // [x, largo, escala, ángulo, vaivén, giro, fase]
-    [60, 6, 0.26, 9, 2.4, 4.2, 0.3],
-    [120, 13, 0.54, 7, 3.3, 5.6, 1.1],
-    [180, 6, 0.26, 9, 2.7, 4.6, 2.0],
-    [300, 6, 0.26, 9, 2.2, 3.9, 0.8],
-    [360, 13, 0.5, 7, 3.7, 6.2, 2.6],
-    [420, 6, 0.26, 9, 2.9, 4.8, 1.5],
-  ]
-    .map(([x, l, k, ang, vaiven, giro, fase]) => {
-      const t = (x % 240) / 240;
-      const y = alto(t, SAG[0]);
-      const dy = (alto(t, SAG[1]) - y).toFixed(2);
-      return `<g><animateTransform attributeName='transform' type='translate' values='0 0;0 ${dy};0 0' ${SUAVE} dur='${RESPIRA}s' repeatCount='indefinite'/>${colgante(x, y.toFixed(1), l, k, ang, vaiven, giro, fase)}</g>`;
-    })
-    .join("");
-  const cadena = (extra) =>
-    `<path d='${curva(SAG[0])}' ${extra}><animate attributeName='d' values='${curva(SAG[0])};${curva(SAG[1])};${curva(SAG[0])}' ${SUAVE} dur='${RESPIRA}s' repeatCount='indefinite'/></path>`;
-  return svg(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='480' height='56'>${cadena("stroke='#94a3b8' stroke-width='1.8' fill='none' stroke-dasharray='2.6 1.4' stroke-linecap='round'")}${cadena("stroke='#f1f5f9' stroke-width='.6' fill='none' stroke-dasharray='1.2 2.8' transform='translate(0 -.6)'")}${piezas}</svg>`
-  );
-})();
-
 // Reloj de esfera celeste, correa de malla plateada y segundero que gira
 // (cae por el fondo).
 const RELOJ = svg(
@@ -2053,19 +2010,16 @@ const joyero = (S) =>
     // En la app real los destellos y las joyas que caen los dibuja la ESCENA.
     raiz: [capa(BLANCO_PURO)],
     // Cabecera = estuche celeste de joyería: filete plateado doble, foco
-    // de luz detrás del logo, destellos blancos sueltos y un reflejo que la
-    // cruza despacio (::before); el collar (con sus diamantes meciéndose)
-    // cuelga del borde sobre la barra blanca.
+    // de luz detrás del logo, destellos blancos sueltos, un reflejo que la
+    // cruza despacio (::before) y un hilo de luz blanca en el borde.
     cabecera: [
-      capa(COLLAR, "left 0 bottom 0", "480px 56px", "repeat-x"),
       capa(HILO_BLANCO, "left 0 bottom 0", "100% 1px"),
       capa(CHISPAS_CABECERA, "0 0", "100% 100%"),
       capa(FOCO),
       capa(SATIN),
       capa(ESTUCHE),
     ],
-    cabeceraEstilo: `padding-bottom: 34px !important; border-bottom: none !important; position: relative; isolation: isolate; box-shadow: 0 8px 22px rgba(3,105,161,0.18) !important;`,
-    borde: { enCabecera: 6, rellenoCabecera: 22 },
+    cabeceraEstilo: `border-bottom: none !important; position: relative; isolation: isolate; box-shadow: 0 8px 22px rgba(3,105,161,0.18) !important;`,
     // Pie celeste, limpio, con su línea fina arriba.
     pie: [
       capa(HILO_CELESTE, "left 0 top 0", "100% 1px"),
@@ -3453,10 +3407,10 @@ export const TEMATICOS = [
     id: "joyero",
     rubro: "joyeria",
     nombre: "Joyero Celeste",
-    descripcion: "Blanco puro y celeste cielo: collar de diamantes y joyas que caen",
+    descripcion: "Estuche celeste y blanco puro: joyas que caen y destellos",
     paleta: { id: "tematico-joyero", nombre: "Joyero Celeste", modo: "claro", principal: "#0284c7", secundario: "#0369a1", acento: "#0e7490", botones: "#0284c7", fondo1: "#ffffff", fondo2: "#f3f9fd" },
     escena: ESCENA_JOYERO,
-    muestra: `${COLLAR} left 0 top 22% / 240px 28px repeat-x, ${SOLITARIO} left 14px bottom 8px / 18px 21px no-repeat, ${CUBANA} right 12px bottom 8px / 27px 22px no-repeat, ${FACETAS} 0 0 / 150px 150px, linear-gradient(180deg, #ffffff, #e3f2fd)`,
+    muestra: `${SOLITARIO} left 14px bottom 8px / 18px 21px no-repeat, ${CUBANA} right 12px bottom 8px / 27px 22px no-repeat, ${FACETAS} 0 0 / 150px 150px, linear-gradient(180deg, #7dd3fc 0%, #0ea5e9 34%, #ffffff 34.5%, #f0f9ff 100%)`,
     css: joyero,
   },
   {
