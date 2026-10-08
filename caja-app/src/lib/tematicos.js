@@ -2023,7 +2023,7 @@ const joyero = (S) =>
       capa(SEDA_CELESTE),
     ],
     cabeceraEstilo: "padding-bottom: 34px !important; border-bottom: none !important; box-shadow: 0 6px 22px rgba(3,105,161,0.08);",
-    borde: { enCabecera: 7, rellenoCabecera: 22 },
+    borde: { enCabecera: 6, rellenoCabecera: 22 },
     // Pie celeste, limpio, con su línea fina arriba.
     pie: [
       capa(HILO_CELESTE, "left 0 top 0", "100% 1px"),
