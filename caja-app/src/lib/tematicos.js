@@ -2952,9 +2952,10 @@ ${BARRA(S, " .tz-admin-filter-label")} { color: #14532d !important; text-shadow:
 ${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
 ${en(S, ".tz-esc-prado")} { position: absolute; inset: 0; background: ${PASTO_AZAR_A} 0 0 / 331px 287px repeat, ${PASTO_AZAR_B} 97px 61px / 229px 263px repeat, ${PRADERA_VIVA}; }
 /* Los animales caminan solo por debajo de la barra de filtros (zona
-   libre arriba: --zona); --f = 0 justo debajo de esa zona, 1 abajo del
-   todo. En celular la barra es más alta y caminan menos animales. */
-${en(S, ".tz-escena")} { --zona: 360px; }
+   libre arriba: --zona = donde termina la barra, medido por TemaNegocio,
+   más un margen); --f = 0 justo debajo de esa zona, 1 abajo del todo. En
+   celular caminan menos animales. */
+${en(S, ".tz-escena")} { --zona: calc(var(--tz-bajo-barra, 380px) + 14px); }
 ${en(S, ".tz-esc-animal")} {
   position: absolute; left: 0; top: calc(var(--zona) + (100% - var(--zona) - var(--h)) * var(--f));
   width: var(--w); height: var(--h);
@@ -2981,7 +2982,7 @@ ${en(S, ".tz-esc-izq")} { scale: -1 1; --nod: -9deg; animation-name: tz-gra-izq,
 }
 @keyframes tz-gra-paso { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
 @media (max-width: 560px) {
-  ${en(S, ".tz-escena")} { --zona: 560px; }
+  ${en(S, ".tz-escena")} { --zona: calc(var(--tz-bajo-barra, 580px) + 14px); }
   ${en(S, ".tz-esc-solo-pc")} { display: none; }
 }`,
   });
