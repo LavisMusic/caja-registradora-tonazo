@@ -2472,13 +2472,21 @@ const espuma = (S) =>
     panelEstilo: "border: 1px solid rgba(125,211,252,0.4) !important; box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 8px 18px rgba(0,0,0,0.45) !important;",
     modal: [capa(ESPONJA, "right 12px bottom 12px", "30px 22px"), trama(GOTAS_AGUA, "60px 60px"), capa("linear-gradient(170deg, #0e3a63 0%, #04182c 100%)")],
     modalEstilo: "border: 1px solid rgba(125,211,252,0.55) !important; box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;",
-    tituloEstilo: `color: #f0f9ff !important; background: ${ESPUMA_VIVA} left 0 bottom 0 / 54px 21px repeat-x !important; padding-bottom: 24px;`,
+    tituloEstilo: "color: #f0f9ff !important; position: relative; padding-bottom: 24px;",
     pestana: [capa("linear-gradient(180deg, #0f4c81, #0a3561)")],
     pestanaEstilo: "border: 1px solid rgba(125,211,252,0.4) !important; color: #e0f2fe !important;",
     activa: [capa("linear-gradient(180deg, #f0abfc, #d946ef)")],
     activaEstilo: "border-color: #86198f !important; color: #ffffff !important; box-shadow: 0 0 14px rgba(240,171,252,0.5) !important;",
     campoEstilo: "background: #04182c !important; border: 1px solid rgba(125,211,252,0.4) !important;",
     extra: (S) => `${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }
+/* Franja de espuma bajo el título de las ventanas: se desvanece en las
+   puntas (sin cortes); el título no se toca. */
+${en(S, ".tz-modal h2::after")} {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 21px; pointer-events: none;
+  background: ${ESPUMA_VIVA} left 0 bottom 0 / 54px 21px repeat-x;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent);
+}
 ${barraPropia(S, [trama(GOTAS_AGUA, "60px 60px"), capa(VIDRIO_MOJADO)], "padding-top: 34px !important;")}
 ${montado(S, { img: ESPUMA_VIVA, tam: "120px 46px", arriba: 22, alto: 46, corre: 120, dur: "14s" })}
 /* El auto y la esponja ruedan ENCIMA de la espuma (capa de arriba), con
@@ -2563,7 +2571,7 @@ const KRAFT = "linear-gradient(180deg, #d1a777 0%, #b88b5a 100%)";
 
 // Lápices cortos acostados dentro de la barra de filtros.
 const LAPICES_CORTOS = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='34'>${[
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='39'>${[
     ["#ef4444", 0],
     ["#f97316", 0],
     ["#facc15", 0],
@@ -2573,7 +2581,7 @@ const LAPICES_CORTOS = svg(
   ]
     .map(([c, dy], i) => {
       const x = 4 + i * 20;
-      return `<g transform='translate(${x} ${dy})'><rect x='0' y='0' width='12' height='22' fill='${c}'/><rect x='4' y='0' width='4' height='22' fill='rgba(255,255,255,0.22)'/><rect x='0' y='0' width='12' height='2.5' fill='rgba(0,0,0,0.15)'/><path d='M0 22 L6 30 L12 22 Z' fill='#f5d0a9'/><path d='M3.8 27 L6 30 L8.2 27 Z' fill='${c}'/></g>`;
+      return `<g transform='translate(${x} ${dy})'><rect x='0' y='0' width='12' height='27' fill='${c}'/><rect x='4' y='0' width='4' height='27' fill='rgba(255,255,255,0.22)'/><rect x='0' y='0' width='12' height='2.5' fill='rgba(0,0,0,0.15)'/><path d='M0 27 L6 35 L12 27 Z' fill='#f5d0a9'/><path d='M3.8 32 L6 35 L8.2 32 Z' fill='${c}'/></g>`;
     })
     .join("")}</svg>`
 );
@@ -2615,7 +2623,7 @@ ${en(S, ".tz-header .tz-conn-indicator")} { background: #ffffff !important; box-
 ${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(30,41,59,0.25)) !important; }
 ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-top: 14px !important; }
 /* Los lápices van acostados DENTRO de la barra (más alta arriba). */
-${barraPropia(S, [capa(LAPICES_CORTOS, "left 0 top 0", "120px 34px", "repeat-x"), capa(HOJA_PAPEL)], "padding-top: 46px !important;")}
+${barraPropia(S, [capa(LAPICES_CORTOS, "left 0 top 0", "120px 39px", "repeat-x"), capa(HOJA_PAPEL)], "padding-top: 51px !important;")}
 /* ---- Escena: hoja + útiles que caen de vez en cuando ---- */
 ${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
 ${en(S, ".tz-esc-hoja")} { position: absolute; inset: 0; background: ${MARGEN}, ${RENGLONES}, ${HOJA_PAPEL}; }
@@ -2868,9 +2876,6 @@ const VACAS_BARRA = svg(
     )
     .join("")}</svg>`
 );
-const PASTO_FRENTE = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='44' height='18'><path d='M0 18 L2 8 L4 18 L6 3 L9 18 L11 9 L13 18 L16 4 L18 18 L21 10 L23 18 L26 2 L28 18 L31 8 L33 18 L36 5 L38 18 L41 9 L44 18 Z' fill='#4caf2e'/><path d='M6 3 L7 12 M16 4 L16.5 12 M26 2 L26.5 12 M36 5 L36.5 12' stroke='#86e05a' stroke-width='.8'/></svg>`
-);
 const PASTO_TRAMA = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' width='70' height='70'><g stroke='rgba(20,83,45,0.35)' stroke-width='1.3' stroke-linecap='round'><path d='M10 20 l-2 -6 M12 20 l1 -7 M14 20 l3 -5'/><path d='M48 52 l-2 -6 M50 52 l1 -7 M52 52 l3 -5'/><path d='M40 14 l-1 -5 M42 14 l2 -5'/></g><g fill='#fde047'><circle cx='26' cy='44' r='1.6'/><circle cx='60' cy='24' r='1.4'/></g><g fill='#ffffff'><circle cx='28' cy='42' r='1'/><circle cx='24' cy='42' r='1'/></g></svg>`
 );
@@ -2910,7 +2915,7 @@ const granja = (S) =>
     cabecera: [capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.4))"), capa(TABLAS_GRANERO)],
     cabeceraEstilo: "border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.35);",
     // Pie: solo pasto con el cerco plantado.
-    pie: [capa(PASTO_FRENTE, "left 0 top 40px", "44px 18px", "repeat-x"), capa(CERCO, "left 0 top 4px", "80px 46px", "repeat-x"), trama(PASTO_AZAR_B, "229px 263px"), capa(PASTO_BLOQUE)],
+    pie: [capa(CERCO, "left 0 top 4px", "80px 46px", "repeat-x"), trama(PASTO_AZAR_B, "229px 263px"), capa(PASTO_BLOQUE)],
     pieEstilo: "border-top: none !important; padding-top: 62px !important;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.3), transparent 55%)"), capa("linear-gradient(180deg, #fde68a, #eab308)")],
     botonEstilo: "border: 1px solid #854d0e !important; color: #3b2a06 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.4) !important; font-weight: 800;",
@@ -2934,7 +2939,6 @@ ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !i
 ${barraPropia(
   S,
   [
-    capa(PASTO_FRENTE, "left 0 top 50px", "44px 18px", "repeat-x"),
     capa(CERCO, "left 0 top 14px", "80px 46px", "repeat-x"),
     trama(PASTO_AZAR_B, "229px 263px"),
     capa(PASTO_BLOQUE),
@@ -2947,8 +2951,12 @@ ${BARRA(S, " .tz-admin-filter-label")} { color: #14532d !important; text-shadow:
 /* ---- Escena: prado con animales paseando (estilo granja) ---- */
 ${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
 ${en(S, ".tz-esc-prado")} { position: absolute; inset: 0; background: ${PASTO_AZAR_A} 0 0 / 331px 287px repeat, ${PASTO_AZAR_B} 97px 61px / 229px 263px repeat, ${PRADERA_VIVA}; }
+/* Los animales caminan solo por debajo de la barra de filtros (zona
+   libre arriba: --zona); --f = 0 justo debajo de esa zona, 1 abajo del
+   todo. En celular la barra es más alta y caminan menos animales. */
+${en(S, ".tz-escena")} { --zona: 360px; }
 ${en(S, ".tz-esc-animal")} {
-  position: absolute; left: 0; top: var(--y);
+  position: absolute; left: 0; top: calc(var(--zona) + (100% - var(--zona) - var(--h)) * var(--f));
   width: var(--w); height: var(--h);
   background: var(--img) center / contain no-repeat;
   --nod: 9deg;
@@ -2971,24 +2979,29 @@ ${en(S, ".tz-esc-izq")} { scale: -1 1; --nod: -9deg; animation-name: tz-gra-izq,
   73% { translate: 18vw 0; rotate: 0deg; } 75% { rotate: var(--nod); } 77% { rotate: 0deg; } 79% { rotate: var(--nod); } 81% { translate: 18vw 0; rotate: 0deg; }
   100% { translate: -16vw 0; rotate: 0deg; }
 }
-@keyframes tz-gra-paso { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }`,
+@keyframes tz-gra-paso { from { transform: translateY(0); } to { transform: translateY(-2.5px); } }
+@media (max-width: 560px) {
+  ${en(S, ".tz-escena")} { --zona: 560px; }
+  ${en(S, ".tz-esc-solo-pc")} { display: none; }
+}`,
   });
 
 const ESCENA_GRANJA = [
   { clase: "tz-esc-prado" },
   ...[
-    ["", VACA, "112px", "74px", "22%", "80s", "-10s"],
-    ["izq", OVEJA, "78px", "55px", "34%", "70s", "-25s"],
-    ["", GALLINA, "44px", "44px", "44%", "50s", "-5s", "0.28s"],
-    ["izq", CERDO, "78px", "52px", "52%", "74s", "-40s"],
-    ["", OVEJA, "72px", "51px", "61%", "66s", "-30s"],
-    ["izq", VACA, "104px", "68px", "70%", "90s", "-55s"],
-    ["", CERDO, "72px", "48px", "80%", "68s", "-18s"],
-    ["izq", GALLINA, "42px", "42px", "88%", "46s", "-12s", "0.26s"],
-    ["", GALLINA, "38px", "38px", "92%", "54s", "-30s", "0.3s"],
-  ].map(([dir, img, w, h, y, dur, delay, paso]) => ({
-    clase: `tz-esc-animal${dir ? " tz-esc-izq" : ""}`,
-    estilo: { "--img": img, "--w": w, "--h": h, "--y": y, "--dur": dur, "--delay": delay, ...(paso ? { "--paso": paso } : {}) },
+    // [dirección, animal, ancho, alto, fila (0 = bajo la barra, 1 = abajo), …, solo en PC]
+    ["", VACA, "112px", "74px", 0, "80s", "-10s"],
+    ["izq", OVEJA, "78px", "55px", 0.17, "70s", "-25s", "", true],
+    ["", GALLINA, "44px", "44px", 0.31, "50s", "-5s", "0.28s"],
+    ["izq", CERDO, "78px", "52px", 0.43, "74s", "-40s"],
+    ["", OVEJA, "72px", "51px", 0.56, "66s", "-30s", "", true],
+    ["izq", VACA, "104px", "68px", 0.69, "90s", "-55s"],
+    ["", CERDO, "72px", "48px", 0.83, "68s", "-18s"],
+    ["izq", GALLINA, "42px", "42px", 0.94, "46s", "-12s", "0.26s"],
+    ["", GALLINA, "38px", "38px", 1, "54s", "-30s", "0.3s", true],
+  ].map(([dir, img, w, h, f, dur, delay, paso, soloPc]) => ({
+    clase: `tz-esc-animal${dir ? " tz-esc-izq" : ""}${soloPc ? " tz-esc-solo-pc" : ""}`,
+    estilo: { "--img": img, "--w": w, "--h": h, "--f": f, "--dur": dur, "--delay": delay, ...(paso ? { "--paso": paso } : {}) },
   })),
 ];
 
@@ -3009,21 +3022,6 @@ const TENDEDERO_ROPA = svg(
 const TENDEDERO_BORDE = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' width='180' height='48'>${toalla(8, 8, "#7dd3fc")}${pinzaRopa(10)}${pinzaRopa(22)}${polo(32, 9, "#fda4af", 1.05)}${pinzaRopa(40)}${pinzaRopa(53)}${calcetin(66, 10, "#c4b5fd", -4)}${calcetin(78, 10, "#c4b5fd", 4)}${pinzaRopa(68)}${pinzaRopa(80)}${toalla(98, 10, "#fde68a")}${pinzaRopa(100)}${pinzaRopa(112)}${polo(124, 9, "#86efac", 1.05)}${pinzaRopa(132)}${pinzaRopa(145)}${calcetin(158, 9, "#7dd3fc", 2)}${pinzaRopa(160)}</svg>`
 );
-// Burbujas de jabón tornasoladas que suben (SMIL).
-const BURBUJAS_JABON = svg(
-  `<svg xmlns='http://www.w3.org/2000/svg' width='150' height='150'><defs><linearGradient id='t' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#7dd3fc'/><stop offset='.5' stop-color='#f0abfc'/><stop offset='1' stop-color='#fde68a'/></linearGradient></defs>${[
-    [20, 10, 9, 0],
-    [62, 6, 7, 2.2],
-    [104, 13, 11, 4],
-    [134, 7, 8, 1.1],
-    [42, 5, 6, 3.3],
-  ]
-    .map(
-      ([x, r, dur, delay]) =>
-        `<g><animateTransform attributeName='transform' type='translate' values='0 0; -8 -85; 6 -170' dur='${dur}s' begin='-${delay}s' repeatCount='indefinite'/><circle cx='${x}' cy='${150 + r}' r='${r}' fill='rgba(255,255,255,0.18)' stroke='url(#t)' stroke-width='1.3' opacity='.8'/><ellipse cx='${x - r * 0.35}' cy='${150 + r - r * 0.4}' rx='${r * 0.3}' ry='${r * 0.18}' fill='rgba(255,255,255,0.9)'/></g>`
-    )
-    .join("")}</svg>`
-);
 const LAVADORA = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 52'><rect x='1' y='1' width='44' height='50' rx='5' fill='#ffffff' stroke='#94a3b8' stroke-width='1.2'/><rect x='1' y='1' width='44' height='10' rx='5' fill='#e2e8f0'/><circle cx='36' cy='6' r='3' fill='#cbd5e1' stroke='#64748b' stroke-width='.8'/><rect x='6' y='4.5' width='10' height='3' rx='1.5' fill='#7dd3fc'/><circle cx='23' cy='31' r='15' fill='#cbd5e1' stroke='#64748b' stroke-width='1.2'/><circle cx='23' cy='31' r='11.5' fill='#bae6fd'/><g><animateTransform attributeName='transform' type='rotate' from='0 23 31' to='360 23 31' dur='2.4s' repeatCount='indefinite'/><path d='M15 30 Q19 24 25 26 Q22 30 15 30 Z' fill='#f472b6'/><path d='M24 35 Q30 34 31 28 Q26 31 24 35 Z' fill='#a78bfa'/><path d='M17 35 Q20 39 25 38 Q21 35 17 35 Z' fill='#fde047'/></g><path d='M15 25 Q18 21 23 20.5' stroke='rgba(255,255,255,0.85)' stroke-width='1.6' fill='none' stroke-linecap='round'/></svg>`
 );
@@ -3037,11 +3035,29 @@ const AZULEJO_CLARO = svg(
   `<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'><rect width='30' height='30' fill='#bfe6ef'/><rect x='1' y='1' width='28' height='28' rx='2' fill='#f4fbfd'/><rect x='3' y='3' width='10' height='2' rx='1' fill='rgba(255,255,255,0.9)'/></svg>`
 );
 const AIRE_LIMPIO = "linear-gradient(180deg, #cdeef7 0%, #e3f6fb 100%)";
+const AIRE_FONDO = "linear-gradient(180deg, #f5fbfd 0%, #e6f4f8 100%)";
+// Una burbuja de jabón tornasolada (sube sola en la escena).
+const BURBUJA_JABON = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='-12 -12 24 24'><defs><linearGradient id='t' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#7dd3fc'/><stop offset='.5' stop-color='#f0abfc'/><stop offset='1' stop-color='#fde68a'/></linearGradient></defs><circle r='10.5' fill='rgba(255,255,255,0.22)' stroke='url(#t)' stroke-width='1.3'/><ellipse cx='-3.8' cy='-4.2' rx='3' ry='1.8' fill='rgba(255,255,255,0.95)' transform='rotate(-35 -3.8 -4.2)'/></svg>`
+);
+// Las mismas burbujas, quietas (fondo de las ventanas: sin loop a la vista).
+const BURBUJAS_QUIETAS = svg(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='150' height='150'><defs><linearGradient id='t' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='#7dd3fc'/><stop offset='.5' stop-color='#f0abfc'/><stop offset='1' stop-color='#fde68a'/></linearGradient></defs>${[
+    [22, 30, 9],
+    [96, 18, 6],
+    [120, 92, 11],
+    [48, 108, 7],
+    [76, 62, 4],
+  ]
+    .map(([x, y, r]) => `<circle cx='${x}' cy='${y}' r='${r}' fill='rgba(255,255,255,0.18)' stroke='url(#t)' stroke-width='1.2' opacity='.7'/><ellipse cx='${x - r * 0.35}' cy='${y - r * 0.4}' rx='${r * 0.3}' ry='${r * 0.18}' fill='rgba(255,255,255,0.9)'/>`)
+    .join("")}</svg>`
+);
 
 const tendedero = (S) =>
   construir(S, {
-    raiz: [trama(BURBUJAS_JABON, "150px 150px"), capa("linear-gradient(180deg, #f5fbfd 0%, #e6f4f8 100%)")],
-    cabecera: [trama(BURBUJAS_JABON, "150px 150px"), capa(AIRE_LIMPIO)],
+    // En la app real las burbujas que suben las dibuja la ESCENA.
+    raiz: [capa(AIRE_FONDO)],
+    cabecera: [capa(AIRE_LIMPIO)],
     cabeceraEstilo: "border-bottom: none !important;",
     pie: [capa("linear-gradient(180deg, #38bdf8, #0ea5e9)", "left 0 top 0", "100% 4px"), trama(AZULEJO_CLARO, "30px 30px")],
     pieEstilo: "border-top: none !important;",
@@ -3050,7 +3066,7 @@ const tendedero = (S) =>
     botonPieEstilo: "border-radius: 999px !important; border: 1px solid #0e7490 !important; color: #ffffff !important; box-shadow: 0 4px 10px rgba(8,145,178,0.35) !important; text-shadow: 0 1px 1px rgba(0,0,0,0.25);",
     panel: [capa(JABON_ICONO, "right 8px top 6px", "26px 22px"), capa("linear-gradient(180deg, #ffffff, #f7fcfe)")],
     panelEstilo: "border: 1px solid #bfe6ef !important; box-shadow: 0 6px 16px rgba(14,116,144,0.10) !important;",
-    modal: [capa(JABON_ICONO, "right 12px bottom 12px", "30px 26px"), trama(BURBUJAS_JABON, "150px 150px"), capa("linear-gradient(180deg, #ffffff, #f2fafd)")],
+    modal: [capa(JABON_ICONO, "right 12px bottom 12px", "30px 26px"), trama(BURBUJAS_QUIETAS, "150px 150px"), capa("linear-gradient(180deg, #ffffff, #f2fafd)")],
     modalEstilo: "border: 1px solid #a5dcea !important; box-shadow: 0 20px 60px rgba(14,116,144,0.2) !important;",
     tituloEstilo: "color: #0e7490 !important; border-bottom: 2px dashed #f9a8d4; padding-bottom: 8px;",
     pestana: [capa("linear-gradient(180deg, #ffffff, #effafc)")],
@@ -3065,8 +3081,47 @@ ${en(S, ".tz-logo")} { filter: drop-shadow(0 4px 10px rgba(14,116,144,0.3)) !imp
 ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 36px !important; }
 /* La cuerda va justo en la línea de arriba de la barra y la ropa cuelga
    dentro de ella. */
-${barraPropia(S, [capa(TENDEDERO_BORDE, "left 0 top -4px", "240px 64px", "repeat-x"), capa("linear-gradient(180deg, #ffffff, #f7fcfe)")], "padding-top: 70px !important; border-top: 3px solid #64748b !important;")}`,
+${barraPropia(S, [capa(TENDEDERO_BORDE, "left 0 top -4px", "240px 64px", "repeat-x"), capa("linear-gradient(180deg, #ffffff, #f7fcfe)")], "padding-top: 70px !important; border-top: 3px solid #64748b !important;")}
+/* ---- Escena: burbujas de jabón sueltas que suben (como en Cevichería:
+   cada una con su lugar, tamaño y velocidad; nunca reinician juntas) ---- */
+${en(S, ".tz-escena")} { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+${en(S, ".tz-esc-aire")} { position: absolute; inset: 0; background: ${AIRE_FONDO}; }
+${en(S, ".tz-esc-burbuja")} {
+  position: absolute; bottom: -40px; left: var(--x);
+  width: var(--tam); height: var(--tam);
+  background: ${BURBUJA_JABON} center / contain no-repeat;
+  opacity: 0.85;
+  animation: tz-lav-subir var(--dur) linear var(--delay) infinite;
+  will-change: transform;
+}
+@keyframes tz-lav-subir {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(12px, -28vh); }
+  50% { transform: translate(-10px, -56vh); }
+  75% { transform: translate(9px, -84vh); }
+  100% { transform: translate(0, -118vh); }
+}`,
   });
+
+const ESCENA_TENDEDERO = [
+  { clase: "tz-esc-aire" },
+  ...[
+    ["4%", "16px", "15s", "-1s"],
+    ["11%", "24px", "19s", "-9s"],
+    ["18%", "11px", "13s", "-4s"],
+    ["26%", "30px", "21s", "-14s"],
+    ["34%", "14px", "14s", "-7s"],
+    ["42%", "20px", "17s", "-2s"],
+    ["50%", "12px", "12s", "-6s"],
+    ["58%", "26px", "20s", "-11s"],
+    ["65%", "15px", "15s", "-3s"],
+    ["73%", "22px", "18s", "-12s"],
+    ["80%", "11px", "13s", "-8s"],
+    ["87%", "28px", "22s", "-5s"],
+    ["93%", "17px", "16s", "-10s"],
+    ["97%", "12px", "14s", "-1.5s"],
+  ].map(([x, tam, dur, delay]) => ({ clase: "tz-esc-burbuja", estilo: { "--x": x, "--tam": tam, "--dur": dur, "--delay": delay } })),
+];
 
 // =====================================================================
 // SEX SHOP — "Neón íntimo" (discreto: terciopelo negro, luces de neón
@@ -3503,7 +3558,8 @@ export const TEMATICOS = [
     nombre: "Tendedero",
     descripcion: "Ropa colgada, burbujas de jabón, lavadora girando y canasta",
     paleta: { id: "tematico-tendedero", nombre: "Tendedero", modo: "claro", principal: "#0e7490", secundario: "#be185d", acento: "#6d28d9", botones: "#0e7490", fondo1: "#f5fbfd", fondo2: "#e6f4f8" },
-    muestra: `${LAVADORA} right 10px top 6px / 26px 29px no-repeat, ${TENDEDERO_ROPA} left 0 bottom 0 / 135px 36px repeat-x, ${BURBUJAS_JABON} 0 0 / 110px 110px, ${AIRE_LIMPIO}`,
+    escena: ESCENA_TENDEDERO,
+    muestra: `${LAVADORA} right 10px top 6px / 26px 29px no-repeat, ${TENDEDERO_ROPA} left 0 bottom 0 / 135px 36px repeat-x, ${BURBUJAS_QUIETAS} 0 0 / 110px 110px, ${AIRE_LIMPIO}`,
     css: tendedero,
   },
   {
