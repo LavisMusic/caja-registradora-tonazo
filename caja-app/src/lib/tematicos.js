@@ -2915,8 +2915,10 @@ const granja = (S) =>
     cabecera: [capa("linear-gradient(180deg, rgba(0,0,0,0.25), rgba(0,0,0,0.4))"), capa(TABLAS_GRANERO)],
     cabeceraEstilo: "border-bottom: none !important; box-shadow: 0 6px 18px rgba(0,0,0,0.35);",
     // Pie: solo pasto con el cerco plantado.
-    pie: [capa(CERCO, "left 0 top 4px", "80px 46px", "repeat-x"), trama(PASTO_AZAR_B, "229px 263px"), capa(PASTO_BLOQUE)],
-    pieEstilo: "border-top: none !important; padding-top: 62px !important;",
+    // Pie: bloque de césped con el mismo borde de arriba que la barra (pasto
+    // que sobresale y el cerco montado encima, en sus ::before/::after).
+    pie: [trama(PASTO_AZAR_B, "229px 263px"), capa(PASTO_BLOQUE)],
+    pieEstilo: "border-top: none !important; padding-top: 54px !important; position: relative;",
     boton: [capa("linear-gradient(180deg, rgba(255,255,255,0.3), transparent 55%)"), capa("linear-gradient(180deg, #fde68a, #eab308)")],
     botonEstilo: "border: 1px solid #854d0e !important; color: #3b2a06 !important; box-shadow: 0 3px 8px rgba(0,0,0,0.4) !important; font-weight: 800;",
     botonPieEstilo: "border-radius: 8px !important; border: 1px solid #854d0e !important; color: #3b2a06 !important; box-shadow: 0 4px 10px rgba(0,0,0,0.45) !important; font-weight: 800;",
@@ -2942,13 +2944,16 @@ ${barraPropia(
     trama(PASTO_AZAR_B, "229px 263px"),
     capa(PASTO_BLOQUE),
   ],
-  "padding-top: 74px !important;"
+  "padding-top: 54px !important;"
 )}
 ${montado(S, { img: PASTO_ALTO, tam: "60px 30px", arriba: 20, alto: 30 })}
 /* El cerco va 6 px por encima del borde de la barra, encima del pasto que
    sobresale (::before de la cabecera: el fondo de la barra no puede salir
    de ella); nada más cambia de lugar. */
 ${en(S, ".tz-header:has(+ .tz-admin-filterbar)::before")} { content: ""; position: absolute; left: 0; right: 0; bottom: -40px; height: 46px; background: ${CERCO} left 0 top 0 / 80px 46px repeat-x; pointer-events: none; z-index: 3; }
+/* El pie con el mismo borde: pasto que sobresale 20 px y el cerco encima. */
+${en(S, ".tz-page-footer::before")} { content: ""; position: absolute; left: 0; right: 0; top: -20px; height: 30px; background: ${PASTO_ALTO} left 0 top 0 / 60px 30px repeat-x; pointer-events: none; z-index: 2; }
+${en(S, ".tz-page-footer::after")} { content: ""; position: absolute; left: 0; right: 0; top: -6px; height: 46px; background: ${CERCO} left 0 top 0 / 80px 46px repeat-x; pointer-events: none; z-index: 3; }
 ${BARRA(S, " .tz-admin-filter-tag")} { background: #14532d !important; color: #ecfccb !important; border-color: #86efac !important; box-shadow: 0 2px 6px rgba(0,0,0,0.25) !important; }
 ${BARRA(S, " .tz-admin-filter-label")} { color: #14532d !important; text-shadow: none !important; background: rgba(255,255,255,0.8); padding: 1px 10px; border-radius: 999px; }
 /* ---- Escena: prado con animales paseando (estilo granja) ---- */
