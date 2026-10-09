@@ -736,7 +736,7 @@ export default function GestorPedidosModal({
       </div>
 
       {comprobanteVer && (
-        <div className="tz-modal-backdrop" style={{ zIndex: 80 }} onClick={() => setComprobanteVer(null)}>
+        <div className="tz-modal-backdrop" style={{ zIndex: 80 }}>
           <div className="tz-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420, textAlign: "center" }}>
             <button className="tz-modal-close" onClick={() => setComprobanteVer(null)} aria-label="Cerrar">
               <X size={18} />

@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { calcularEstadoPlan, msHastaProximoCambio } from "../lib/planes";
 import { reiniciarBienvenidas } from "../hooks/useBienvenidaNeon";
 import { ShieldAlert, Headset } from "lucide-react";
 import { useContactoPlataforma } from "../hooks/useContactoPlataforma";
@@ -237,41 +238,90 @@ export function AuthProvider({ children }) {
   // este fetch no depende de ningún permiso especial del rol actual.
   const [negocioLogoUrl, setNegocioLogoUrl] = useState(null);
   // Fase 4: estado del plan del negocio (prueba/activo/gracia/
-  // suspendido/exento, calculado por la base — columna plan_estado,
-  // migración 0087). App.jsx lo usa para los avisos de vencimiento y la
-  // pantalla de plan suspendido. Se vuelve a leer cada 10 min para que
-  // una caja abierta todo el día cambie de estado sin recargar.
-  const [negocioPlan, setNegocioPlan] = useState(null);
+  // suspendido/exento). App.jsx lo usa para los avisos de vencimiento y
+  // la pantalla de plan suspendido. EN TIEMPO REAL:
+  //  * cambios guardados (el super admin registra un pago, cambia el
+  //    plan, lo suspende) llegan por Realtime sobre la fila del negocio;
+  //  * cambios por el paso del tiempo (empieza el aviso, vence, termina
+  //    la gracia) no generan ningún evento en la base: se programa un
+  //    temporizador al próximo hito y se recalcula en ese instante.
+  // El cálculo replica public.plan_estado (ver lib/planes.js).
+  const [negocioFila, setNegocioFila] = useState(null);
+  // Tema del negocio (migración 0096) — consulta APARTE y tolerante: si
+  // la columna todavía no existe, la caja sigue con el tema original en
+  // vez de perder los datos del plan. Se actualiza en tiempo real con la
+  // misma suscripción de la fila del negocio.
+  const [negocioTema, setNegocioTema] = useState(null);
+  const [relojPlan, setRelojPlan] = useState(0);
   useEffect(() => {
     const negocioId = profile?.negocio_id;
     if (!negocioId) {
       setNegocioLogoUrl(null);
-      setNegocioPlan(null);
+      setNegocioFila(null);
+      setNegocioTema(null);
       return undefined;
     }
     let active = true;
-    const leer = () =>
-      supabase
-        .from("negocios")
-        .select("logo_url, nombre, plan_estado, plan_vence_at, plan_exento")
-        .eq("id", negocioId)
-        .maybeSingle()
-        .then(({ data }) => {
-          if (!active) return;
-          setNegocioLogoUrl(data?.logo_url || null);
-          setNegocioPlan(
-            data
-              ? { estado: data.plan_estado, venceAt: data.plan_vence_at, exento: data.plan_exento, negocioNombre: data.nombre }
-              : null
-          );
-        });
-    leer();
-    const intervalo = setInterval(leer, 10 * 60 * 1000);
+    supabase
+      .from("negocios")
+      .select("id, logo_url, nombre, whatsapp, plan_id, plan_vence_at, plan_exento, plan_en_prueba, plan_suspendido_manual")
+      .eq("id", negocioId)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!active) return;
+        setNegocioLogoUrl(data?.logo_url || null);
+        setNegocioFila(data || null);
+      });
+    supabase
+      .from("negocios")
+      .select("tema")
+      .eq("id", negocioId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (active && !error) setNegocioTema(data?.tema || null);
+      });
+    const canal = supabase
+      .channel(`negocio-plan-${negocioId}-${Math.random().toString(36).slice(2, 10)}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "negocios", filter: `id=eq.${negocioId}` },
+        ({ new: fila }) => {
+          if (!active || !fila) return;
+          setNegocioLogoUrl(fila.logo_url || null);
+          setNegocioFila((prev) => ({ ...(prev || {}), ...fila }));
+          if ("tema" in fila) setNegocioTema(fila.tema || null);
+        }
+      )
+      .subscribe();
     return () => {
       active = false;
-      clearInterval(intervalo);
+      supabase.removeChannel(canal);
     };
   }, [profile?.negocio_id]);
+
+  useEffect(() => {
+    const ms = msHastaProximoCambio(negocioFila);
+    if (ms == null) return undefined;
+    // setTimeout no acepta más de ~24.8 días: si el hito está más lejos,
+    // se re-programa al llegar a ese tope.
+    const t = setTimeout(() => setRelojPlan((n) => n + 1), Math.min(ms, 2_000_000_000));
+    return () => clearTimeout(t);
+  }, [negocioFila, relojPlan]);
+
+  const negocioPlan = useMemo(() => {
+    if (!negocioFila) return null;
+    return {
+      estado: calcularEstadoPlan(negocioFila),
+      venceAt: negocioFila.plan_vence_at,
+      exento: negocioFila.plan_exento,
+      negocioNombre: negocioFila.nombre,
+      planId: negocioFila.plan_id,
+      // Sin WhatsApp no se puede renovar (migración 0095).
+      whatsapp: negocioFila.whatsapp || null,
+    };
+    // relojPlan fuerza el recálculo cuando pasa un hito de tiempo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [negocioFila, relojPlan]);
 
   // Cuenta eliminada por el Admin (manage-usuario action:'delete')
   // MIENTRAS esta sesión sigue abierta en este dispositivo —
@@ -318,6 +368,10 @@ export function AuthProvider({ children }) {
     negocioId: profile?.negocio_id ?? null,
     negocioLogoUrl,
     negocioPlan,
+    negocioTema,
+    // Para que el tema recién guardado se vea al instante en la caja,
+    // sin esperar el aviso en tiempo real (TemaEditor).
+    aplicarTemaNegocio: setNegocioTema,
     loading,
     isAdmin: profile?.role === "admin",
     isCliente: profile?.role === "cliente",

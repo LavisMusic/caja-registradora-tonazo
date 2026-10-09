@@ -2,6 +2,7 @@ import { useRef } from "react";
 import { Image as ImageIcon, Camera } from "lucide-react";
 
 // Espacio reservado para la foto del producto/combo en cada tarjeta.
+// Sin foto: el fondo aura (vacío) con un ícono de imagen encima.
 // Cuando SÍ hay foto, se arma en 3 capas superpuestas (position:
 // absolute, ver .tz-product-image-particles/-liquid/-cutout en
 // Styles.jsx): atrás, un Aurora/Mesh Gradient en movimiento rápido
@@ -68,9 +69,14 @@ export default function ProductImage({ item, editable, onManage, compact }) {
           />
         </>
       ) : (
-        <div className="tz-product-image-placeholder">
-          <ImageIcon size={compact ? 16 : 22} />
-        </div>
+        // Sin foto: el mismo fondo aura (vacío), con el ícono encima —
+        // así la tarjeta conserva el efecto en cualquier tema.
+        <>
+          <div className="tz-product-image-particles" aria-hidden="true" />
+          <div className="tz-product-image-placeholder">
+            <ImageIcon size={compact ? 16 : 22} />
+          </div>
+        </>
       )}
       {editable && (
         <span className={`tz-product-image-edit-badge ${compact ? "tz-product-image-edit-badge-sm" : ""}`}>

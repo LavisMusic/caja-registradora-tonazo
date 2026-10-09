@@ -2,18 +2,21 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CreditCard, CalendarClock, Store } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import TextoMaquina from "../components/TextoMaquina";
+import TemaNegocio from "../components/TemaNegocio";
+import { textoHorarioHoy } from "../lib/horario";
 import { useCatalog } from "../hooks/useCatalog";
 import { usePedidosBadge } from "../hooks/usePedidosBadge";
 import { supabase } from "../supabaseClient";
 import LoginModal from "../components/LoginModal";
 import AnimacionNeonBienvenida from "../components/AnimacionNeonBienvenida";
 import { useBienvenidaNeon } from "../hooks/useBienvenidaNeon";
+import { useCentrarSubtitulo } from "../hooks/useCentrarSubtitulo";
 import ClienteFiadoView from "./ClienteFiadoView";
 import Styles from "../components/Styles";
 import CardDetail from "../components/CardDetail";
 import ComboIngredients from "../components/ComboIngredients";
 import ProductImage from "../components/ProductImage";
-import LogoEasterEgg from "../components/LogoEasterEgg";
 import ScrollSpySidebar from "../components/ScrollSpySidebar";
 import PedidoCheckoutModal from "../components/PedidoCheckoutModal";
 import MisPedidosModal from "../components/MisPedidosModal";
@@ -22,7 +25,7 @@ import { safeGetItem, safeSetItem } from "../utils/safeStorage";
 import { distanciaMetros } from "../lib/haversine";
 import logo from "../assets/logo.webp";
 import logoTaxiPe from "../assets/logo-taxipe.webp";
-import { planPermiteOnline } from "../lib/planes";
+import { planPermiteOnline, calcularEstadoPlan } from "../lib/planes";
 
 // URL pública de Taxi-PE — botón del filtro abre en pestaña nueva, no
 // toca la sesión de Caja para nada (login ya unificado del otro lado).
@@ -96,6 +99,8 @@ export default function CatalogPage() {
      mostrar el catálogo de OTRO negocio por error — termina en un
      estado de error explícito, nunca en una lista vacía silenciosa. */
   const { slug } = useParams();
+  // El texto bajo el logo queda centrado entre el logo y la barra.
+  const headerRef = useCentrarSubtitulo();
   const [negocio, setNegocio] = useState(null);
   const [negocioLoading, setNegocioLoading] = useState(true);
   const [negocioError, setNegocioError] = useState("");
@@ -106,7 +111,7 @@ export default function CatalogPage() {
     setNegocioError("");
     supabase
       .from("negocios")
-      .select("id, nombre, slug, logo_url, plan_estado")
+      .select("id, nombre, slug, logo_url, plan_vence_at, plan_exento, plan_en_prueba, plan_suspendido_manual")
       .eq("slug", slug)
       .eq("activo", true)
       .maybeSingle()
@@ -115,7 +120,7 @@ export default function CatalogPage() {
         if (error || !data) {
           setNegocioError("No encontramos esta tienda.");
         } else {
-          setNegocio(data);
+          setNegocio({ ...data, plan_estado: calcularEstadoPlan(data) });
         }
         setNegocioLoading(false);
       });
@@ -123,6 +128,36 @@ export default function CatalogPage() {
       active = false;
     };
   }, [slug]);
+
+  // Tiempo real: si el plan del negocio vence o se renueva mientras el
+  // cliente está mirando el catálogo, el carrito se apaga/prende solo.
+  const negocioIdActual = negocio?.id;
+  useEffect(() => {
+    if (!negocioIdActual) return undefined;
+    const canal = supabase
+      .channel(`catalogo-negocio-${negocioIdActual}-${Math.random().toString(36).slice(2, 10)}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "negocios", filter: `id=eq.${negocioIdActual}` },
+        ({ new: fila }) => {
+          if (!fila) return;
+          setNegocio((prev) => {
+            const next = { ...(prev || {}), ...fila };
+            return { ...next, plan_estado: calcularEstadoPlan(next) };
+          });
+          // Tema y descripciones (Perfil) también en vivo: si el negocio
+          // cambia de tema o de rubro, el cliente lo ve sin recargar.
+          if ("tema" in fila) setTemaTienda(fila.tema || null);
+          if (Array.isArray(fila.descripciones)) {
+            setPerfilPublico((prev) => ({ ...prev, descripciones: fila.descripciones }));
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(canal);
+    };
+  }, [negocioIdActual]);
   const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
     session?.user?.id,
     isCliente
@@ -260,6 +295,47 @@ export default function CatalogPage() {
     setPublicSucursalId(preferida.id);
     setPublicLocalidadId(preferida.localidad_id);
   }, [publicLocalesLoading, publicSucursales, publicSucursalId]);
+
+  // Perfil público (migración 0095): descripciones del negocio y horario
+  // de cada sucursal para el texto debajo del logo. Consulta aparte y
+  // tolerante: si algo falla, la tienda carga igual (solo sin esos
+  // mensajes).
+  const [perfilPublico, setPerfilPublico] = useState({ descripciones: [], horarios: {} });
+  // Tema de la tienda (migración 0096): consulta aparte y tolerante.
+  const [temaTienda, setTemaTienda] = useState(null);
+  useEffect(() => {
+    if (!negocio?.id) return undefined;
+    let vivo = true;
+    supabase
+      .from("negocios")
+      .select("tema")
+      .eq("id", negocio.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (vivo && !error) setTemaTienda(data?.tema || null);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [negocio?.id]);
+  useEffect(() => {
+    if (!negocio?.id) return undefined;
+    let vivo = true;
+    const sucIds = publicSucursales.map((suc) => suc.id);
+    Promise.all([
+      supabase.from("negocios").select("descripciones").eq("id", negocio.id).maybeSingle(),
+      sucIds.length ? supabase.from("sucursales").select("id, horario").in("id", sucIds) : Promise.resolve({ data: [] }),
+    ]).then(([{ data: n, error: e1 }, { data: sucs, error: e2 }]) => {
+      if (!vivo) return;
+      setPerfilPublico({
+        descripciones: e1 ? [] : n?.descripciones || [],
+        horarios: e2 ? {} : Object.fromEntries((sucs || []).map((x) => [x.id, x.horario])),
+      });
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [negocio?.id, publicSucursales]);
 
   // Sucursal automática por geolocalización — se recalcula CADA VEZ que
   // se abre la tienda (nunca se guarda "la última detectada": si el
@@ -445,6 +521,7 @@ export default function CatalogPage() {
     return (
       <div className="tz-root tz-loading">
         <Styles />
+        <TemaNegocio tema={temaTienda} />
         <Loader2 className="tz-spin" size={34} />
       </div>
     );
@@ -454,6 +531,7 @@ export default function CatalogPage() {
     return (
       <div className="tz-root tz-loading">
         <Styles />
+        <TemaNegocio tema={temaTienda} />
         <Store size={34} />
         <p>{negocioError || "No encontramos esta tienda."}</p>
         <Link to="/directorio" className="tz-header-btn">
@@ -467,15 +545,24 @@ export default function CatalogPage() {
     return (
       <div className="tz-root tz-loading">
         <Styles />
+        <TemaNegocio tema={temaTienda} />
         <Loader2 className="tz-spin" size={34} />
         <p>Cargando catálogo…</p>
       </div>
     );
   }
 
+  const primerNombre = String(nombre || "").trim().split(/\s+/)[0];
+  const mensajesSubtitulo = [
+    session && primerNombre ? `¡Hola ${primerNombre}!` : `¡Bienvenido a ${negocio?.nombre || "la tienda"}!`,
+    ...(perfilPublico.descripciones || []),
+    textoHorarioHoy(perfilPublico.horarios[publicSucursalId]),
+  ];
+
   return (
     <div className="tz-root">
       <Styles />
+      <TemaNegocio tema={temaTienda} />
       {mostrarBienvenida && (
         <AnimacionNeonBienvenida
           eyebrow={`✦ Bienvenido a ${negocio.nombre} ✦`}
@@ -484,7 +571,7 @@ export default function CatalogPage() {
           onTerminar={marcarBienvenidaVista}
         />
       )}
-      <header className="tz-header">
+      <header className="tz-header" ref={headerRef}>
         <div className="tz-header-row">
           <div className="tz-header-side tz-header-side-left">
             {fiadosAnim !== "hidden" && (
@@ -518,12 +605,19 @@ export default function CatalogPage() {
           </div>
 
           <div className="tz-header-center">
-            <LogoEasterEgg
+            <img
               src={negocio.logo_url || logo}
               alt={negocio.nombre}
               className="tz-logo"
             />
-            <p className="tz-subtitle">{negocio.nombre}</p>
+            {/* Mensajes en secuencia (se escriben y se borran): saludo al
+               cliente → descripciones del negocio (Perfil) → horario de
+               hoy de la sucursal elegida. */}
+            {/* Espacio de alto fijo (una línea): si el mensaje pasa a 2
+               líneas, crece sobre este punto sin empujar la cabecera. */}
+            <div className="tz-subtitle-slot">
+              <TextoMaquina mensajes={mensajesSubtitulo} />
+            </div>
           </div>
 
           <div className="tz-header-side tz-header-side-right">

@@ -39,11 +39,12 @@ import {
   MapPin,
   Landmark,
   Printer,
+  Store,
+  Search,
 } from "lucide-react";
 import { supabase } from "./supabaseClient";
 import { createWorker } from "tesseract.js";
 import imageCompression from "browser-image-compression";
-import html2canvas from "html2canvas";
 import * as XLSX from "xlsx";
 import { formatSoles, formatDate, formatQty, formatTime } from "./utils/format";
 import CartRow from "./components/CartRow";
@@ -74,15 +75,19 @@ import BarcodeScannerModal from "./components/BarcodeScannerModal";
 import CatalogVisibilityAccordion from "./components/CatalogVisibilityAccordion";
 import ProductManagerModal from "./components/ProductManagerModal";
 import ColorPicker from "./components/ColorPicker";
-import LogoEasterEgg from "./components/LogoEasterEgg";
 import ScrollSpySidebar from "./components/ScrollSpySidebar";
 import TicketBoleta from "./components/TicketBoleta";
 import ImageManager from "./components/ImageManager";
 import PesoModal from "./components/PesoModal";
 import Combobox from "./components/Combobox";
 import GestorLocalidadesModal from "./components/GestorLocalidadesModal";
-import { imprimirBoleta } from "./lib/boleta";
+import { imprimirBoleta, copiarBoletaAlPortapapeles } from "./lib/boleta";
+import PerfilNegocioModal from "./components/PerfilNegocioModal";
+import TemaNegocio from "./components/TemaNegocio";
 import { AvisoPlan, PantallaPlanSuspendido } from "./components/AvisoPlanNegocio";
+import RenovarPlanModal from "./components/RenovarPlanModal";
+import { useMiPeticionPlan } from "./hooks/usePeticionesPlan";
+import { puedeRenovar, inicioRenovacion, formatFechaCorta } from "./lib/planes";
 
 import logo from "./assets/logo.webp";
 
@@ -546,6 +551,13 @@ function formatMesEs(yearMonthKey) {
 /* APP                                                                  */
 /* ------------------------------------------------------------------ */
 
+// Búsqueda sin tildes ni mayúsculas ("cafe" encuentra "Café").
+const normalizarBusqueda = (t) =>
+  String(t || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
 export default function App() {
   const {
     signOut,
@@ -558,6 +570,7 @@ export default function App() {
     negocioId,
     negocioLogoUrl,
     negocioPlan,
+    negocioTema,
   } = useAuth();
   // Logo real de ESTE negocio (el mismo que ya usa la boleta) — cae al
   // de Tonazo solo si el negocio todavía no subió uno.
@@ -652,6 +665,11 @@ export default function App() {
   const loadError = catalogError;
 
   const [sales, setSales] = useState([]);
+  // Ventas ANULADAS (migración 0094: anular ya no borra, marca). Viven
+  // aparte de 'sales' a propósito: todo lo que suma (recaudado, cierres,
+  // estadísticas, top clientes, Excel) sigue leyendo solo 'sales', así
+  // una anulada nunca cuenta. Solo "Mis Ventas" las muestra (filtro).
+  const [ventasAnuladas, setVentasAnuladas] = useState([]);
   const [activeTab, setActiveTab] = useState(""); // se define al cargar 'sections'
 
   const [selection, setSelection] = useState({}); // { productId: qty }
@@ -945,6 +963,8 @@ export default function App() {
   /* ---- Mis Ventas (Hoy): historial compacto del turno actual, con
      Anular Venta para corregir errores de tipeo inmediatos ---- */
   const [misVentasOpen, setMisVentasOpen] = useState(false);
+  // Perfil del negocio: null (cerrado) o el apartado con que se abre.
+  const [perfilOpen, setPerfilOpen] = useState(null);
   const [anulandoVentaId, setAnulandoVentaId] = useState(null);
   const [anularError, setAnularError] = useState("");
 
@@ -963,6 +983,11 @@ export default function App() {
      ampliado después a "Usuarios" sin renombrar todo el estado) — cada
      fila trae { id, nombre, role }. ---- */
   const [gestorLocalidadesOpen, setGestorLocalidadesOpen] = useState(false);
+  // Fase 4 (bloque B): "Renovar plan" — pago con comprobante que aprueba
+  // el super admin. La petición del negocio se sigue en tiempo real.
+  const [renovarPlanOpen, setRenovarPlanOpen] = useState(false);
+  const { peticion: miPeticionPlan, recargar: recargarMiPeticionPlan } = useMiPeticionPlan(isAdmin ? negocioId : null);
+  const pagoPlanEnRevision = miPeticionPlan?.estado === "pendiente";
   const [cajerosOpen, setCajerosOpen] = useState(false);
   const [cajeros, setCajeros] = useState([]);
   const [cajerosLoading, setCajerosLoading] = useState(false);
@@ -1973,6 +1998,9 @@ export default function App() {
         cajaId: row.caja_id || null,
         sucursalId: row.sucursal_id || null,
         timestamp: Number(row.fecha),
+        anulado: !!row.anulado,
+        anuladoAt: row.anulado_at ? new Date(row.anulado_at).getTime() : null,
+        anuladoPor: row.anulado_por || null,
       }));
 
       // 3) COMPROBANTES (ingresos manuales / detectados por OCR)
@@ -2165,7 +2193,8 @@ export default function App() {
         timestamp: new Date(row.created_at).getTime(),
       }));
 
-      setSales(loadedSales);
+      setSales(loadedSales.filter((s) => !s.anulado));
+      setVentasAnuladas(loadedSales.filter((s) => s.anulado));
       setComprobantes(loadedComprobantes);
       setClientes(loadedClientes);
       setFiadoItems(loadedFiadoItems);
@@ -5017,64 +5046,14 @@ export default function App() {
     );
   };
 
-  /* ---- respaldo: captura un TicketBoleta oculto con html2canvas y lo
-     copia al portapapeles como imagen (navigator.clipboard.write), sin
-     subir nada a Storage — a diferencia de enviarBoletaPorWhatsApp acá
-     no hace falta un link público, el cajero solo tiene que pegarla
-     (Ctrl+V) en el chat de WhatsApp que corresponda. Reutilizada tanto
-     por el botón "Copiar Boleta" del checkout como por "Generar
-     Boleta" en Mis Ventas — mismo hardening (timeout + scale
-     adaptivo) que enviarBoletaPorWhatsApp. ---- */
-  const copiarBoletaAlPortapapeles = async (nodeRef) => {
-    if (!nodeRef.current) {
-      throw new Error("No se pudo preparar la boleta. Intenta de nuevo.");
-    }
-    // navigator.clipboard.write (imágenes) exige "contexto seguro":
-    // https, o http://localhost — abrir la app por la IP de la red
-    // local (ej. http://192.168.x.x:5174, como en el celu/otra PC de
-    // prueba) NO califica, así que acá SIEMPRE va a faltar. En vez de
-    // dejar al cajero sin ninguna boleta, se degrada a descargar la
-    // imagen (el navegador la deja adjuntar a mano en WhatsApp Web/app
-    // desde la carpeta de descargas).
-    const puedeCopiarAlPortapapeles =
-      !!navigator.clipboard?.write && typeof window.ClipboardItem === "function";
-    try {
-      const isMobile = window.innerWidth < 768;
-      const canvasPromise = html2canvas(nodeRef.current, {
-        scale: isMobile ? 1.5 : 2,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#f8fafc",
-      });
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("TIMEOUT_RENDER")), 12000)
-      );
-      const canvas = await Promise.race([canvasPromise, timeoutPromise]);
-      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (!blob) throw new Error("No se pudo generar la imagen de la boleta.");
-
-      if (puedeCopiarAlPortapapeles) {
-        await navigator.clipboard.write([new window.ClipboardItem({ "image/png": blob })]);
-        return { downloaded: false };
-      }
-
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `boleta-${Date.now()}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      return { downloaded: true };
-    } catch (err) {
-      if (err?.message === "TIMEOUT_RENDER") {
-        throw new Error(
-          "No se pudo generar la imagen en este dispositivo (tardó demasiado). Intenta de nuevo."
-        );
-      }
-      throw err;
-    }
+  /* ---- "Copiar Boleta": captura el TicketBoleta oculto y lo copia al
+     portapapeles como imagen para pegarlo en el chat de WhatsApp (ver
+     copiarBoletaAlPortapapeles en lib/boleta.js: copia aun en iPhone y,
+     si el navegador no deja, ofrece compartir o la descarga). ---- */
+  const avisoBoletaCopiada = (res) => {
+    if (res?.copiado) alert("¡Boleta copiada! Ve a WhatsApp y pégala en el chat");
+    else if (res?.descargado)
+      alert("Este navegador no permite copiar imágenes — se descargó la boleta. Adjúntala a mano en WhatsApp.");
   };
 
   /* ---- botón de respaldo en la pantalla de venta exitosa: copia la
@@ -5086,12 +5065,7 @@ export default function App() {
     setBoletaError("");
     setCopiandoBoleta(true);
     try {
-      const { downloaded } = await copiarBoletaAlPortapapeles(ticketRef);
-      alert(
-        downloaded
-          ? "Este navegador no permite copiar imágenes — se descargó la boleta. Adjúntala a mano en WhatsApp."
-          : "¡Boleta copiada! Ve a WhatsApp y pégala en el chat"
-      );
+      avisoBoletaCopiada(await copiarBoletaAlPortapapeles(ticketRef, { compartir: true }));
     } catch (err) {
       console.error("Error copiando la boleta al portapapeles:", err);
       setBoletaError(err?.message || "No se pudo copiar la boleta. Intenta de nuevo.");
@@ -5138,12 +5112,7 @@ export default function App() {
       // podría capturar el estado anterior por la carrera entre el
       // re-render de React y la lectura del DOM.
       flushSync(() => setHistorialBoletaData(datos));
-      const { downloaded } = await copiarBoletaAlPortapapeles(historialBoletaRef);
-      alert(
-        downloaded
-          ? "Este navegador no permite copiar imágenes — se descargó la boleta. Adjúntala a mano en WhatsApp."
-          : "¡Boleta copiada! Ve a WhatsApp y pégala en el chat"
-      );
+      avisoBoletaCopiada(await copiarBoletaAlPortapapeles(historialBoletaRef, { compartir: true }));
     } catch (err) {
       console.error("Error generando la boleta desde el historial:", err);
       setHistorialBoletaError(err?.message || "No se pudo copiar la boleta. Intenta de nuevo.");
@@ -5721,7 +5690,8 @@ export default function App() {
      (purchaseId), solo del turno actual. ---- */
   const ventasHoyAgrupadas = useMemo(() => {
     const porId = {};
-    salesVisibles
+    const anuladasVisibles = tieneVistaActiva ? ventasAnuladas.filter((s) => s.cajaId === cajaOperativaId) : [];
+    [...salesVisibles, ...anuladasVisibles]
       .filter((s) => s.timestamp > turnoCutoff)
       .forEach((s) => {
         if (!porId[s.purchaseId]) {
@@ -5729,6 +5699,10 @@ export default function App() {
             purchaseId: s.purchaseId,
             timestamp: s.timestamp,
             metodoPago: s.metodoPago,
+            vendedor: s.vendedor,
+            anulado: !!s.anulado,
+            anuladoAt: s.anuladoAt || null,
+            anuladoPor: s.anuladoPor || null,
             items: [],
             total: 0,
           };
@@ -5737,7 +5711,23 @@ export default function App() {
         porId[s.purchaseId].total += s.total;
       });
     return Object.values(porId).sort((a, b) => b.timestamp - a.timestamp);
-  }, [salesVisibles, turnoCutoff]);
+  }, [salesVisibles, ventasAnuladas, cajaOperativaId, tieneVistaActiva, turnoCutoff]);
+
+  // Filtro + buscador de Mis Ventas (mismo que el Historial de ventas
+  // del super admin y de Taxi-PE).
+  const [misVentasFiltro, setMisVentasFiltro] = useState("todas");
+  const [misVentasBusqueda, setMisVentasBusqueda] = useState("");
+  const misVentasRegistradas = ventasHoyAgrupadas.filter((v) => !v.anulado);
+  const misVentasAnuladasCount = ventasHoyAgrupadas.length - misVentasRegistradas.length;
+  const misVentasTotal = misVentasRegistradas.reduce((sum, v) => sum + v.total, 0);
+  const misVentasVisibles = ventasHoyAgrupadas.filter((v) => {
+    if (misVentasFiltro === "registradas" && v.anulado) return false;
+    if (misVentasFiltro === "anuladas" && !v.anulado) return false;
+    const q = normalizarBusqueda(misVentasBusqueda.trim());
+    if (!q) return true;
+    const texto = [v.purchaseId, v.metodoPago, v.vendedor, ...v.items.map((it) => `${it.name} ${it.detail || ""}`)].join(" ");
+    return normalizarBusqueda(texto).includes(q);
+  });
 
   /* ---- Núcleo de la reversión de una venta: repone el stock consumido,
      borra sus filas de 'historial' y revierte el efecto de su método
@@ -5801,10 +5791,14 @@ export default function App() {
         }
       }
 
-      // 2) Borrar la venta de 'historial'.
+      // 2) Marcar la venta como ANULADA en 'historial' (antes se
+      //    borraba): queda visible en Mis Ventas con el filtro
+      //    "Anuladas", pero ya no suma en ningún lado.
+      const anuladoAt = new Date();
+      const anuladoPor = cajeroNombre || (isAdmin ? "Admin" : "Cajero");
       const { error: historialError } = await supabase
         .from("historial")
-        .delete()
+        .update({ anulado: true, anulado_at: anuladoAt.toISOString(), anulado_por: anuladoPor })
         .eq("purchase_id", purchaseId);
       if (historialError) throw historialError;
 
@@ -5828,6 +5822,10 @@ export default function App() {
       // 4) Reflejar en el estado local.
       setStock(newStock);
       setSales((prev) => prev.filter((s) => s.purchaseId !== purchaseId));
+      setVentasAnuladas((prev) => [
+        ...itemsDeVenta.map((it) => ({ ...it, anulado: true, anuladoAt: anuladoAt.getTime(), anuladoPor })),
+        ...prev,
+      ]);
       return { error: null };
     } catch (err) {
       console.error("Error al revertir venta:", err);
@@ -7232,6 +7230,7 @@ export default function App() {
     return (
       <div className="tz-root tz-loading">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         <Loader2 className="tz-spin" size={34} />
         <p>Cargando caja registradora…</p>
       </div>
@@ -7242,6 +7241,7 @@ export default function App() {
     return (
       <div className="tz-root tz-loading">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         <AlertTriangle size={34} className="tz-cliente-debe" />
         <p>{loadError}</p>
       </div>
@@ -7293,12 +7293,33 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         <PantallaPlanSuspendido
           esAdmin={isAdmin}
-          negocioNombre={negocioPlan.negocioNombre}
           logo={logoNegocio}
           onSalir={signOut}
+          onRenovar={() => setRenovarPlanOpen(true)}
+          enRevision={pagoPlanEnRevision}
         />
+        {renovarPlanOpen && (
+          <RenovarPlanModal
+            negocioId={negocioId}
+            planActualId={negocioPlan?.planId}
+            plan={negocioPlan}
+            peticion={miPeticionPlan}
+            onPeticionEnviada={recargarMiPeticionPlan}
+            sinWhatsapp={!negocioPlan?.whatsapp}
+            onAbrirPerfil={
+              isAdmin
+                ? () => {
+                    setRenovarPlanOpen(false);
+                    setPerfilOpen("datos");
+                  }
+                : null
+            }
+            onClose={() => setRenovarPlanOpen(false)}
+          />
+        )}
       </div>
     );
   }
@@ -7307,6 +7328,7 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         {bienvenidaStaffOverlay}
         <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <Lock size={44} />
@@ -7331,6 +7353,7 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         {bienvenidaStaffOverlay}
         <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <Lock size={44} />
@@ -7356,6 +7379,7 @@ export default function App() {
     return (
       <div className="tz-root tz-caja-blocked">
         <Styles />
+        <TemaNegocio tema={negocioTema} />
         {bienvenidaStaffOverlay}
         <img src={logoNegocio} alt="Logo del negocio" className="tz-caja-blocked-logo" />
         <DollarSign size={44} />
@@ -7381,8 +7405,35 @@ export default function App() {
   return (
     <div className="tz-root">
       <Styles />
+      <TemaNegocio tema={negocioTema} />
       {bienvenidaStaffOverlay}
-      <AvisoPlan plan={negocioPlan} esAdmin={isAdmin} negocioNombre={negocioPlan?.negocioNombre} />
+      <AvisoPlan
+        plan={negocioPlan}
+        esAdmin={isAdmin}
+        onRenovar={() => setRenovarPlanOpen(true)}
+        enRevision={pagoPlanEnRevision}
+      />
+      {renovarPlanOpen && (
+        <RenovarPlanModal
+          negocioId={negocioId}
+          planActualId={negocioPlan?.planId}
+          plan={negocioPlan}
+          peticion={miPeticionPlan}
+          onPeticionEnviada={recargarMiPeticionPlan}
+          sinWhatsapp={!negocioPlan?.whatsapp}
+          onAbrirPerfil={
+            isAdmin
+              ? () => {
+                  setRenovarPlanOpen(false);
+                  setPerfilOpen("datos");
+                }
+              : null
+          }
+          onClose={() => setRenovarPlanOpen(false)}
+        />
+      )}
+
+      {perfilOpen && <PerfilNegocioModal apartadoInicial={perfilOpen} onClose={() => setPerfilOpen(null)} />}
 
       {/* El viejo modal obligatorio de "Apertura de Caja" para admin
          (bloqueaba TODO detrás de un backdrop) fue retirado: el admin
@@ -7446,18 +7497,22 @@ export default function App() {
           </div>
 
           <div className="tz-header-center">
-            <LogoEasterEgg src={logoNegocio} alt="Logo del negocio" className="tz-logo" />
+            <img src={logoNegocio} alt="Logo del negocio" className="tz-logo" />
             {/* UX Bug 3: subtítulo dinámico — el cajero siempre ve el
                nombre de SU sucursal (fija, de su perfil); el admin ve la
                que tenga activa en los dropdowns de arriba, o
                "Administración Global" si todavía no eligió ninguna (en
                vez de mostrar un texto estático genérico que no dice
                nada sobre dónde está parado). */}
-            <p className="tz-subtitle">
-              {isCajero
-                ? sucursales.find((s) => s.id === authSucursalId)?.nombre || "Caja Registradora"
-                : sucursales.find((s) => s.id === sucursalActivaId)?.nombre || "Administración Global"}
-            </p>
+            {/* Hueco de alto fijo entre el logo y la etiqueta de estado:
+               el nombre queda centrado ahí con 1 o 2 líneas. */}
+            <div className="tz-subtitle-hueco">
+              <p className="tz-subtitle">
+                {isCajero
+                  ? sucursales.find((s) => s.id === authSucursalId)?.nombre || "Caja Registradora"
+                  : sucursales.find((s) => s.id === sucursalActivaId)?.nombre || "Administración Global"}
+              </p>
+            </div>
             {/* Semáforo de conexión: exclusivo de admin/cajero — un
                cliente nunca llega a montar App.jsx (tiene su propia
                vista, ClienteFiadoView), pero este chequeo se deja
@@ -7542,6 +7597,20 @@ export default function App() {
               >
                 <Users size={19} />
                 <span className="tz-header-btn-label">Usuarios</span>
+              </button>
+            )}
+
+            {/* Perfil del negocio (logo adaptable, nombre, color, WhatsApp,
+               descripciones y horarios): solo admin. */}
+            {isAdmin && (
+              <button
+                className="tz-header-btn"
+                onClick={() => setPerfilOpen("datos")}
+                aria-label="Editar perfil del negocio"
+                title="Editar perfil del negocio"
+              >
+                <Store size={19} />
+                <span className="tz-header-btn-label">Perfil</span>
               </button>
             )}
           </div>
@@ -8231,11 +8300,9 @@ export default function App() {
                         type="button"
                         className="tz-whatsapp-send-btn tz-print-boleta-btn"
                         onClick={() => {
-                          try {
-                            imprimirBoleta(ticketRef);
-                          } catch (err) {
-                            setBoletaError(err?.message || "No se pudo imprimir la boleta.");
-                          }
+                          imprimirBoleta(ticketRef).catch((err) =>
+                            setBoletaError(err?.message || "No se pudo imprimir la boleta.")
+                          );
                         }}
                       >
                         <Printer size={15} /> Imprimir Boleta
@@ -8949,6 +9016,29 @@ export default function App() {
             <Landmark size={18} />
             Localidades
           </button>
+        )}
+        {isAdmin && negocioPlan && !negocioPlan.exento && (
+          // Ventana de renovación (0090): con el plan vigente solo se
+          // puede pagar en los últimos 3 días antes de que venza.
+          pagoPlanEnRevision || puedeRenovar(negocioPlan.venceAt) ? (
+            <button className="tz-footer-btn tz-footer-btn-renovar" onClick={() => setRenovarPlanOpen(true)}>
+              <CreditCard size={18} />
+              {pagoPlanEnRevision ? "Pago en revisión" : "Renovar plan"}
+            </button>
+          ) : (
+            <button
+              className="tz-footer-btn tz-footer-btn-renovar tz-footer-btn-bloqueado"
+              disabled
+              title={`Podrás renovar desde el ${formatFechaCorta(inicioRenovacion(negocioPlan.venceAt))}`}
+            >
+              <CreditCard size={18} />
+              <span className="tz-footer-btn-2lineas">
+                Plan activo
+                <br />
+                hasta {formatFechaCorta(negocioPlan.venceAt)}
+              </span>
+            </button>
+          )
         )}
       </footer>
 
@@ -10144,21 +10234,61 @@ export default function App() {
                 <Receipt size={17} /> Mis Ventas (Hoy)
               </h2>
               <p className="tz-stock-editor-sub">
-                Ventas de este turno (desde {formatDate(turnoCutoff)} ·{" "}
-                {formatTime(turnoCutoff)}). Anular repone el stock — úsalo solo para corregir
+                Ventas de este turno (
+                {turnoCutoff > 0 ? `desde ${formatDate(turnoCutoff)} · ${formatTime(turnoCutoff)}` : "desde el inicio, aún no hay cierres"}). Anular repone el stock — úsalo solo para corregir
                 un error de tipeo recién hecho.
               </p>
               {anularError && <p className="tz-error">{anularError}</p>}
               {historialBoletaError && <p className="tz-error">{historialBoletaError}</p>}
 
-              {ventasHoyAgrupadas.length === 0 ? (
+              <div className="tz-stat-chip tz-stat-chip-green" style={{ margin: "10px 0 14px" }}>
+                <span className="tz-stat-label">Total del turno</span>
+                <span className="tz-stat-value">{formatSoles(misVentasTotal)}</span>
+                <span className="tz-stat-sub">
+                  {misVentasRegistradas.length} venta{misVentasRegistradas.length === 1 ? "" : "s"}
+                  {misVentasAnuladasCount > 0 ? ` · ${misVentasAnuladasCount} anulada(s)` : ""}
+                </span>
+              </div>
+              <div className="tz-historial-filtros">
+                {[
+                  { id: "todas", label: "Todas" },
+                  { id: "registradas", label: `Registradas (${misVentasRegistradas.length})` },
+                  { id: "anuladas", label: `Anuladas (${misVentasAnuladasCount})` },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`tz-gasto-tipo-btn ${misVentasFiltro === f.id ? "tz-gasto-tipo-active" : ""}`}
+                    onClick={() => setMisVentasFiltro(f.id)}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+                <div className="tz-sa-buscador" style={{ flex: "1 1 220px", minWidth: 0 }}>
+                  <Search size={15} />
+                  <input
+                    className="tz-text-input"
+                    type="search"
+                    placeholder="Buscar venta, producto, método…"
+                    value={misVentasBusqueda}
+                    onChange={(e) => setMisVentasBusqueda(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {misVentasVisibles.length === 0 ? (
                 <p className="tz-method-history-empty">
-                  Todavía no registraste ventas en este turno.
+                  {ventasHoyAgrupadas.length === 0
+                    ? "Todavía no registraste ventas en este turno."
+                    : "Ninguna venta coincide con el filtro."}
                 </p>
               ) : (
                 <div className="tz-cierre-list">
-                  {ventasHoyAgrupadas.map((venta) => (
-                    <div key={venta.purchaseId} className="tz-receipt tz-receipt-compact">
+                  {misVentasVisibles.map((venta) => (
+                    <div
+                      key={venta.purchaseId}
+                      className={`tz-receipt tz-receipt-compact ${venta.anulado ? "tz-plan-pago-anulado" : ""}`}
+                    >
                       <div className="tz-receipt-header">
                         <span className="tz-receipt-title">{venta.purchaseId}</span>
                         <span className="tz-receipt-date">
@@ -10180,6 +10310,12 @@ export default function App() {
                         <span>Total</span>
                         <strong>{formatSoles(venta.total)}</strong>
                       </div>
+                      {venta.anulado ? (
+                        <p className="tz-tag tz-tag-danger" style={{ marginTop: 10, textAlign: "center" }}>
+                          Anulada{venta.anuladoAt ? ` a las ${formatTime(venta.anuladoAt)}` : ""}
+                          {venta.anuladoPor ? ` por ${venta.anuladoPor}` : ""}
+                        </p>
+                      ) : (
                       <div className="tz-cliente-actions" style={{ marginTop: 10 }}>
                         <button
                           className="tz-cliente-action-btn tz-cliente-action-deuda"
@@ -10190,7 +10326,7 @@ export default function App() {
                               window.confirm(
                                 `¿Anular la venta ${venta.purchaseId} por ${formatSoles(
                                   venta.total
-                                )}? Repone el stock. No se puede deshacer.`
+                                )}? Repone el stock y queda como anulada. No se puede deshacer.`
                               )
                             ) {
                               anularVenta(venta.purchaseId);
@@ -10218,6 +10354,7 @@ export default function App() {
                           Generar Boleta
                         </button>
                       </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -11942,7 +12079,7 @@ export default function App() {
                     <div className="tz-receipt-header">
                       <span className="tz-receipt-title">Turno actual</span>
                       <span className="tz-receipt-date">
-                        Desde {formatDate(turnoCutoff)} · {formatTime(turnoCutoff)}
+                        {turnoCutoff > 0 ? `Desde ${formatDate(turnoCutoff)} · ${formatTime(turnoCutoff)}` : "Desde el inicio"}
                       </span>
                     </div>
                     <div className="tz-receipt-row">
@@ -12091,7 +12228,7 @@ export default function App() {
                     <div className="tz-receipt-header">
                       <span className="tz-receipt-title">Turno actual</span>
                       <span className="tz-receipt-date">
-                        Desde {formatDate(turnoCutoff)} · {formatTime(turnoCutoff)}
+                        {turnoCutoff > 0 ? `Desde ${formatDate(turnoCutoff)} · ${formatTime(turnoCutoff)}` : "Desde el inicio"}
                       </span>
                     </div>
                     <div className="tz-receipt-row">

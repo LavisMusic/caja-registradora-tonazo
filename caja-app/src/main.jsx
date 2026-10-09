@@ -8,6 +8,11 @@ import DirectorioPage from './pages/DirectorioPage.jsx'
 import ErrorBoundary from './components/ErrorBoundary'
 import SuperAdminAccessPage from './pages/SuperAdminAccessPage.jsx'
 import NegocioAccessPage from './pages/NegocioAccessPage.jsx'
+import { instalarDespliegueBotones } from './lib/despliegueBotones'
+
+// Botones de la cabecera: en el celular se despliegan manteniendo
+// presionado (y deslizando por los demás).
+instalarDespliegueBotones()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

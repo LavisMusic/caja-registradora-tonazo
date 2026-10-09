@@ -119,7 +119,7 @@ export default function NegocioClientesModal({ negocio, onClose }) {
   }, [clientes, fiadoItems, movimientos]);
 
   return (
-    <div className="tz-modal-backdrop" onClick={onClose}>
+    <div className="tz-modal-backdrop">
       <Styles />
       <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="tz-modal-close" onClick={onClose} aria-label="Cerrar">

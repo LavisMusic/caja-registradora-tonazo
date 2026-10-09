@@ -495,7 +495,7 @@ export default function GestorLocalidadesModal({ negocioId, onClose }) {
   };
 
   return (
-    <div className="tz-modal-backdrop" onClick={() => onClose(changed)}>
+    <div className="tz-modal-backdrop">
       <Styles />
       <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="tz-modal-close" onClick={() => onClose(changed)} aria-label="Cerrar">

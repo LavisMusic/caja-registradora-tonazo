@@ -4,9 +4,12 @@ import { supabase } from "../supabaseClient";
 import Styles from "../components/Styles";
 import { invalidarContactoPlataforma } from "../hooks/useContactoPlataforma";
 
-// Gestor de datos de contacto de la plataforma (super admin). Una sola
-// fila en plataforma_contacto; al guardar, un trigger la copia a Taxi-PE
-// (webhook 'caja.contacto_plataforma', migración 0087).
+// Gestor de contacto y datos de pago de la plataforma (super admin). Una
+// sola fila en plataforma_contacto; al guardar, un trigger copia los
+// WhatsApp a Taxi-PE (webhook 'caja.contacto_plataforma', migración
+// 0087). Los datos de pago (Yape/Plin, cuenta bancaria, titular, 0088)
+// los ve el admin de cada negocio en el modal de pago de su plan, como
+// botones para copiar y pegar en su app de pagos.
 const CAMPOS = [
   {
     key: "whatsapp_pagos",
@@ -23,10 +26,31 @@ const CAMPOS = [
     label: "WhatsApp para afiliar negocios",
     ayuda: "Botón “¿Tienes un negocio? Súmate a Tonazo” del directorio.",
   },
+  {
+    key: "yape_plin",
+    label: "Número de Yape / Plin",
+    ayuda: "Los negocios lo copian para pagar su plan.",
+    seccion: "Datos de pago",
+  },
+  {
+    key: "cuenta_bancaria",
+    label: "Cuenta bancaria",
+    ayuda: "Banco y número (o CCI). Los negocios lo copian para transferir.",
+    tipo: "texto",
+    placeholder: "Ej. BCP 191-12345678-0-12",
+  },
+  {
+    key: "titular",
+    label: "Titular de la cuenta (opcional)",
+    ayuda: "Para que el negocio confirme a quién le está pagando.",
+    tipo: "texto",
+    placeholder: "Nombre completo",
+  },
 ];
+const VACIO = Object.fromEntries(CAMPOS.map(({ key }) => [key, ""]));
 
 export default function ContactoPlataformaModal({ onClose }) {
-  const [valores, setValores] = useState({ whatsapp_pagos: "", whatsapp_soporte: "", whatsapp_afiliacion: "" });
+  const [valores, setValores] = useState(VACIO);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -36,18 +60,14 @@ export default function ContactoPlataformaModal({ onClose }) {
     let activo = true;
     supabase
       .from("plataforma_contacto")
-      .select("whatsapp_pagos, whatsapp_soporte, whatsapp_afiliacion")
+      .select(CAMPOS.map(({ key }) => key).join(", "))
       .eq("id", 1)
       .maybeSingle()
       .then(({ data, error: err }) => {
         if (!activo) return;
         if (err) setError("No se pudo cargar el contacto.");
         if (data) {
-          setValores({
-            whatsapp_pagos: data.whatsapp_pagos || "",
-            whatsapp_soporte: data.whatsapp_soporte || "",
-            whatsapp_afiliacion: data.whatsapp_afiliacion || "",
-          });
+          setValores(Object.fromEntries(CAMPOS.map(({ key }) => [key, data[key] || ""])));
         }
         setLoading(false);
       });
@@ -60,9 +80,12 @@ export default function ContactoPlataformaModal({ onClose }) {
     setError("");
     setOk(false);
     const limpio = Object.fromEntries(
-      CAMPOS.map(({ key }) => [key, valores[key].replace(/\D/g, "") || null])
+      CAMPOS.map(({ key, tipo }) => [
+        key,
+        (tipo === "texto" ? valores[key].trim() : valores[key].replace(/\D/g, "")) || null,
+      ])
     );
-    const invalido = CAMPOS.find(({ key }) => limpio[key] && !/^\d{9,15}$/.test(limpio[key]));
+    const invalido = CAMPOS.find(({ key, tipo }) => tipo !== "texto" && limpio[key] && !/^\d{9,15}$/.test(limpio[key]));
     if (invalido) {
       setError(`${invalido.label}: ingresa un número válido (9 dígitos, o con código de país).`);
       return;
@@ -81,14 +104,14 @@ export default function ContactoPlataformaModal({ onClose }) {
   };
 
   return (
-    <div className="tz-modal-backdrop" onClick={onClose}>
+    <div className="tz-modal-backdrop">
       <Styles />
       <div className="tz-modal" onClick={(e) => e.stopPropagation()}>
         <button type="button" className="tz-modal-close" onClick={onClose} aria-label="Cerrar">
           <X size={18} />
         </button>
         <h2>
-          <Phone size={17} /> Contacto de la plataforma
+          <Phone size={17} /> Contacto y datos de pago
         </h2>
         <p className="tz-brand-sub" style={{ marginBottom: 14 }}>
           Se usa en Caja Tonazo y en Taxi-PE. Al guardar, Taxi-PE se actualiza solo.
@@ -100,14 +123,15 @@ export default function ContactoPlataformaModal({ onClose }) {
           </div>
         ) : (
           <>
-            {CAMPOS.map(({ key, label, ayuda }) => (
+            {CAMPOS.map(({ key, label, ayuda, seccion, tipo, placeholder }) => (
               <div key={key} className="tz-login-field" style={{ marginBottom: 12 }}>
+                {seccion && <h3 className="tz-plan-subtitulo">{seccion}</h3>}
                 <label className="tz-field-label" htmlFor={`contacto-${key}`}>{label}</label>
                 <input
                   id={`contacto-${key}`}
                   className="tz-text-input"
-                  inputMode="tel"
-                  placeholder="Ej. 987654321"
+                  inputMode={tipo === "texto" ? "text" : "tel"}
+                  placeholder={placeholder || "Ej. 987654321"}
                   value={valores[key]}
                   onChange={(e) => {
                     setOk(false);
