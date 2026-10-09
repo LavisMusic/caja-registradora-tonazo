@@ -2939,13 +2939,16 @@ ${en(S, ".tz-stat-chip")}, ${en(S, ".tz-method-total")} { padding-right: 34px !i
 ${barraPropia(
   S,
   [
-    capa(CERCO, "left 0 top 14px", "80px 46px", "repeat-x"),
     trama(PASTO_AZAR_B, "229px 263px"),
     capa(PASTO_BLOQUE),
   ],
   "padding-top: 74px !important;"
 )}
 ${montado(S, { img: PASTO_ALTO, tam: "60px 30px", arriba: 20, alto: 30 })}
+/* El cerco va 6 px por encima del borde de la barra, encima del pasto que
+   sobresale (::before de la cabecera: el fondo de la barra no puede salir
+   de ella); nada más cambia de lugar. */
+${en(S, ".tz-header:has(+ .tz-admin-filterbar)::before")} { content: ""; position: absolute; left: 0; right: 0; bottom: -40px; height: 46px; background: ${CERCO} left 0 top 0 / 80px 46px repeat-x; pointer-events: none; z-index: 3; }
 ${BARRA(S, " .tz-admin-filter-tag")} { background: #14532d !important; color: #ecfccb !important; border-color: #86efac !important; box-shadow: 0 2px 6px rgba(0,0,0,0.25) !important; }
 ${BARRA(S, " .tz-admin-filter-label")} { color: #14532d !important; text-shadow: none !important; background: rgba(255,255,255,0.8); padding: 1px 10px; border-radius: 999px; }
 /* ---- Escena: prado con animales paseando (estilo granja) ---- */
