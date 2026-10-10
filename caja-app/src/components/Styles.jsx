@@ -6799,8 +6799,11 @@ export default function Styles() {
       /* --tz-sub-dy: en la tienda se centra entre el logo y la barra de
          filtros (CatalogPage lo mide); "translate" no toca a "transform"
          ni mueve nada más. */
-      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); --tz-sub-ajuste: -11px; }
-      /* (--tz-sub-ajuste: centrado a ojo, igual en PC y en celular.) */
+      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); --tz-sub-ajuste: -9px; }
+      /* (--tz-sub-ajuste: centrado a ojo; en celular, 2 px más arriba.) */
+      @media (max-width: 767px) {
+        .tz-subtitle-maquina { --tz-sub-ajuste: -11px; }
+      }
       /* Tienda: el texto flota centrado sobre un espacio de alto fijo (una
          línea), así pasar a 2 líneas no empuja el borde de la cabecera. */
       .tz-subtitle-slot { position: relative; width: 100%; height: 24px; flex: 0 0 auto; }
