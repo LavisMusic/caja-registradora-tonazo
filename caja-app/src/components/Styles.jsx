@@ -301,7 +301,11 @@ export default function Styles() {
         color: var(--yellow);
         text-align: center;
         white-space: nowrap;
-        text-shadow: 0 0 8px rgba(var(--yellow-rgb),0.85), 0 0 18px rgba(var(--yellow-rgb),0.55);
+        /* Brillo sutil de las letras, de su mismo color (antes un aura
+           neón de hasta 18 px que, recortada por el límite de 2 líneas, se
+           veía como un recuadro). Los temáticos lo cambian por su
+           pastilla oscura (lib/tematicos.js). */
+        text-shadow: 0 0 6px rgba(var(--yellow-rgb),0.55);
       }
       .tz-conn-indicator {
         display: flex;
@@ -649,6 +653,15 @@ export default function Styles() {
         padding-bottom: 40px;
         -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
         mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
+      }
+      /* Tienda en celular: debajo de la fila de Taxi-PE y el saldo sobraba
+         aire; el relleno y el desvanecido son más cortos. */
+      @media (max-width: 767px) {
+        .tz-header + .tz-admin-filterbar:has(.tz-filtrobar-grid) {
+          padding-bottom: 16px;
+          -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
+        }
       }
       /* Localidad + Sucursal + botón Taxi-PE, agrupados juntos — así
          tz-admin-filterbar (arriba) solo tiene que centrar ESTE bloque
@@ -6787,6 +6800,10 @@ export default function Styles() {
          filtros (CatalogPage lo mide); "translate" no toca a "transform"
          ni mueve nada más. */
       .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); --tz-sub-ajuste: -23px; }
+      /* En celular el texto va 10 px más abajo (centrado a ojo). */
+      @media (max-width: 767px) {
+        .tz-subtitle-maquina { --tz-sub-ajuste: -13px; }
+      }
       /* Tienda: el texto flota centrado sobre un espacio de alto fijo (una
          línea), así pasar a 2 líneas no empuja el borde de la cabecera. */
       .tz-subtitle-slot { position: relative; width: 100%; height: 24px; flex: 0 0 auto; }
@@ -6814,9 +6831,13 @@ export default function Styles() {
       .tz-header-center > .tz-conn-indicator { margin-top: 0; }
       /* Más de ~20 caracteres → pasa a una 2.ª línea (como máximo 2), en
          la caja y en los mensajes programados de la tienda. */
+      /* (+20 px de aire interno: el brillo de las letras cabe dentro de
+         la caja, que recorta para limitar a 2 líneas, y no se ve como un
+         recuadro.) */
       .tz-subtitle-hueco .tz-subtitle,
       .tz-header .tz-subtitle-maquina {
-        max-width: min(100%, 230px);
+        max-width: calc(min(100%, 230px) + 20px);
+        padding: 6px 10px;
         box-sizing: border-box;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
@@ -6831,7 +6852,8 @@ export default function Styles() {
       @media (max-width: 767px) {
         .tz-header .tz-subtitle {
           white-space: pre-wrap;
-          max-width: 100%;
+          max-width: calc(100% + 20px);
+          padding: 6px 10px;
           box-sizing: border-box;
           overflow-wrap: anywhere;
           font-size: 10px;
