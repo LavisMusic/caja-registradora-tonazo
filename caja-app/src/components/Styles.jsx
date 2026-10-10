@@ -305,7 +305,7 @@ export default function Styles() {
            neón de hasta 18 px que, recortada por el límite de 2 líneas, se
            veía como un recuadro). Los temáticos lo cambian por su
            pastilla oscura (lib/tematicos.js). */
-        text-shadow: 0 0 6px rgba(var(--yellow-rgb),0.55);
+        text-shadow: 0 0 6px rgba(var(--yellow-rgb),0.8), 0 0 12px rgba(var(--yellow-rgb),0.45);
       }
       .tz-conn-indicator {
         display: flex;
@@ -6831,13 +6831,13 @@ export default function Styles() {
       .tz-header-center > .tz-conn-indicator { margin-top: 0; }
       /* Más de ~20 caracteres → pasa a una 2.ª línea (como máximo 2), en
          la caja y en los mensajes programados de la tienda. */
-      /* (+20 px de aire interno: el brillo de las letras cabe dentro de
+      /* (+24 px de aire interno: el brillo de las letras cabe dentro de
          la caja, que recorta para limitar a 2 líneas, y no se ve como un
          recuadro.) */
       .tz-subtitle-hueco .tz-subtitle,
       .tz-header .tz-subtitle-maquina {
-        max-width: calc(min(100%, 230px) + 20px);
-        padding: 6px 10px;
+        max-width: calc(min(100%, 230px) + 24px);
+        padding: 8px 12px;
         box-sizing: border-box;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
@@ -6852,8 +6852,8 @@ export default function Styles() {
       @media (max-width: 767px) {
         .tz-header .tz-subtitle {
           white-space: pre-wrap;
-          max-width: calc(100% + 20px);
-          padding: 6px 10px;
+          max-width: calc(100% + 24px);
+          padding: 8px 12px;
           box-sizing: border-box;
           overflow-wrap: anywhere;
           font-size: 10px;
