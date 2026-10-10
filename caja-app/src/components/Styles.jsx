@@ -6799,10 +6799,10 @@ export default function Styles() {
       /* --tz-sub-dy: en la tienda se centra entre el logo y la barra de
          filtros (CatalogPage lo mide); "translate" no toca a "transform"
          ni mueve nada más. */
-      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); --tz-sub-ajuste: -9px; }
+      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); --tz-sub-ajuste: -8px; }
       /* (--tz-sub-ajuste: centrado a ojo; en celular, 2 px más arriba.) */
       @media (max-width: 767px) {
-        .tz-subtitle-maquina { --tz-sub-ajuste: -11px; }
+        .tz-subtitle-maquina { --tz-sub-ajuste: -10px; }
       }
       /* Tienda: el texto flota centrado sobre un espacio de alto fijo (una
          línea), así pasar a 2 líneas no empuja el borde de la cabecera. */
