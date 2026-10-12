@@ -1,0 +1,14 @@
+-- =========================================================================
+-- Cierre de caja con aviso: extensión del turno.
+--
+-- Cada caja abierta debe cerrarse a la hora de cierre de su sucursal
+-- (sucursales.horario del día en que se abrió; si no hay horario, a las
+-- 00:00). Al vencer, al cajero se le abre el cierre solo y el admin ve el
+-- aviso en el Gestor de Cajas. Cualquiera de los dos puede extender el
+-- turno 30 minutos (cuantas veces haga falta): eso se guarda acá, en
+-- milisegundos como abierta_en / cerrada_en. Al cerrar o volver a abrir
+-- la caja se limpia.
+--
+-- Idempotente.
+-- =========================================================================
+alter table public.cajas add column if not exists extendida_hasta bigint;

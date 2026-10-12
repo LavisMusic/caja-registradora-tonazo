@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { flushSync } from "react-dom";
 import {
+  Clock,
   Pencil,
   X,
   Plus,
@@ -88,6 +89,7 @@ import { AvisoPlan, PantallaPlanSuspendido } from "./components/AvisoPlanNegocio
 import RenovarPlanModal from "./components/RenovarPlanModal";
 import { useMiPeticionPlan } from "./hooks/usePeticionesPlan";
 import { puedeRenovar, inicioRenovacion, formatFechaCorta } from "./lib/planes";
+import { venceCaja, cajaVencida, EXTENSION_TURNO_MS } from "./lib/turnoCaja";
 
 import logo from "./assets/logo.webp";
 
@@ -1085,6 +1087,7 @@ export default function App() {
         orden: r.orden,
         lat: r.lat != null ? Number(r.lat) : null,
         lng: r.lng != null ? Number(r.lng) : null,
+        horario: r.horario || null,
       }))
     );
     setCajas(
@@ -1097,6 +1100,7 @@ export default function App() {
         abiertaPor: r.abierta_por || null,
         abiertaEn: r.abierta_en != null ? Number(r.abierta_en) : null,
         cerradaEn: r.cerrada_en != null ? Number(r.cerrada_en) : null,
+        extendidaHasta: r.extendida_hasta != null ? Number(r.extendida_hasta) : null,
       }))
     );
     setJerarquiaError("");
@@ -1396,6 +1400,7 @@ export default function App() {
           abierta_por: cajeroNombre || "Admin",
           abierta_en: abiertaEn,
           cerrada_en: null,
+          extendida_hasta: null,
         })
         .eq("id", caja.id)
         .select()
@@ -1428,6 +1433,7 @@ export default function App() {
                 abiertaPor: data.abierta_por ?? null,
                 abiertaEn: data.abierta_en != null ? Number(data.abierta_en) : abiertaEn,
                 cerradaEn: data.cerrada_en != null ? Number(data.cerrada_en) : null,
+                extendidaHasta: null,
               }
             : c
         )
@@ -1480,6 +1486,34 @@ export default function App() {
     () => (cajaOperativaId ? cajas.find((c) => c.id === cajaOperativaId) || null : null),
     [cajas, cajaOperativaId]
   );
+  /* ---- Cierre con aviso: cada caja abierta debe cerrarse a la hora de
+     cierre de su sucursal (Perfil → Horarios; sin horario, a las 00:00 —
+     ver lib/turnoCaja.js). Al vencer, al cajero se le abre el cierre
+     solo (pide el efectivo) y el admin ve el aviso en el Gestor de Cajas
+     (y un punto amarillo en su botón). Cualquiera de los dos puede
+     extender el turno 30 minutos, cuantas veces haga falta. 'relojTurno'
+     se actualiza cada 30 s para que el aviso salga a la hora. ---- */
+  const [relojTurno, setRelojTurno] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setRelojTurno(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  const sucursalDeCaja = (caja) => sucursales.find((s) => s.id === caja?.sucursalId);
+  const cajasVencidas = useMemo(
+    () => cajas.filter((c) => cajaVencida(c, sucursales.find((s) => s.id === c.sucursalId), relojTurno)),
+    [cajas, sucursales, relojTurno]
+  );
+  const [extendiendoCajaId, setExtendiendoCajaId] = useState(null);
+  const extenderTurnoCaja = async (caja) => {
+    setExtendiendoCajaId(caja.id);
+    const hasta = Math.max(Date.now(), Number(caja.extendidaHasta) || 0) + EXTENSION_TURNO_MS;
+    const { error } = await supabase.from("cajas").update({ extendida_hasta: hasta }).eq("id", caja.id);
+    setExtendiendoCajaId(null);
+    if (error) return { error };
+    setCajas((prev) => prev.map((c) => (c.id === caja.id ? { ...c, extendidaHasta: hasta } : c)));
+    setRelojTurno(Date.now());
+    return { error: null };
+  };
   const estadoCaja = useMemo(() => {
     if (!miCaja) return null;
     return {
@@ -1528,6 +1562,7 @@ export default function App() {
                     montoInicial: row.monto_inicial != null ? Number(row.monto_inicial) : 0,
                     abiertaPor: row.abierta_por || null,
                     abiertaEn: row.abierta_en != null ? Number(row.abierta_en) : null,
+                    extendidaHasta: row.extendida_hasta != null ? Number(row.extendida_hasta) : null,
                     cerradaEn: row.cerrada_en != null ? Number(row.cerrada_en) : null,
                   }
                 : c
@@ -1595,6 +1630,13 @@ export default function App() {
   }, []);
 
   const [cierreModalOpen, setCierreModalOpen] = useState(false);
+  // Al cajero se le abre el cierre solo cuando su caja ya debió cerrarse
+  // (y vuelve a abrirse mientras siga vencida y no la extienda).
+  const miCajaVencida = isCajero && !!miCaja && cajaVencida(miCaja, sucursalDeCaja(miCaja), relojTurno);
+  useEffect(() => {
+    if (miCajaVencida) setCierreModalOpen(true);
+  }, [miCajaVencida, relojTurno]);
+  const [extensionError, setExtensionError] = useState("");
   const [confirmCierreOpen, setConfirmCierreOpen] = useState(false);
   const [cierreSaving, setCierreSaving] = useState(false);
   const [cierreError, setCierreError] = useState("");
@@ -6858,7 +6900,7 @@ export default function App() {
     // 'cajas' siempre existe de antemano.
     const { data: cajaCloseData, error: cajaCloseError } = await supabase
       .from("cajas")
-      .update({ estado: "cerrada", cerrada_en: timestamp })
+      .update({ estado: "cerrada", cerrada_en: timestamp, extendida_hasta: null })
       .eq("id", cajaOperativaId)
       .select()
       .maybeSingle();
@@ -6881,7 +6923,7 @@ export default function App() {
     } else {
       setCajas((prev) =>
         prev.map((c) =>
-          c.id === cajaOperativaId ? { ...c, estado: "cerrada", cerradaEn: timestamp } : c
+          c.id === cajaOperativaId ? { ...c, estado: "cerrada", cerradaEn: timestamp, extendidaHasta: null } : c
         )
       );
     }
@@ -7453,12 +7495,12 @@ export default function App() {
                suya propia desde su pantalla de bloqueo). */}
             {isAdmin && (
               <button
-                className="tz-header-btn"
+                className={`tz-header-btn ${cajasVencidas.length > 0 ? "tz-btn-aviso" : ""}`}
                 onClick={() => {
                   setGestorCajaError("");
                   setGestorCajasOpen(true);
                 }}
-                aria-label="Gestor de Cajas"
+                aria-label={cajasVencidas.length > 0 ? "Gestor de Cajas (hay cajas sin cerrar)" : "Gestor de Cajas"}
               >
                 <Landmark size={19} />
                 <span className="tz-header-btn-label">Gestor de Cajas</span>
@@ -9266,6 +9308,23 @@ export default function App() {
                                 <span className="tz-gc-caja-meta">
                                   Fondo {formatSoles(caja.montoInicial)}
                                   {caja.abiertaPor ? ` · ${caja.abiertaPor}` : ""}
+                                </span>
+                              )}
+                              {abierta && cajasVencidas.some((c) => c.id === caja.id) && (
+                                <span className="tz-gc-caja-aviso">
+                                  <Clock size={12} /> Debía cerrarse a las {formatTime(venceCaja(caja, sucursalDeCaja(caja)))}
+                                  <button
+                                    type="button"
+                                    className="tz-gc-extender-btn"
+                                    disabled={extendiendoCajaId === caja.id}
+                                    onClick={async () => {
+                                      const { error } = await extenderTurnoCaja(caja);
+                                      if (error) setGestorCajaError(`No se pudo extender el turno de "${caja.nombre}".`);
+                                    }}
+                                  >
+                                    {extendiendoCajaId === caja.id ? <Loader2 size={11} className="tz-spin" /> : null}
+                                    Extender 30 min
+                                  </button>
                                 </span>
                               )}
                             </div>
@@ -12224,6 +12283,30 @@ export default function App() {
                    admin reconcilia todo lo demás después con el detalle
                    completo de su propia vista. ---- */
                 <>
+                  {miCajaVencida && (
+                    <div className="tz-cierre-vencido">
+                      <p className="tz-cierre-warning" style={{ margin: 0 }}>
+                        <Clock size={14} /> Tu turno terminó a las{" "}
+                        {formatTime(venceCaja(miCaja, sucursalDeCaja(miCaja)))}. Cuenta tu efectivo y cierra la caja,
+                        o extiende el turno 30 minutos.
+                      </p>
+                      {extensionError && <p className="tz-error" style={{ margin: 0 }}>{extensionError}</p>}
+                      <button
+                        type="button"
+                        className="tz-camera-cancel"
+                        disabled={extendiendoCajaId === miCaja.id}
+                        onClick={async () => {
+                          setExtensionError("");
+                          const { error } = await extenderTurnoCaja(miCaja);
+                          if (error) setExtensionError("No se pudo extender el turno.");
+                          else setCierreModalOpen(false);
+                        }}
+                      >
+                        {extendiendoCajaId === miCaja.id ? <Loader2 size={15} className="tz-spin" /> : <Clock size={15} />}{" "}
+                        Extender 30 min
+                      </button>
+                    </div>
+                  )}
                   <div className="tz-receipt">
                     <div className="tz-receipt-header">
                       <span className="tz-receipt-title">Turno actual</span>

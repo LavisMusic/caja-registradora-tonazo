@@ -2781,6 +2781,31 @@ export default function Styles() {
         font-size: 11.5px;
         color: var(--text-dim);
       }
+      /* Caja que ya debió cerrarse (lib/turnoCaja.js): aviso y botón para
+         extender el turno 30 minutos. */
+      .tz-gc-caja-aviso {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--yellow);
+      }
+      .tz-gc-extender-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        border: 1px solid rgba(var(--yellow-rgb), 0.55);
+        background: rgba(var(--yellow-rgb), 0.1);
+        color: var(--yellow);
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .tz-gc-extender-btn:disabled { opacity: 0.6; cursor: default; }
       .tz-gc-btn {
         display: flex;
         align-items: center;
@@ -4819,6 +4844,32 @@ export default function Styles() {
         color: var(--yellow);
         font-weight: 600;
         line-height: 1.4;
+      }
+      /* Turno vencido: aviso arriba del cierre con el botón para extender
+         30 minutos. */
+      .tz-cierre-vencido {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 0 0 12px;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(var(--yellow-rgb), 0.45);
+        background: rgba(var(--yellow-rgb), 0.06);
+      }
+      /* Punto amarillo de aviso en un botón (cajas sin cerrar). */
+      .tz-btn-aviso { position: relative; }
+      .tz-btn-aviso::after {
+        content: "";
+        position: absolute;
+        top: -3px;
+        right: -3px;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: var(--yellow);
+        box-shadow: 0 0 8px rgba(var(--yellow-rgb), 0.9);
+        animation: tz-subtitle-parpadeo 1.2s steps(1) infinite;
       }
 
       /* ---------- CRM WHATSAPP EN EL COBRO ---------- */
