@@ -4847,6 +4847,15 @@ export default function Styles() {
       }
       /* Turno vencido: aviso arriba del cierre con el botón para extender
          30 minutos. */
+      /* Turno sin extensiones: el cierre va encima de cualquier otro modal. */
+      .tz-modal-backdrop.tz-cierre-obligatorio {
+        z-index: 450;
+      }
+      .tz-cierre-extensiones {
+        margin: 0;
+        font-size: 12px;
+        color: var(--text-dim);
+      }
       .tz-cierre-vencido {
         display: flex;
         flex-direction: column;

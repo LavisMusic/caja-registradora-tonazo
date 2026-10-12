@@ -89,7 +89,7 @@ import { AvisoPlan, PantallaPlanSuspendido } from "./components/AvisoPlanNegocio
 import RenovarPlanModal from "./components/RenovarPlanModal";
 import { useMiPeticionPlan } from "./hooks/usePeticionesPlan";
 import { puedeRenovar, inicioRenovacion, formatFechaCorta } from "./lib/planes";
-import { venceCaja, cajaVencida, EXTENSION_TURNO_MS } from "./lib/turnoCaja";
+import { venceCaja, cajaVencida, MAX_EXTENSIONES_CAJERO, MAX_EXTENSIONES_ADMIN } from "./lib/turnoCaja";
 
 import logo from "./assets/logo.webp";
 
@@ -1101,6 +1101,7 @@ export default function App() {
         abiertaEn: r.abierta_en != null ? Number(r.abierta_en) : null,
         cerradaEn: r.cerrada_en != null ? Number(r.cerrada_en) : null,
         extendidaHasta: r.extendida_hasta != null ? Number(r.extendida_hasta) : null,
+        extensiones: Number(r.extensiones) || 0,
       }))
     );
     setJerarquiaError("");
@@ -1494,7 +1495,8 @@ export default function App() {
      ver lib/turnoCaja.js). Al vencer, al cajero se le abre el cierre
      solo (pide el efectivo) y el admin ve el aviso en el Gestor de Cajas
      (y un punto amarillo en su botón). Cualquiera de los dos puede
-     extender el turno 30 minutos, cuantas veces haga falta. 'relojTurno'
+     extender el turno 30 minutos (el cajero hasta 3 veces, el admin hasta
+     5; ver caja_extender_turno). 'relojTurno'
      se actualiza cada 30 s para que el aviso salga a la hora. ---- */
   const [relojTurno, setRelojTurno] = useState(() => Date.now());
   useEffect(() => {
@@ -1509,11 +1511,19 @@ export default function App() {
   const [extendiendoCajaId, setExtendiendoCajaId] = useState(null);
   const extenderTurnoCaja = async (caja) => {
     setExtendiendoCajaId(caja.id);
-    const hasta = Math.max(Date.now(), Number(caja.extendidaHasta) || 0) + EXTENSION_TURNO_MS;
-    const { error } = await supabase.from("cajas").update({ extendida_hasta: hasta }).eq("id", caja.id);
+    const { data, error } = await supabase.rpc("caja_extender_turno", { p_caja_id: caja.id });
     setExtendiendoCajaId(null);
-    if (error) return { error };
-    setCajas((prev) => prev.map((c) => (c.id === caja.id ? { ...c, extendidaHasta: hasta } : c)));
+    if (data?.estado === "limite") {
+      setCajas((prev) => prev.map((c) => (c.id === caja.id ? { ...c, extensiones: Number(data.extensiones) || 0 } : c)));
+    }
+    if (error || data?.estado !== "ok") return { error: error || new Error(data?.estado || "error") };
+    setCajas((prev) =>
+      prev.map((c) =>
+        c.id === caja.id
+          ? { ...c, extendidaHasta: Number(data.extendida_hasta), extensiones: Number(data.extensiones) || 0 }
+          : c
+      )
+    );
     setRelojTurno(Date.now());
     return { error: null };
   };
@@ -1566,6 +1576,7 @@ export default function App() {
                     abiertaPor: row.abierta_por || null,
                     abiertaEn: row.abierta_en != null ? Number(row.abierta_en) : null,
                     extendidaHasta: row.extendida_hasta != null ? Number(row.extendida_hasta) : null,
+                    extensiones: Number(row.extensiones) || 0,
                     cerradaEn: row.cerrada_en != null ? Number(row.cerrada_en) : null,
                   }
                 : c
@@ -1639,6 +1650,10 @@ export default function App() {
   useEffect(() => {
     if (miCajaVencida) setCierreModalOpen(true);
   }, [miCajaVencida, relojTurno]);
+  // Sin extensiones (usó las 3): el cierre queda encima y no se puede
+  // cerrar hasta cerrar el turno (el admin todavía puede extenderla desde
+  // el Gestor de Cajas, hasta 5).
+  const miCajaObligatoria = miCajaVencida && (miCaja?.extensiones ?? 0) >= MAX_EXTENSIONES_CAJERO;
   const [extensionError, setExtensionError] = useState("");
   const [confirmCierreOpen, setConfirmCierreOpen] = useState(false);
   const [cierreSaving, setCierreSaving] = useState(false);
@@ -9328,18 +9343,26 @@ export default function App() {
                               {abierta && cajasVencidas.some((c) => c.id === caja.id) && (
                                 <span className="tz-gc-caja-aviso">
                                   <Clock size={12} /> Debía cerrarse a las {formatTime(venceCaja(caja, sucursalDeCaja(caja)))}
+                                  {" · "}Extensiones {caja.extensiones ?? 0}/{MAX_EXTENSIONES_ADMIN}
+                                  {(caja.extensiones ?? 0) < MAX_EXTENSIONES_ADMIN && (
                                   <button
                                     type="button"
                                     className="tz-gc-extender-btn"
                                     disabled={extendiendoCajaId === caja.id}
                                     onClick={async () => {
                                       const { error } = await extenderTurnoCaja(caja);
-                                      if (error) setGestorCajaError(`No se pudo extender el turno de "${caja.nombre}".`);
+                                      if (error)
+                                        setGestorCajaError(
+                                          error.message === "limite"
+                                            ? `"${caja.nombre}" ya usó todas sus extensiones: hay que cerrar el turno.`
+                                            : `No se pudo extender el turno de "${caja.nombre}".`
+                                        );
                                     }}
                                   >
                                     {extendiendoCajaId === caja.id ? <Loader2 size={11} className="tz-spin" /> : null}
                                     Extender 30 min
                                   </button>
+                                  )}
                                 </span>
                               )}
                             </div>
@@ -12131,16 +12154,18 @@ export default function App() {
       )}
 
       {/* ---------------- MODAL: CIERRE DE CAJA ---------------- */}
-      {cierreModalOpen && (
-        <div className="tz-modal-backdrop">
+      {(cierreModalOpen || miCajaObligatoria) && (
+        <div className={`tz-modal-backdrop ${miCajaObligatoria ? "tz-cierre-obligatorio" : ""}`}>
           <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="tz-modal-close"
-              onClick={() => setCierreModalOpen(false)}
-              aria-label="Cerrar"
-            >
-              <X size={18} />
-            </button>
+            {!miCajaObligatoria && (
+              <button
+                className="tz-modal-close"
+                onClick={() => setCierreModalOpen(false)}
+                aria-label="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            )}
             <div className="tz-payment-modal">
               <h2>
                 <Receipt size={17} /> Cierre de Caja
@@ -12302,10 +12327,17 @@ export default function App() {
                     <div className="tz-cierre-vencido">
                       <p className="tz-cierre-warning" style={{ margin: 0 }}>
                         <Clock size={14} /> Tu turno terminó a las{" "}
-                        {formatTime(venceCaja(miCaja, sucursalDeCaja(miCaja)))}. Cuenta tu efectivo y cierra la caja,
-                        o extiende el turno 30 minutos.
+                        {formatTime(venceCaja(miCaja, sucursalDeCaja(miCaja)))}.{" "}
+                        {miCajaObligatoria
+                          ? "Ya usaste todas tus extensiones: cuenta tu efectivo y cierra el turno para seguir."
+                          : "Cuenta tu efectivo y cierra la caja, o extiende el turno 30 minutos."}
+                      </p>
+                      <p className="tz-cierre-extensiones">
+                        Extensiones usadas: {Math.min(miCaja.extensiones ?? 0, MAX_EXTENSIONES_CAJERO)} de{" "}
+                        {MAX_EXTENSIONES_CAJERO}
                       </p>
                       {extensionError && <p className="tz-error" style={{ margin: 0 }}>{extensionError}</p>}
+                      {!miCajaObligatoria && (
                       <button
                         type="button"
                         className="tz-camera-cancel"
@@ -12313,13 +12345,19 @@ export default function App() {
                         onClick={async () => {
                           setExtensionError("");
                           const { error } = await extenderTurnoCaja(miCaja);
-                          if (error) setExtensionError("No se pudo extender el turno.");
+                          if (error)
+                            setExtensionError(
+                              error.message === "limite"
+                                ? "Ya usaste todas tus extensiones: cierra el turno."
+                                : "No se pudo extender el turno."
+                            );
                           else setCierreModalOpen(false);
                         }}
                       >
                         {extendiendoCajaId === miCaja.id ? <Loader2 size={15} className="tz-spin" /> : <Clock size={15} />}{" "}
                         Extender 30 min
                       </button>
+                      )}
                     </div>
                   )}
                   <div className="tz-receipt">
