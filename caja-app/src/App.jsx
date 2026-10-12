@@ -1378,6 +1378,8 @@ export default function App() {
   const [gestorCajaMontoInputs, setGestorCajaMontoInputs] = useState({});
   const [gestorCajaSaving, setGestorCajaSaving] = useState(null);
   const [gestorCajaError, setGestorCajaError] = useState("");
+  // Confirmación en el Gestor después de que el admin cierra una caja.
+  const [gestorCajaAviso, setGestorCajaAviso] = useState("");
 
   const iniciarCajaDesdeGestor = async (caja) => {
     const montoStr = gestorCajaMontoInputs[caja.id] ?? "";
@@ -1457,6 +1459,7 @@ export default function App() {
      ya sabe cerrar usando 'cajaOperativaId' sin importar si quien lo
      abrió fue el cajero o el admin. ---- */
   const abrirArqueoDesdeGestor = (caja) => {
+    setGestorCajaAviso("");
     elegirCajaActiva(caja.id);
     setGestorCajasOpen(false);
     setCierreModalOpen(true);
@@ -6926,6 +6929,16 @@ export default function App() {
           c.id === cajaOperativaId ? { ...c, estado: "cerrada", cerradaEn: timestamp, extendidaHasta: null } : c
         )
       );
+      // Admin: cierra el modal de cierre y vuelve al Gestor de Cajas con
+      // la confirmación, para que vea la caja ya cerrada.
+      if (isAdmin) {
+        const nombreCaja = cajas.find((c) => c.id === cajaOperativaId)?.nombre || "La caja";
+        setCierreModalOpen(false);
+        setConfirmCierreOpen(false);
+        setGestorCajaError("");
+        setGestorCajaAviso(`"${nombreCaja}" se cerró correctamente. El cierre quedó guardado en el historial.`);
+        setGestorCajasOpen(true);
+      }
     }
   };
 
@@ -7498,6 +7511,7 @@ export default function App() {
                 className={`tz-header-btn ${cajasVencidas.length > 0 ? "tz-btn-aviso" : ""}`}
                 onClick={() => {
                   setGestorCajaError("");
+                  setGestorCajaAviso("");
                   setGestorCajasOpen(true);
                 }}
                 aria-label={cajasVencidas.length > 0 ? "Gestor de Cajas (hay cajas sin cerrar)" : "Gestor de Cajas"}
@@ -9181,6 +9195,7 @@ export default function App() {
 
             {jerarquiaError && <p className="tz-error">{jerarquiaError}</p>}
             {gestorCajaError && <p className="tz-error">{gestorCajaError}</p>}
+            {gestorCajaAviso && <p className="tz-success">✓ {gestorCajaAviso}</p>}
 
             {localidades.length === 0 && !jerarquiaError && (
               <p className="tz-stock-editor-sub">Cargando localidades…</p>
