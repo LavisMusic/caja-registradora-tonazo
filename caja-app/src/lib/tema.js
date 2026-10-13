@@ -198,11 +198,7 @@ export function cssTema(tema) {
   const tematico = tematicoDe(tema);
   // ":root .tz-root" (más específico que ".tz-root") para ganarle a
   // cualquier otra copia de <Styles /> que un modal monte más abajo.
-  // Con un tema, el logo vuelve a su brillo con filtro (cada temático lo
-  // pisa con el suyo) y no se usa el halo del diseño predeterminado.
   return `:root .tz-root, :root .tz-portal { ${vars} color-scheme: ${claro ? "light" : "dark"}; }
-:root .tz-root .tz-header-center::before { display: none; }
-:root .tz-root .tz-logo { filter: drop-shadow(0 0 18px rgba(var(--cyan-rgb),0.55)) drop-shadow(0 0 34px rgba(var(--pink-rgb),0.35)); }
 ${
   claro
     ? `:root .tz-root *, :root .tz-portal * { text-shadow: none !important; }
