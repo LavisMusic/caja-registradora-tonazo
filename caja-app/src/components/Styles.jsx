@@ -3149,15 +3149,17 @@ export default function Styles() {
       }
       /* Contador de créditos del cliente (ContadorCreditos.jsx): 20 px más
          a la derecha dentro de la barra. */
-      .tz-filtrobar-saldo { position: relative; left: 20px; }
+      .tz-filtrobar-saldo { position: relative; left: 25px; }
       /* Gemas (créditos): la palabra centrada encima de la gema. */
       .tz-gemas { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+      /* La palabra va del color de las gemas que representa. */
       .tz-gemas-label {
         font-size: 9.5px;
         font-weight: 700;
         letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: var(--text-dim);
+        color: var(--cyan);
+        text-shadow: 0 0 6px rgba(var(--cyan-rgb), 0.45);
       }
       .tz-gemas .tz-cc { top: 0; }
       .tz-filtrobar-saldo .tz-stat-chip { min-width: 80px; padding: 6px 7px; gap: 2px; }
@@ -6952,16 +6954,15 @@ export default function Styles() {
         /* El centro del hueco (donde va el texto) queda 8 px más arriba;
            su borde de abajo —y la etiqueta de estado— no se mueven. */
         height: 58px;
-        /* -36 px (antes -50): el nombre queda debajo del dibujo del logo
-           y no detrás de su parte de abajo. */
-        margin-top: -36px;
+        /* -11 px (antes -50): el nombre y la etiqueta de estado quedan
+           debajo del dibujo del logo (admin y cajero; la cabecera crece). */
+        margin-top: -11px;
         display: flex;
         align-items: center;
         justify-content: center;
         max-width: 100%;
       }
       .tz-header-center > .tz-conn-indicator { margin-top: 0; }
-      .tz-header-cajero .tz-subtitle-hueco { margin-top: -11px; }
       /* Más de ~20 caracteres → pasa a una 2.ª línea (como máximo 2), en
          la caja y en los mensajes programados de la tienda. */
       /* (+24 px de aire interno: el brillo de las letras cabe dentro de

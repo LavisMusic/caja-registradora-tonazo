@@ -7602,7 +7602,7 @@ export default function App() {
          cualquier sucursal. */}
 
       {/* ---------------- HEADER ---------------- */}
-      <header className={`tz-header ${isCajero ? "tz-header-cajero" : ""}`}>
+      <header className="tz-header">
         <div className="tz-header-row">
           <div className="tz-header-side tz-header-side-left">
             {/* Parte 3 "Gestor de Cajas": control total del admin sobre
