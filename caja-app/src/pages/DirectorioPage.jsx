@@ -81,13 +81,19 @@ export default function DirectorioPage() {
         <span className="tz-stat-value tz-green">{formatDate(saldoTaxi.membresia_vencimiento)}</span>
       </div>
     ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente ? (
-      // Créditos (fase C): diamante + número, sin recuadro, también en 0.
-      // Lo nuevo se anima recién cuando el cliente ve la tienda (ver
-      // ContadorCreditos.jsx).
-      <ContadorCreditos
-        valor={Number(saldoTaxi.creditos_disponibles) || 0}
-        clave={`tz-creditos-visto-${session.user.id}`}
-      />
+      // Créditos (fase C): el recuadro de siempre con la gema y el número
+      // adentro, también en 0. Lo nuevo se anima recién cuando el cliente
+      // ve la tienda (ver ContadorCreditos.jsx).
+      <div className="tz-stat-chip tz-stat-chip-creditos">
+        <span className="tz-stat-label">Créditos</span>
+        <span className="tz-stat-value">
+          <ContadorCreditos
+            valor={Number(saldoTaxi.creditos_disponibles) || 0}
+            clave={`tz-creditos-visto-${session.user.id}`}
+            className="tz-cc-heredado"
+          />
+        </span>
+      </div>
     ) : null;
 
   const [rubros, setRubros] = useState([]);

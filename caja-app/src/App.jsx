@@ -1595,6 +1595,24 @@ export default function App() {
     };
   }, [isAdmin, isCajero]);
 
+  /* ---- Horario de las sucursales en vivo: si el admin lo cambia en
+     Perfil → Horarios (en otro dispositivo), la caja del cajero recalcula
+     al toque a qué hora debe cerrarse. ---- */
+  useEffect(() => {
+    if (!isAdmin && !isCajero) return undefined;
+    const channel = supabase
+      .channel(`sucursales-horario-${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sucursales" }, (payload) => {
+        const row = payload.new;
+        if (!row) return;
+        setSucursales((prev) => prev.map((s) => (s.id === row.id ? { ...s, horario: row.horario || null } : s)));
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin, isCajero]);
+
   /* ---- módulo de Cierre de Caja (snapshot + recibo) ---- */
   const [cierres, setCierres] = useState([]);
 
@@ -5952,6 +5970,31 @@ export default function App() {
     ]);
   };
 
+  /* ---- Ventas, gastos y stock en vivo entre cajero y admin: cuando uno
+     registra algo, el otro recarga sus datos (agrupado: una sola recarga
+     por ráfaga de cambios). Requiere la migración 0103 (tablas en la
+     publicación de Realtime). ---- */
+  const recargarDatosRef = useRef(null);
+  recargarDatosRef.current = recargarDatos;
+  useEffect(() => {
+    if (!isAdmin && !isCajero) return undefined;
+    let espera = null;
+    const programar = () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => recargarDatosRef.current?.(), 1200);
+    };
+    const channel = supabase
+      .channel(`ventas-vivo-${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "historial" }, programar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "gastos" }, programar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "inventario_sucursales" }, programar)
+      .subscribe();
+    return () => {
+      clearTimeout(espera);
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin, isCajero]);
+
   /* ---- Reversión automática de la venta de un pedido que quedó
      CANCELADO (lo canceló el cliente desde su app —que no tiene contexto
      de stock— o el cajero). Corre mientras el admin/cajero tenga la app
@@ -7536,7 +7579,16 @@ export default function App() {
         />
       )}
 
-      {perfilOpen && <PerfilNegocioModal apartadoInicial={perfilOpen} onClose={() => setPerfilOpen(null)} />}
+      {perfilOpen && (
+        <PerfilNegocioModal
+          apartadoInicial={perfilOpen}
+          sucursalInicialId={sucursalActivaId}
+          onHorarioGuardado={(id, horario) =>
+            setSucursales((prev) => prev.map((s) => (s.id === id ? { ...s, horario } : s)))
+          }
+          onClose={() => setPerfilOpen(null)}
+        />
+      )}
 
       {/* El viejo modal obligatorio de "Apertura de Caja" para admin
          (bloqueaba TODO detrás de un backdrop) fue retirado: el admin

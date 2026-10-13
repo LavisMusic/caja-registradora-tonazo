@@ -43,11 +43,15 @@ export function useEntregaCaja(sessionToken, { rol = "cajero" } = {}) {
     setLoading(false);
   }, [sessionToken]);
 
+  // Con la entrega en curso se consulta cada 3 s (antes 8): si el aviso en
+  // vivo del repartidor no llega, el cliente igual se entera rápido de que
+  // se confirmó la entrega (y sale su festejo).
+  const enCurso = ["aceptado", "retirado", "en_ruta"].includes(entrega?.estado);
   useEffect(() => {
     cargar();
-    const t = setInterval(cargar, 8000);
+    const t = setInterval(cargar, enCurso ? 3000 : 8000);
     return () => clearInterval(t);
-  }, [cargar]);
+  }, [cargar, enCurso]);
 
   // Canal persistente para ESTA entrega — se guarda en un ref para que
   // enviarMensaje/expirarOferta lo reusen al emitir. Antes cada envío

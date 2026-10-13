@@ -398,11 +398,17 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                           ? Math.max(0, Math.min(1, 1 - (ahora - new Date(infoOferta.created_at).getTime()) / TIMEOUT_OFERTA_MS))
                           : null;
                       return (
-                        <li key={c.id} className={pct != null ? "tz-dlv-radar-item-timeout" : ""}>
-                          <span>
-                            {c.nombre} <em>· {c.placa || "s/placa"}</em>
-                            {c.estado === "ocupado" && <span className="tz-dlv-tag-ocupado"> en carrera</span>}
-                            {est === "rechazada" && <span className="tz-dlv-tag-rechazo"> rechazó</span>}
+                        <li key={c.id} className={`tz-dlv-rep-card ${pct != null ? "tz-dlv-radar-item-timeout" : ""}`}>
+                          <span className="tz-dlv-rep-foto">
+                            {c.foto_url ? <img src={c.foto_url} alt="" /> : <Bike size={18} />}
+                          </span>
+                          <span className="tz-dlv-rep-info">
+                            <strong>{c.nombre}</strong>
+                            <span className="tz-dlv-rep-placa">
+                              {c.placa || "s/placa"}
+                              {c.estado === "ocupado" && <span className="tz-dlv-tag-ocupado"> · en carrera</span>}
+                              {est === "rechazada" && <span className="tz-dlv-tag-rechazo"> · rechazó</span>}
+                            </span>
                           </span>
                           {est === "pendiente" ? (
                             <span className="tz-dlv-tag-espera">Esperando…</span>

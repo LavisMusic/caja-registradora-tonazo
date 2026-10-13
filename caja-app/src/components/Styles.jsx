@@ -6109,6 +6109,42 @@ export default function Styles() {
       .tz-dlv-radar-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px;
         padding: 8px 10px; border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 10px; font-size: 13.5px; }
       .tz-dlv-radar-list em { opacity: 0.65; font-style: normal; }
+      /* Repartidor como mini tarjeta: foto en su recuadro, nombre/placa y
+         el botón a la derecha. Compacta (una fila). */
+      .tz-dlv-radar-list li.tz-dlv-rep-card {
+        justify-content: flex-start;
+        gap: 10px;
+        padding: 7px 9px;
+        background: linear-gradient(135deg, rgba(var(--cyan-rgb),0.07), rgba(var(--fg-rgb),0.02));
+        border-color: rgba(var(--cyan-rgb),0.28);
+        box-shadow: 0 0 10px rgba(var(--cyan-rgb),0.08);
+      }
+      .tz-dlv-rep-card > button,
+      .tz-dlv-rep-card > .tz-dlv-tag-espera { margin-left: auto; flex-shrink: 0; }
+      .tz-dlv-rep-foto {
+        width: 40px;
+        height: 40px;
+        flex-shrink: 0;
+        border-radius: 10px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--cyan);
+        background: rgba(var(--fg-rgb),0.05);
+        border: 1px solid rgba(var(--cyan-rgb),0.45);
+        box-shadow: 0 0 8px rgba(var(--cyan-rgb),0.25);
+      }
+      .tz-dlv-rep-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .tz-dlv-rep-info { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+      .tz-dlv-rep-info strong {
+        font-size: 13.5px;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tz-dlv-rep-placa { font-size: 11.5px; color: var(--text-dim); }
       /* Cuenta regresiva de 30s por conductor ofertado — misma barra
          verde que ve el repartidor en su propia tarjeta de oferta. */
       .tz-dlv-radar-item-timeout { position: relative; overflow: hidden; padding-bottom: 11px; }
@@ -6889,7 +6925,9 @@ export default function Styles() {
         /* El centro del hueco (donde va el texto) queda 8 px más arriba;
            su borde de abajo —y la etiqueta de estado— no se mueven. */
         height: 58px;
-        margin-top: -50px;
+        /* -36 px (antes -50): el nombre queda debajo del dibujo del logo
+           y no detrás de su parte de abajo. */
+        margin-top: -36px;
         display: flex;
         align-items: center;
         justify-content: center;

@@ -4,7 +4,7 @@ import { supabase } from "../supabaseClient";
 import { useAuth } from "../contexts/AuthContext";
 import LogoAdaptadorModal from "./LogoAdaptadorModal";
 import { COLORES } from "../pages/NegociosDirectorio";
-import { DIAS_SEMANA, horarioVacio } from "../lib/horario";
+import { DIAS_SEMANA, horarioVacio, HORA_ABRE_DEFECTO, HORA_CIERRA_DEFECTO } from "../lib/horario";
 import logoTonazo from "../assets/logo.webp";
 import TemaEditor from "./TemaEditor";
 
@@ -52,7 +52,7 @@ function tieneTransparencia(src) {
 }
 const MAX_CARACTERES = 20;
 
-export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos" }) {
+export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos", sucursalInicialId = null, onHorarioGuardado }) {
   const { negocioId } = useAuth();
   const [apartado, setApartado] = useState(apartadoInicial);
   const [cargando, setCargando] = useState(true);
@@ -96,9 +96,12 @@ export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos" 
       }
       const activas = (sucs || []).filter((s) => s.activo !== false);
       setSucursales(activas);
-      if (activas[0]) {
-        setSucursalId(activas[0].id);
-        setHorario(activas[0].horario || horarioVacio());
+      // Abre en la sucursal que está activa en la caja (antes, siempre la
+      // primera de la lista: se terminaba editando otra sin notarlo).
+      const inicial = activas.find((x) => x.id === sucursalInicialId) || activas[0];
+      if (inicial) {
+        setSucursalId(inicial.id);
+        setHorario(inicial.horario || horarioVacio());
       }
       setCargando(false);
     })();
@@ -179,7 +182,7 @@ export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos" 
   };
 
   const cambiarDia = (dia, cambios) =>
-    setHorario((prev) => ({ ...prev, [dia]: cambios === null ? null : { ...(prev[dia] || { abre: "08:00", cierra: "20:00" }), ...cambios } }));
+    setHorario((prev) => ({ ...prev, [dia]: cambios === null ? null : { ...(prev[dia] || { abre: HORA_ABRE_DEFECTO, cierra: HORA_CIERRA_DEFECTO }), ...cambios } }));
 
   const copiarLunesATodos = () =>
     setHorario((prev) => Object.fromEntries(DIAS_SEMANA.map((d) => [d.id, prev.lun ? { ...prev.lun } : null])));
@@ -195,6 +198,7 @@ export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos" 
     setGuardando(false);
     if (err || !data?.length) return setError(err?.message || "No se pudo guardar el horario.");
     setSucursales((prev) => prev.map((s) => (s.id === sucursalId ? { ...s, horario } : s)));
+    onHorarioGuardado?.(sucursalId, horario);
     avisar("Horario guardado.");
   };
 
