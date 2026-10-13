@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CreditCard, CalendarClock, Store } from "lucide-react";
+import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CalendarClock, Store } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import TextoMaquina from "../components/TextoMaquina";
 import TemaNegocio from "../components/TemaNegocio";
@@ -26,6 +26,9 @@ import { distanciaMetros } from "../lib/haversine";
 import logo from "../assets/logo.webp";
 import logoTaxiPe from "../assets/logo-taxipe.webp";
 import { planPermiteOnline, calcularEstadoPlan } from "../lib/planes";
+import ContadorCreditos from "../components/ContadorCreditos";
+import AnimacionExitoNeon from "../components/AnimacionExitoNeon";
+import { usePedidoEntregadoAviso } from "../hooks/usePedidoEntregadoAviso";
 
 // URL pública de Taxi-PE — botón del filtro abre en pestaña nueva, no
 // toca la sesión de Caja para nada (login ya unificado del otro lado).
@@ -158,6 +161,8 @@ export default function CatalogPage() {
       supabase.removeChannel(canal);
     };
   }, [negocioIdActual]);
+  // Pedido entregado/retirado: celebración al volver a la tienda (fase C).
+  const pedidoEntregado = usePedidoEntregadoAviso(isCliente && session ? session.user.id : null);
   const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
     session?.user?.id,
     isCliente
@@ -204,13 +209,14 @@ export default function CatalogPage() {
         </span>
         <span className="tz-stat-value tz-green">{formatDate(saldoTaxi.membresia_vencimiento)}</span>
       </div>
-    ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente && Number(saldoTaxi.creditos_disponibles) > 0 ? (
-      <div className="tz-stat-chip">
-        <span className="tz-stat-label">
-          <CreditCard size={13} /> Créditos
-        </span>
-        <span className="tz-stat-value tz-cyan">{saldoTaxi.creditos_disponibles}</span>
-      </div>
+    ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente ? (
+      // Créditos (fase C): diamante + número, sin recuadro, también en 0.
+      // Lo nuevo se anima recién cuando el cliente ve la tienda (ver
+      // ContadorCreditos.jsx).
+      <ContadorCreditos
+        valor={Number(saldoTaxi.creditos_disponibles) || 0}
+        clave={`tz-creditos-visto-${session.user.id}`}
+      />
     ) : null;
 
   /* ---- Fase 1 "Pedidos Delivery": carrito del cliente logueado.
@@ -563,6 +569,17 @@ export default function CatalogPage() {
     <div className="tz-root">
       <Styles />
       <TemaNegocio tema={temaTienda} />
+      {!mostrarBienvenida && pedidoEntregado.pedido && (
+        <AnimacionExitoNeon
+          titulo="¡Pedido entregado!"
+          descripcion={
+            Math.round(Number(pedidoEntregado.pedido.total) || 0) > 0
+              ? `Gracias por tu compra. Ganaste ${Math.round(Number(pedidoEntregado.pedido.total) || 0)} créditos.`
+              : "Gracias por tu compra."
+          }
+          onTerminar={pedidoEntregado.cerrar}
+        />
+      )}
       {mostrarBienvenida && (
         <AnimacionNeonBienvenida
           eyebrow={`✦ Bienvenido a ${negocio.nombre} ✦`}

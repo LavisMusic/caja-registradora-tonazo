@@ -8,7 +8,6 @@ import {
   LogIn,
   LogOut,
   ClipboardList,
-  CreditCard,
   CalendarClock,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -23,6 +22,9 @@ import logoTaxiPe from "../assets/logo-taxipe.webp";
 import { planPermiteOnline, calcularEstadoPlan } from "../lib/planes";
 import { useContactoPlataforma } from "../hooks/useContactoPlataforma";
 import { buildWhatsappLink } from "../lib/whatsapp";
+import ContadorCreditos from "../components/ContadorCreditos";
+import AnimacionExitoNeon from "../components/AnimacionExitoNeon";
+import { usePedidoEntregadoAviso } from "../hooks/usePedidoEntregadoAviso";
 
 const TAXI_PE_URL = import.meta.env.VITE_TAXI_PE_URL || "https://taxi-pe-app.vercel.app";
 
@@ -58,6 +60,8 @@ export default function DirectorioPage() {
   // (session.user.id) con la del catálogo de cada negocio
   // (CatalogPage.jsx), así sale UNA sola vez: en el primer lugar donde
   // entre, directorio o catálogo.
+  // Pedido entregado/retirado: celebración al volver a la tienda (fase C).
+  const pedidoEntregado = usePedidoEntregadoAviso(isCliente && session ? session.user.id : null);
   const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
     session?.user?.id,
     isCliente
@@ -76,13 +80,14 @@ export default function DirectorioPage() {
         </span>
         <span className="tz-stat-value tz-green">{formatDate(saldoTaxi.membresia_vencimiento)}</span>
       </div>
-    ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente && Number(saldoTaxi.creditos_disponibles) > 0 ? (
-      <div className="tz-stat-chip">
-        <span className="tz-stat-label">
-          <CreditCard size={13} /> Créditos
-        </span>
-        <span className="tz-stat-value tz-cyan">{saldoTaxi.creditos_disponibles}</span>
-      </div>
+    ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente ? (
+      // Créditos (fase C): diamante + número, sin recuadro, también en 0.
+      // Lo nuevo se anima recién cuando el cliente ve la tienda (ver
+      // ContadorCreditos.jsx).
+      <ContadorCreditos
+        valor={Number(saldoTaxi.creditos_disponibles) || 0}
+        clave={`tz-creditos-visto-${session.user.id}`}
+      />
     ) : null;
 
   const [rubros, setRubros] = useState([]);
@@ -202,6 +207,17 @@ export default function DirectorioPage() {
   return (
     <div className="tz-root">
       <Styles />
+      {!mostrarBienvenida && pedidoEntregado.pedido && (
+        <AnimacionExitoNeon
+          titulo="¡Pedido entregado!"
+          descripcion={
+            Math.round(Number(pedidoEntregado.pedido.total) || 0) > 0
+              ? `Gracias por tu compra. Ganaste ${Math.round(Number(pedidoEntregado.pedido.total) || 0)} créditos.`
+              : "Gracias por tu compra."
+          }
+          onTerminar={pedidoEntregado.cerrar}
+        />
+      )}
       {mostrarBienvenida && (
         <AnimacionNeonBienvenida
           eyebrow="✦ Bienvenido a Tonazo ✦"
