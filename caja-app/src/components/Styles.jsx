@@ -279,15 +279,36 @@ export default function Styles() {
         align-items: center;
         gap: 4px;
         overflow: visible;
+        position: relative;
+        isolation: isolate;
+        --tz-logo-ancho: 130px;
+      }
+      /* Diseño predeterminado: el mismo brillo del logo que Taxi-PE — un
+         halo sutil de degradados que envuelve el borde (sin filter: Safari
+         del iPhone a veces pintaba el drop-shadow como un recuadro oscuro).
+         Con un tema, lib/tema.js lo apaga y vuelve al filtro de cada tema. */
+      .tz-header-center::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        /* Medido desde el logo (no desde todo el bloque, que acá incluye
+           el nombre y la etiqueta de estado): centrado en él y un poco
+           más grande, como en Taxi-PE. */
+        top: calc(var(--tz-logo-ancho) * 0.33);
+        width: calc(var(--tz-logo-ancho) * 1.65);
+        height: calc(var(--tz-logo-ancho) * 1.05);
+        transform: translate(-50%, -50%);
+        z-index: -1;
+        pointer-events: none;
+        background:
+          radial-gradient(closest-side, transparent 38%, rgba(var(--cyan-rgb),0.15) 60%, rgba(var(--cyan-rgb),0.07) 76%, transparent 100%),
+          radial-gradient(closest-side at 60% 58%, transparent 45%, rgba(var(--pink-rgb),0.09) 70%, transparent 100%);
       }
       .tz-logo {
         max-width: 130px;
         width: 100%;
         height: auto;
         overflow: visible;
-        filter:
-          drop-shadow(0 0 18px rgba(var(--cyan-rgb),0.55))
-          drop-shadow(0 0 34px rgba(var(--pink-rgb),0.35));
       }
       .tz-subtitle {
         margin: 0;
@@ -5340,6 +5361,7 @@ export default function Styles() {
         }
         .tz-header { padding: 24px 20px; }
         .tz-logo { max-width: 170px; }
+        .tz-header-center { --tz-logo-ancho: 170px; }
 
         .tz-stats { gap: 12px; }
         .tz-stat-chip { padding: 12px 14px; border-radius: 14px; gap: 5px; }
@@ -5386,6 +5408,7 @@ export default function Styles() {
         }
         .tz-header { padding: 26px 16px; }
         .tz-logo { max-width: 190px; }
+        .tz-header-center { --tz-logo-ancho: 190px; }
 
         .tz-stats { gap: 14px; }
         .tz-stat-chip { padding: 14px 16px; }

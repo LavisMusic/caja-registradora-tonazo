@@ -1609,7 +1609,26 @@ export default function App() {
         setSucursales((prev) => prev.map((s) => (s.id === row.id ? { ...s, horario: row.horario || null } : s)));
       })
       .subscribe();
+    // Respaldo (por si el tiempo real no llega): se vuelven a leer los
+    // horarios cada 60 s y al volver a la pestaña.
+    const releer = async () => {
+      if (document.visibilityState !== "visible") return;
+      const { data } = await supabase.from("sucursales").select("id, horario");
+      if (!data) return;
+      const porId = new Map(data.map((r) => [r.id, r.horario || null]));
+      setSucursales((prev) =>
+        prev.map((s) =>
+          porId.has(s.id) && JSON.stringify(porId.get(s.id)) !== JSON.stringify(s.horario || null)
+            ? { ...s, horario: porId.get(s.id) }
+            : s
+        )
+      );
+    };
+    const sondeo = setInterval(releer, 60000);
+    document.addEventListener("visibilitychange", releer);
     return () => {
+      clearInterval(sondeo);
+      document.removeEventListener("visibilitychange", releer);
       supabase.removeChannel(channel);
     };
   }, [isAdmin, isCajero]);
