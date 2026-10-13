@@ -5915,8 +5915,41 @@ export default function App() {
     setAnulandoVentaId(purchaseId);
     setAnularError("");
     const { error } = await revertirVenta(purchaseId);
-    if (error) setAnularError("No se pudo anular la venta. Intenta de nuevo.");
+    if (error) {
+      setAnularError("No se pudo anular la venta. Intenta de nuevo.");
+    } else {
+      await cancelarPedidoDeVentaAnulada(purchaseId);
+    }
     setAnulandoVentaId(null);
+  };
+
+  /* ---- Si la venta anulada vino de un pedido online, el pedido también
+     queda anulado: pasa a 'cancelado' (deja de verse como entregado para
+     el admin y el cliente) con venta_revertida = true (la venta ya se
+     revirtió acá, la reversión automática no la repite). La base avisa a
+     Taxi-PE para restar los puntos de esa compra (fase B). ---- */
+  const cancelarPedidoDeVentaAnulada = async (purchaseId) => {
+    const { data: pedido } = await supabase
+      .from("pedidos")
+      .select("id, estado")
+      .eq("venta_purchase_id", purchaseId)
+      .maybeSingle();
+    if (!pedido || pedido.estado === "cancelado") return;
+    const { error: updErr } = await supabase
+      .from("pedidos")
+      .update({ estado: "cancelado", venta_revertida: true })
+      .eq("id", pedido.id);
+    if (updErr) {
+      console.error("[anularVenta] no se pudo anular el pedido de la venta:", updErr);
+      return;
+    }
+    await supabase.from("pedido_mensajes").insert([
+      {
+        pedido_id: pedido.id,
+        remitente: "sistema",
+        mensaje: `❌ La tienda anuló la venta ${purchaseId} de este pedido. Se devolvió el stock y se descontaron los puntos de esta compra.`,
+      },
+    ]);
   };
 
   /* ---- Reversión automática de la venta de un pedido que quedó
