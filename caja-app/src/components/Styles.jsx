@@ -6058,6 +6058,7 @@ export default function Styles() {
       .tz-dlv-tarifa-quickrow {
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
         gap: 8px;
         margin-top: 4px;
       }

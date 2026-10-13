@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 
 // Celebración "¡Pedido entregado!" del cliente (fase C): cuando uno de sus
@@ -8,6 +8,8 @@ import { supabase } from "../supabaseClient";
 // contador de créditos anima los puntos que le dio esa compra. Lo ya
 // festejado se recuerda por cliente en este navegador.
 const DIAS_ATRAS = 7;
+const CAPAS_ENCIMA = ".tz-modal-backdrop, .tz-exito-overlay, .tz-neon-bienvenida-overlay";
+const claveDe = (clienteId) => `tz-pedidos-festejados-${clienteId}`;
 
 function leer(clave) {
   try {
@@ -25,9 +27,22 @@ function guardar(clave, ids) {
   }
 }
 
+// Mis Pedidos festeja la entrega que el cliente confirma ahí mismo: la
+// marca para que la tienda no la vuelva a festejar.
+export function marcarPedidoFestejado(clienteId, pedidoId) {
+  if (!clienteId || !pedidoId) return;
+  const vistos = leer(claveDe(clienteId)) ?? new Set();
+  vistos.add(pedidoId);
+  guardar(claveDe(clienteId), vistos);
+}
+
 export function usePedidoEntregadoAviso(clienteId) {
   const [pedido, setPedido] = useState(null);
-  const clave = clienteId ? `tz-pedidos-festejados-${clienteId}` : null;
+  // Pedido por festejar, esperando a que no haya nada encima de la tienda.
+  const [candidato, setCandidato] = useState(null);
+  const candidatoRef = useRef(null);
+  candidatoRef.current = candidato;
+  const clave = clienteId ? claveDe(clienteId) : null;
 
   const revisar = useCallback(async () => {
     if (!clave) return;
@@ -46,11 +61,38 @@ export function usePedidoEntregadoAviso(clienteId) {
       return;
     }
     const nuevo = data.find((p) => !vistos.has(p.id));
-    if (!nuevo) return;
-    vistos.add(nuevo.id);
-    guardar(clave, vistos);
-    setPedido((actual) => actual ?? nuevo);
+    if (nuevo && !candidatoRef.current) setCandidato(nuevo);
   }, [clienteId, clave]);
+
+  // Se muestra recién sin modales ni otras animaciones encima, y solo si
+  // nadie lo festejó mientras tanto.
+  useEffect(() => {
+    if (!candidato || !clave) return undefined;
+    let pendiente = 0;
+    const intentar = () => {
+      pendiente = 0;
+      if (document.visibilityState !== "visible" || document.querySelector(CAPAS_ENCIMA)) return;
+      const vistos = leer(clave) ?? new Set();
+      if (!vistos.has(candidato.id)) {
+        vistos.add(candidato.id);
+        guardar(clave, vistos);
+        setPedido(candidato);
+      }
+      setCandidato(null);
+    };
+    const programar = () => {
+      if (!pendiente) pendiente = requestAnimationFrame(intentar);
+    };
+    const obs = new MutationObserver(programar);
+    obs.observe(document.body, { childList: true, subtree: true });
+    document.addEventListener("visibilitychange", programar);
+    programar();
+    return () => {
+      obs.disconnect();
+      document.removeEventListener("visibilitychange", programar);
+      if (pendiente) cancelAnimationFrame(pendiente);
+    };
+  }, [candidato, clave]);
 
   useEffect(() => {
     if (!clave) return undefined;

@@ -5,6 +5,7 @@ import { supabaseTaxi } from "../lib/supabaseTaxi";
 import ChatPedidoModal from "./ChatPedidoModal";
 import EntregaCajaModal from "./delivery/EntregaCajaModal";
 import AnimacionExitoNeon from "./AnimacionExitoNeon";
+import { marcarPedidoFestejado } from "../hooks/usePedidoEntregadoAviso";
 import TicketBoleta from "./TicketBoleta";
 import { formatSoles, formatDate, formatTime } from "../utils/format";
 import { buildWhatsappLink } from "../lib/whatsapp";
@@ -39,6 +40,7 @@ export default function MisPedidosModal({ session, onClose }) {
   const [cancelandoId, setCancelandoId] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
   const [entregaToken, setEntregaToken] = useState(null);
+  const [entregaPedidoId, setEntregaPedidoId] = useState(null);
   const [animacionExito, setAnimacionExito] = useState(null); // texto del título, o null
   const [misDatos, setMisDatos] = useState(null);
   const [boletaPedido, setBoletaPedido] = useState(null);
@@ -299,7 +301,10 @@ export default function MisPedidosModal({ session, onClose }) {
                     <button
                       type="button"
                       className="tz-pedido-action-btn"
-                      onClick={() => setEntregaToken(pedido.entrega_session_token)}
+                      onClick={() => {
+                        setEntregaToken(pedido.entrega_session_token);
+                        setEntregaPedidoId(pedido.id);
+                      }}
                     >
                       <Bike size={14} /> {["confirmado", "cancelado"].includes(pedido.estado) ? "Ver entrega" : "Seguir mi pedido"}
                     </button>
@@ -424,6 +429,8 @@ export default function MisPedidosModal({ session, onClose }) {
             // Cierra el modal de seguimiento ANTES de festejar — la
             // animación de éxito debe ser lo único en pantalla.
             setEntregaToken(null);
+            // Este festejo es el único: la tienda no lo repite.
+            marcarPedidoFestejado(session?.user?.id, entregaPedidoId);
             load();
             setAnimacionExito("¡Entrega confirmada!");
           }}
