@@ -1076,9 +1076,9 @@ export default function Styles() {
         flex-direction: column;
         gap: 16px;
       }
-      /* 17 px menos entre la barra de filtros/saldo y los rubros (selector
+      /* 18 px menos entre la barra de filtros/saldo y los rubros (selector
          doble: el 'margin: 0 auto' de .tz-main en tablet/PC no lo pisa). */
-      .tz-main.tz-dir-main { margin-top: -17px; }
+      .tz-main.tz-dir-main { margin-top: -18px; }
       .tz-dir-sidebar {
         display: flex;
         flex-direction: row;
