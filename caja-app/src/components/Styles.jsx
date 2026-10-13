@@ -1076,6 +1076,9 @@ export default function Styles() {
         flex-direction: column;
         gap: 16px;
       }
+      /* 10 px menos entre la barra de filtros/saldo y los rubros (selector
+         doble: el 'margin: 0 auto' de .tz-main en tablet/PC no lo pisa). */
+      .tz-main.tz-dir-main { margin-top: -10px; }
       .tz-dir-sidebar {
         display: flex;
         flex-direction: row;
@@ -3144,6 +3147,9 @@ export default function Styles() {
           transform: translateY(-50%);
         }
       }
+      /* Contador de créditos del cliente (ContadorCreditos.jsx): 20 px más
+         a la derecha dentro de la barra. */
+      .tz-filtrobar-saldo { position: relative; left: 20px; }
       .tz-filtrobar-saldo .tz-stat-chip { min-width: 80px; padding: 6px 7px; gap: 2px; }
       .tz-filtrobar-saldo .tz-stat-label { font-size: 10px; gap: 3px; }
       .tz-filtrobar-saldo .tz-stat-value { font-size: 15px; }
