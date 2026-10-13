@@ -3150,6 +3150,16 @@ export default function Styles() {
       /* Contador de créditos del cliente (ContadorCreditos.jsx): 20 px más
          a la derecha dentro de la barra. */
       .tz-filtrobar-saldo { position: relative; left: 20px; }
+      /* Gemas (créditos): la palabra centrada encima de la gema. */
+      .tz-gemas { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+      .tz-gemas-label {
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--text-dim);
+      }
+      .tz-gemas .tz-cc { top: 0; }
       .tz-filtrobar-saldo .tz-stat-chip { min-width: 80px; padding: 6px 7px; gap: 2px; }
       .tz-filtrobar-saldo .tz-stat-label { font-size: 10px; gap: 3px; }
       .tz-filtrobar-saldo .tz-stat-value { font-size: 15px; }
@@ -4853,6 +4863,23 @@ export default function Styles() {
       }
       /* Turno vencido: aviso arriba del cierre con el botón para extender
          30 minutos. */
+      /* Filtros dentro de un modal (ej. Historial de Cierres): sin el
+         fondo, borde, máscara ni brillo que el tema le pone a la barra de
+         la cabecera — antes se veía un recuadro iluminado alrededor. */
+      .tz-modal .tz-admin-filterbar,
+      .tz-modal .tz-admin-filterbar::before,
+      .tz-modal .tz-admin-filterbar::after {
+        background: none !important;
+        border: none !important;
+        box-shadow: none !important;
+        -webkit-mask-image: none !important;
+        mask-image: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+      .tz-modal .tz-admin-filterbar::before,
+      .tz-modal .tz-admin-filterbar::after { display: none !important; }
+      .tz-modal .tz-admin-filterbar { padding-bottom: 0 !important; }
       /* Turno sin extensiones: el cierre va encima de cualquier otro modal. */
       .tz-modal-backdrop.tz-cierre-obligatorio {
         z-index: 450;
@@ -6934,6 +6961,7 @@ export default function Styles() {
         max-width: 100%;
       }
       .tz-header-center > .tz-conn-indicator { margin-top: 0; }
+      .tz-header-cajero .tz-subtitle-hueco { margin-top: -11px; }
       /* Más de ~20 caracteres → pasa a una 2.ª línea (como máximo 2), en
          la caja y en los mensajes programados de la tienda. */
       /* (+24 px de aire interno: el brillo de las letras cabe dentro de

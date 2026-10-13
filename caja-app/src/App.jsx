@@ -188,6 +188,7 @@ function mapCierreRow(row) {
     ingresoEfectivo: row.ingreso_efectivo != null ? Number(row.ingreso_efectivo) : null,
     ingresoDigital: row.ingreso_digital != null ? Number(row.ingreso_digital) : null,
     cajeroNombre: row.cajero_nombre || null,
+    cerradoPorRol: row.cerrado_por_rol || null,
     fondoInicial: row.fondo_inicial != null ? Number(row.fondo_inicial) : null,
     abiertaEn: row.abierta_en != null ? Number(row.abierta_en) : null,
     // Multi-Sucursal (migración 0049): a qué caja/sucursal pertenece
@@ -6931,6 +6932,7 @@ export default function App() {
       ingreso_efectivo: todayStats.ingresoEfectivo,
       ingreso_digital: todayStats.ingresoDigital,
       cajero_nombre: cajeroNombre || (isAdmin ? "Admin" : "Cajero"),
+      cerrado_por_rol: isAdmin ? "admin" : "cajero",
       // Fotografía de la caja vigente — fondo inicial y momento exacto
       // de apertura de ESTE turno que se está cerrando ahora.
       fondo_inicial: estadoCaja?.fondoInicial ?? null,
@@ -6977,6 +6979,7 @@ export default function App() {
       ingresoEfectivo: snapshot.ingreso_efectivo,
       ingresoDigital: snapshot.ingreso_digital,
       cajeroNombre: snapshot.cajero_nombre,
+      cerradoPorRol: snapshot.cerrado_por_rol,
       fondoInicial: snapshot.fondo_inicial,
       abiertaEn: snapshot.abierta_en,
       timestamp: Number(row?.fecha ?? timestamp),
@@ -7599,7 +7602,7 @@ export default function App() {
          cualquier sucursal. */}
 
       {/* ---------------- HEADER ---------------- */}
-      <header className="tz-header">
+      <header className={`tz-header ${isCajero ? "tz-header-cajero" : ""}`}>
         <div className="tz-header-row">
           <div className="tz-header-side tz-header-side-left">
             {/* Parte 3 "Gestor de Cajas": control total del admin sobre
@@ -12588,6 +12591,15 @@ export default function App() {
                             </span>
                           </div>
                           <div className="tz-receipt-divider" />
+                          {(c.cajeroNombre || c.cerradoPorRol) && (
+                            <div className="tz-receipt-row">
+                              <span>Cerró la caja</span>
+                              <strong>
+                                {c.cajeroNombre || "—"}
+                                {c.cerradoPorRol ? ` (${c.cerradoPorRol === "admin" ? "Admin" : "Cajero"})` : ""}
+                              </strong>
+                            </div>
+                          )}
                           {c.fondoInicial != null && (
                             <div className="tz-receipt-row">
                               <span>Fondo Inicial</span>
