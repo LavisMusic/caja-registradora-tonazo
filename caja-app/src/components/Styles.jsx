@@ -3153,7 +3153,7 @@ export default function Styles() {
       }
       /* Contador de créditos del cliente (ContadorCreditos.jsx): 20 px más
          a la derecha dentro de la barra. */
-      .tz-filtrobar-saldo { position: relative; left: 15px; }
+      .tz-filtrobar-saldo { position: relative; left: 13px; }
       /* Gemas (créditos): la palabra centrada encima de la gema. */
       .tz-gemas { display: flex; flex-direction: column; align-items: center; gap: 2px; }
       /* La palabra va del color de las gemas que representa. */
