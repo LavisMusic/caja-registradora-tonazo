@@ -210,16 +210,19 @@ export default function CatalogPage() {
         <span className="tz-stat-value tz-green">{formatDate(saldoTaxi.membresia_vencimiento)}</span>
       </div>
     ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente ? (
-      // Gemas (créditos, fase C): la palabra centrada encima de la gema y
-      // el número, sin recuadro, también en 0. Lo nuevo se anima recién
-      // cuando el cliente ve la tienda (ver ContadorCreditos.jsx).
-      <div className="tz-gemas">
+      // Gemas (créditos, fase C): el recuadro de siempre con la palabra
+      // centrada encima de la gema y el número, también en 0. Lo nuevo se
+      // anima recién cuando el cliente ve la tienda (ver ContadorCreditos.jsx).
+      <div className="tz-stat-chip tz-gemas">
         <span className="tz-gemas-label">Gemas</span>
-        <ContadorCreditos
-          valor={Number(saldoTaxi.creditos_disponibles) || 0}
-          clave={`tz-creditos-visto-${session.user.id}`}
-          titulo="Gemas"
-        />
+        <span className="tz-stat-value">
+          <ContadorCreditos
+            valor={Number(saldoTaxi.creditos_disponibles) || 0}
+            clave={`tz-creditos-visto-${session.user.id}`}
+            titulo="Gemas"
+            className="tz-cc-heredado"
+          />
+        </span>
       </div>
     ) : null;
 

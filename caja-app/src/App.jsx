@@ -1596,6 +1596,31 @@ export default function App() {
     };
   }, [isAdmin, isCajero]);
 
+  /* ---- Respaldo del tiempo real (cajas, ventas, gastos, cierres): si la
+     conexión se corta (pestaña en segundo plano, pantalla bloqueada,
+     cambio de red), el canal se reconecta solo pero los cambios de ese
+     rato se pierden — el admin no veía que el cajero cerró su caja hasta
+     recargar. Se pone al día al volver a la pestaña, al recuperar la red
+     y cada 30 s mientras está a la vista. ---- */
+  const refetchJerarquiaRef = useRef(refetchJerarquia);
+  refetchJerarquiaRef.current = refetchJerarquia;
+  useEffect(() => {
+    if (!isAdmin && !isCajero) return undefined;
+    const ponerAlDia = () => {
+      if (document.visibilityState !== "visible") return;
+      refetchJerarquiaRef.current?.();
+      recargarDatosRef.current?.();
+    };
+    const sondeo = setInterval(ponerAlDia, 30000);
+    document.addEventListener("visibilitychange", ponerAlDia);
+    window.addEventListener("online", ponerAlDia);
+    return () => {
+      clearInterval(sondeo);
+      document.removeEventListener("visibilitychange", ponerAlDia);
+      window.removeEventListener("online", ponerAlDia);
+    };
+  }, [isAdmin, isCajero]);
+
   /* ---- Horario de las sucursales en vivo: si el admin lo cambia en
      Perfil → Horarios (en otro dispositivo), la caja del cajero recalcula
      al toque a qué hora debe cerrarse. ---- */
