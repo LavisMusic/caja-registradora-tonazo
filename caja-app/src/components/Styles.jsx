@@ -6190,6 +6190,24 @@ export default function Styles() {
         transition: width 0.25s linear;
       }
       .tz-dlv-tag-ocupado { color: #ff9d3d; font-size: 11px; font-weight: 700; }
+      /* Estado del repartidor en su tarjeta (Taxi-PE): disponible,
+         repartiendo n/5 o en carrera (bloqueada, no se le puede ofrecer). */
+      .tz-dlv-rep-estado {
+        display: inline-block;
+        margin-top: 3px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        border: 1px solid currentColor;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        width: fit-content;
+      }
+      .tz-dlv-rep-estado.is-disponible { color: var(--green); }
+      .tz-dlv-rep-estado.is-repartiendo { color: #ff9d3d; }
+      .tz-dlv-rep-estado.is-carrera { color: var(--danger); }
+      .tz-dlv-radar-list li.tz-dlv-rep-card.tz-dlv-rep-bloqueado { opacity: 0.6; }
       .tz-dlv-tag-rechazo { color: var(--danger); font-size: 11px; font-weight: 700; }
       .tz-dlv-tag-espera { font-size: 11px; font-weight: 700; color: var(--text-dim); }
       .tz-dlv-rechazos { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }

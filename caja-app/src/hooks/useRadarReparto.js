@@ -33,6 +33,10 @@ export function useRadarReparto(activo = true) {
             placa: c.placa,
             foto_url: c.foto_url,
             estado: c.estado,
+            // Taxi-PE (migración 20261014170000): en carrera con un pasajero
+            // no recibe repartos; repartiendo acepta hasta 5 a la vez.
+            enCarrera: !!c.en_carrera,
+            repartosActivos: Number(c.repartos_activos) || 0,
             lat: p?.lat ?? c.ultima_lat,
             lng: p?.lng ?? c.ultima_lng,
           };

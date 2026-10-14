@@ -8,6 +8,9 @@ import { supabaseTaxi } from "../../lib/supabaseTaxi";
 import MapaEntregaCaja from "./MapaEntregaCaja";
 import { formatSoles } from "../../utils/format";
 
+// Pedidos de reparto que un repartidor de Taxi-PE acepta a la vez.
+const MAX_REPARTOS = 5;
+
 // Montos rápidos para la tarifa de envío — MISMOS valores que
 // TARIFAS_RAPIDAS en el chat del conductor de Taxi-PE (mensajes
 // directos de tarifa), reusados acá por pedido explícito: mismos
@@ -232,7 +235,9 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
     setAviso("");
     const r = await ofertar(id, tarifaNum);
     setBusyId(null);
-    if (r.status && r.status !== "ok") setAviso(`No se pudo ofrecer (${r.status}).`);
+    if (r.status === "conductor_en_carrera") setAviso("Ese repartidor está en carrera con un pasajero: elige otro.");
+    else if (r.status === "limite_repartos") setAviso(`Ese repartidor ya lleva ${MAX_REPARTOS} pedidos: elige otro.`);
+    else if (r.status && r.status !== "ok") setAviso(`No se pudo ofrecer (${r.status}).`);
   };
 
   const onCancelar = async () => {
@@ -397,8 +402,15 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                         est === "pendiente" && infoOferta?.created_at
                           ? Math.max(0, Math.min(1, 1 - (ahora - new Date(infoOferta.created_at).getTime()) / TIMEOUT_OFERTA_MS))
                           : null;
+                      const lleno = c.repartosActivos >= MAX_REPARTOS;
+                      const noDisponible = c.enCarrera || lleno;
                       return (
-                        <li key={c.id} className={`tz-dlv-rep-card ${pct != null ? "tz-dlv-radar-item-timeout" : ""}`}>
+                        <li
+                          key={c.id}
+                          className={`tz-dlv-rep-card ${pct != null ? "tz-dlv-radar-item-timeout" : ""} ${
+                            noDisponible ? "tz-dlv-rep-bloqueado" : ""
+                          }`}
+                        >
                           <span className="tz-dlv-rep-foto">
                             {c.foto_url ? <img src={c.foto_url} alt="" /> : <Bike size={18} />}
                           </span>
@@ -406,11 +418,23 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                             <strong>{c.nombre}</strong>
                             <span className="tz-dlv-rep-placa">
                               {c.placa || "s/placa"}
-                              {c.estado === "ocupado" && <span className="tz-dlv-tag-ocupado"> · en carrera</span>}
                               {est === "rechazada" && <span className="tz-dlv-tag-rechazo"> · rechazó</span>}
                             </span>
+                            <span
+                              className={`tz-dlv-rep-estado ${
+                                c.enCarrera ? "is-carrera" : c.repartosActivos > 0 ? "is-repartiendo" : "is-disponible"
+                              }`}
+                            >
+                              {c.enCarrera
+                                ? "En carrera"
+                                : c.repartosActivos > 0
+                                  ? `Repartiendo ${c.repartosActivos}/${MAX_REPARTOS}`
+                                  : "Disponible"}
+                            </span>
                           </span>
-                          {est === "pendiente" ? (
+                          {noDisponible && est !== "pendiente" ? (
+                            <span className="tz-dlv-tag-espera">{c.enCarrera ? "No disponible" : "Lleno"}</span>
+                          ) : est === "pendiente" ? (
                             <span className="tz-dlv-tag-espera">Esperando…</span>
                           ) : (
                             <button
