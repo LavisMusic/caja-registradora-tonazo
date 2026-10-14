@@ -3153,7 +3153,7 @@ export default function Styles() {
       }
       /* Contador de créditos del cliente (ContadorCreditos.jsx): 20 px más
          a la derecha dentro de la barra. */
-      .tz-filtrobar-saldo { position: relative; left: 20px; }
+      .tz-filtrobar-saldo { position: relative; left: 17px; }
       /* Gemas (créditos): la palabra centrada encima de la gema. */
       .tz-gemas { display: flex; flex-direction: column; align-items: center; gap: 2px; }
       /* La palabra va del color de las gemas que representa. */
@@ -6292,6 +6292,32 @@ export default function Styles() {
         transition: width 0.25s linear;
       }
       .tz-dlv-tag-ocupado { color: #ff9d3d; font-size: 11px; font-weight: 700; }
+      /* Título de la lista de repartidores con "Recargar" a la derecha. */
+      .tz-dlv-rep-titulo {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .tz-dlv-rep-titulo .tz-field-label { margin: 0; min-width: 0; }
+      .tz-dlv-recargar {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex-shrink: 0;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(var(--cyan-rgb),0.45);
+        background: rgba(var(--cyan-rgb),0.08);
+        color: var(--cyan);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .tz-dlv-recargar:hover { background: rgba(var(--cyan-rgb),0.16); }
+      .tz-dlv-recargar:disabled { opacity: 0.6; cursor: wait; }
       /* Estado del repartidor en su tarjeta (Taxi-PE): disponible,
          repartiendo n/5 o en carrera (bloqueada, no se le puede ofrecer). */
       .tz-dlv-rep-estado {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabaseTaxi } from "../lib/supabaseTaxi";
 
 // Radar de repartidores para la app de Caja: lista de conductores de
@@ -17,6 +17,10 @@ export function useRadarReparto(activo = true) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const posiciones = useRef({});
+  // "Recargar" manual (botón del modal): vuelve a pedir la lista al toque,
+  // aparte de la actualización automática.
+  const recargarRef = useRef(null);
+  const [recargando, setRecargando] = useState(false);
 
   useEffect(() => {
     if (!activo) return;
@@ -70,6 +74,16 @@ export function useRadarReparto(activo = true) {
       })
       .subscribe();
 
+    recargarRef.current = async () => {
+      const { data, error: e } = await supabaseTaxi.rpc("rpc_conductores_para_reparto");
+      if (cancelado) return;
+      if (e) setError("No se pudo cargar el radar de repartidores.");
+      else {
+        setError("");
+        aplicar(data);
+      }
+    };
+
     const poll = setInterval(async () => {
       const { data } = await supabaseTaxi.rpc("rpc_conductores_para_reparto");
       aplicar(data);
@@ -77,10 +91,18 @@ export function useRadarReparto(activo = true) {
 
     return () => {
       cancelado = true;
+      recargarRef.current = null;
       supabaseTaxi.removeChannel(ch);
       clearInterval(poll);
     };
   }, [activo]);
 
-  return { conductores, loading, error };
+  const recargar = useCallback(async () => {
+    if (!recargarRef.current) return;
+    setRecargando(true);
+    await recargarRef.current();
+    setRecargando(false);
+  }, []);
+
+  return { conductores, loading, error, recargar, recargando };
 }

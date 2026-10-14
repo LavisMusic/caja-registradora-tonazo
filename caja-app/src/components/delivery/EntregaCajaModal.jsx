@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Bike, MapPin, ShoppingBag, Send, Loader2, Ban, QrCode, Check, CheckCheck, PackageX, Plus } from "lucide-react";
+import { X, Bike, MapPin, ShoppingBag, Send, Loader2, Ban, QrCode, Check, CheckCheck, PackageX, Plus, RefreshCw } from "lucide-react";
 import QRCode from "qrcode";
 import { useEntregaCaja } from "../../hooks/useEntregaCaja";
 import { useRadarReparto } from "../../hooks/useRadarReparto";
@@ -148,7 +148,7 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
   const { entrega, mensajes, ofertas, loading, ofertar, expirarOferta, cancelar, enviarMensaje, marcarLeido, recargar } =
     useEntregaCaja(sessionToken, { rol });
   const buscando = entrega?.estado === "buscando";
-  const { conductores } = useRadarReparto(buscando);
+  const { conductores, recargar: recargarRepartidores, recargando: recargandoRepartidores } = useRadarReparto(buscando);
 
   // Al confirmar la entrega (transición real, no al abrir un pedido que
   // ya estaba entregado de antes) se avisa al padre en vez de festejar
@@ -388,9 +388,18 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                     El repartidor la ve antes de aceptar, aparte del monto del pedido que cobra en el mostrador.
                   </p>
                 </div>
-                <p className="tz-field-label" style={{ marginTop: 10 }}>
-                  Repartidores en línea y verificados ({conductores.length})
-                </p>
+                <div className="tz-dlv-rep-titulo">
+                  <p className="tz-field-label">Repartidores en línea y verificados ({conductores.length})</p>
+                  <button
+                    type="button"
+                    className="tz-dlv-recargar"
+                    onClick={recargarRepartidores}
+                    disabled={recargandoRepartidores}
+                    title="Recargar la lista de repartidores"
+                  >
+                    <RefreshCw size={13} className={recargandoRepartidores ? "tz-spin" : ""} /> Recargar
+                  </button>
+                </div>
                 {conductores.length === 0 ? (
                   <p className="tz-stock-editor-sub">Ninguno disponible ahora. Se actualiza solo.</p>
                 ) : (
