@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CalendarClock, Store } from "lucide-react";
+import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CalendarClock, Store, ArrowLeft } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import TextoMaquina from "../components/TextoMaquina";
 import TemaNegocio from "../components/TemaNegocio";
@@ -640,6 +640,12 @@ export default function CatalogPage() {
                 )}
               </button>
             )}
+            {/* Volver al directorio de negocios — siempre debajo de Mis
+               Pedidos (y baja con él cuando aparece Fiados). */}
+            <Link to="/directorio" className="tz-header-btn" aria-label="Volver al directorio" title="Volver al directorio">
+              <ArrowLeft size={19} />
+              <span className="tz-header-btn-label">Directorio</span>
+            </Link>
           </div>
 
           <div className="tz-header-center">
