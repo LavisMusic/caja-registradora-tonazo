@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CalendarClock, Store, ArrowLeft } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import TextoMaquina from "../components/TextoMaquina";
@@ -103,6 +103,7 @@ export default function CatalogPage() {
      mostrar el catálogo de OTRO negocio por error — termina en un
      estado de error explícito, nunca en una lista vacía silenciosa. */
   const { slug } = useParams();
+  const navigate = useNavigate();
   // El texto bajo el logo queda centrado entre el logo y la barra.
   const headerRef = useCentrarSubtitulo();
   const [negocio, setNegocio] = useState(null);
@@ -642,10 +643,15 @@ export default function CatalogPage() {
             )}
             {/* Volver al directorio de negocios — siempre debajo de Mis
                Pedidos (y baja con él cuando aparece Fiados). */}
-            <Link to="/directorio" className="tz-header-btn" aria-label="Volver al directorio" title="Volver al directorio">
+            <button
+              className="tz-header-btn"
+              onClick={() => navigate("/directorio")}
+              aria-label="Volver al directorio"
+              title="Volver al directorio"
+            >
               <ArrowLeft size={19} />
               <span className="tz-header-btn-label">Directorio</span>
-            </Link>
+            </button>
           </div>
 
           <div className="tz-header-center">
