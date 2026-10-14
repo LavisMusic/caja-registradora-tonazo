@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import { supabaseTaxi } from "../lib/supabaseTaxi";
 import ChatPedidoModal from "./ChatPedidoModal";
 import EntregaCajaModal from "./delivery/EntregaCajaModal";
+import RetiroTiendaModal from "./delivery/RetiroTiendaModal";
 import AnimacionExitoNeon from "./AnimacionExitoNeon";
 import { marcarPedidoFestejado } from "../hooks/usePedidoEntregadoAviso";
 import TicketBoleta from "./TicketBoleta";
@@ -42,6 +43,8 @@ export default function MisPedidosModal({ session, onClose }) {
   const [eliminandoId, setEliminandoId] = useState(null);
   const [entregaToken, setEntregaToken] = useState(null);
   const [entregaPedidoId, setEntregaPedidoId] = useState(null);
+  // Retiro en tienda aceptado: "Ver entrega" (mapa + PIN + QR).
+  const [retiroPedidoId, setRetiroPedidoId] = useState(null);
   const [animacionExito, setAnimacionExito] = useState(null); // texto del título, o null
   const [misDatos, setMisDatos] = useState(null);
   const [boletaPedido, setBoletaPedido] = useState(null);
@@ -348,6 +351,15 @@ export default function MisPedidosModal({ session, onClose }) {
                     {boletaPedido?.id === pedido.id ? <Loader2 size={14} className="tz-spin" /> : <Copy size={14} />}
                     Enviar boleta por WhatsApp
                   </button>
+                  {!pedido.requiere_delivery && pedido.estado === "en_atencion" && (
+                    <button
+                      type="button"
+                      className="tz-pedido-action-btn tz-pedido-action-confirmar"
+                      onClick={() => setRetiroPedidoId(pedido.id)}
+                    >
+                      <Store size={14} /> Ver entrega
+                    </button>
+                  )}
                   {(pedido.estado === "nuevo" || pedido.estado === "en_atencion") && (
                     <button
                       type="button"
@@ -426,6 +438,24 @@ export default function MisPedidosModal({ session, onClose }) {
             />
           </div>
         </div>
+      )}
+
+      {retiroPedidoId && (
+        <RetiroTiendaModal
+          pedidoId={retiroPedidoId}
+          rol="cliente"
+          onConfirmadoCliente={() => {
+            // Este festejo es el único: la tienda no lo repite.
+            marcarPedidoFestejado(session?.user?.id, retiroPedidoId);
+            setRetiroPedidoId(null);
+            setAnimacionExito("¡Pedido entregado!");
+            load();
+          }}
+          onClose={() => {
+            setRetiroPedidoId(null);
+            load();
+          }}
+        />
       )}
 
       {entregaToken && (

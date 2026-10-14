@@ -29,6 +29,13 @@ const ICONO_DESTINO = L.divIcon({
   iconSize: [26, 26],
   iconAnchor: [13, 24],
 });
+// Retiro en tienda: el cliente en camino a la sede.
+const ICONO_CLIENTE = L.divIcon({
+  className: "tz-dlv-marker-wrap",
+  html: '<span class="tz-dlv-destino">🙋</span>',
+  iconSize: [26, 26],
+  iconAnchor: [13, 13],
+});
 const ICONO_ORIGEN = L.divIcon({
   className: "tz-dlv-marker-wrap",
   html: '<span class="tz-dlv-destino">🏪</span>',
@@ -62,19 +69,19 @@ function encuadrar(map, puntos) {
   else if (v.length === 1) map.setView([v[0].lat, v[0].lng], 15, { animate: true });
 }
 
-// Auto-encuadra SOLO la primera vez que hay suficientes puntos —
-// después de eso, cajero/cliente pueden mover y hacer zoom en el mapa
-// libremente sin que cada tick de GPS nuevo se lo pise. El botón
-// "Centrar" (recentrarTick) es la única forma de volver a encuadrar.
+// Auto-encuadra cuando aparece un punto nuevo (ej. la sede primero y la
+// persona después) — no en cada tick de GPS: cajero/cliente pueden mover
+// y hacer zoom libremente. El botón "Centrar" (recentrarTick) vuelve a
+// encuadrar a mano.
 function AjustarVista({ puntos, recentrarTick }) {
   const map = useMap();
-  const yaAjustado = useRef(false);
+  const vistos = useRef(0);
 
   useEffect(() => {
-    if (yaAjustado.current) return;
-    if (puntos.filter(Boolean).length === 0) return;
+    const n = puntos.filter(Boolean).length;
+    if (n === 0 || n <= vistos.current) return;
     encuadrar(map, puntos);
-    yaAjustado.current = true;
+    vistos.current = n;
   }, [puntos, map]);
 
   useEffect(() => {
@@ -94,7 +101,17 @@ function frescura(atMs) {
   return { txt: `hace ${Math.round(s / 3600)} h`, clase: "tz-dlv-fresh-stale" };
 }
 
-export default function MapaEntregaCaja({ entregaId, conductorId = null, destino = null, origen = null, posInicial = null }) {
+// `cliente` ({ lat, lng, at }): modo retiro en tienda — en vez del
+// repartidor (Broadcast de Taxi-PE) muestra al cliente con esa posición.
+export default function MapaEntregaCaja({
+  entregaId,
+  conductorId = null,
+  destino = null,
+  origen = null,
+  posInicial = null,
+  cliente = null,
+  textoEspera = "Esperando la ubicación del cliente…",
+}) {
   const [repartidor, setRepartidor] = useState(
     posInicial && typeof posInicial.lat === "number" ? { lat: posInicial.lat, lng: posInicial.lng } : null
   );
@@ -142,6 +159,16 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
     };
   }, [entregaId]);
 
+  const clienteLat = cliente?.lat;
+  const clienteLng = cliente?.lng;
+  const clienteAt = cliente?.at;
+  useEffect(() => {
+    if (typeof clienteLat !== "number" || typeof clienteLng !== "number") return;
+    setRepartidor({ lat: clienteLat, lng: clienteLng });
+    setPosAt(clienteAt ? new Date(clienteAt).getTime() : Date.now());
+  }, [clienteLat, clienteLng, clienteAt]);
+  const modoCliente = cliente !== null;
+
   const color = NIVEL_COLOR[mk.nivel] || NIVEL_COLOR.economico;
   const centro = repartidor || destino || origen || { lat: -12.0464, lng: -77.0428 };
 
@@ -163,9 +190,10 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
              ej. el radar de "Asignar repartidor"): solo sucursal +
              destino, sin este aviso — "ubicando al repartidor" no tiene
              sentido cuando todavía no hay NINGÚN repartidor elegido. */}
-          {conductorId && !repartidor && (
+          {(conductorId || modoCliente) && !repartidor && (
             <div className="tz-dlv-mapa-loading">
-              <Loader2 size={14} className="tz-spin" /> <span>Ubicando al repartidor…</span>
+              <Loader2 size={14} className="tz-spin" />{" "}
+              <span>{modoCliente ? textoEspera : "Ubicando al repartidor…"}</span>
             </div>
           )}
           <button
@@ -182,7 +210,12 @@ export default function MapaEntregaCaja({ entregaId, conductorId = null, destino
             <TileLayer attribution={MAPBOX_ATTRIBUTION} url={MAPBOX_TILE_URL} />
             {origen && <Marker position={[origen.lat, origen.lng]} icon={ICONO_ORIGEN} />}
             {destino && <Marker position={[destino.lat, destino.lng]} icon={ICONO_DESTINO} />}
-            {repartidor && <Marker position={[repartidor.lat, repartidor.lng]} icon={iconoRepartidor(color, mk.iconoUrl)} />}
+            {repartidor && (
+              <Marker
+                position={[repartidor.lat, repartidor.lng]}
+                icon={modoCliente ? ICONO_CLIENTE : iconoRepartidor(color, mk.iconoUrl)}
+              />
+            )}
           </MapContainer>
         </div>
       )}

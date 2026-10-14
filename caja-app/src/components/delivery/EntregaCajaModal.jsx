@@ -27,7 +27,7 @@ const TARIFAS_RAPIDAS_ENVIO = [1.5, 3, 4.5];
 //   entregado/cancelado/no_entregado → cierre
 // Ver DELIVERY.md §7.
 
-function QrVisorModal({ pin, onClose }) {
+export function QrVisorModal({ pin, onClose, texto = "Mostrá este QR al repartidor para confirmar la entrega." }) {
   const [dataUrl, setDataUrl] = useState("");
   useEffect(() => {
     QRCode.toDataURL(String(pin), { width: 420, margin: 2 }).then(setDataUrl).catch(() => {});
@@ -41,7 +41,7 @@ function QrVisorModal({ pin, onClose }) {
           <X size={18} />
         </button>
         <h2>Código de la entrega</h2>
-        <p className="tz-stock-editor-sub">Mostrá este QR al repartidor para confirmar la entrega.</p>
+        <p className="tz-stock-editor-sub">{texto}</p>
         {dataUrl ? (
           <img src={dataUrl} alt="QR de la entrega" style={{ width: "100%", maxWidth: 280, margin: "8px auto", borderRadius: 12, background: "#fff", padding: 8 }} />
         ) : (

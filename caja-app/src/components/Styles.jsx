@@ -6378,6 +6378,10 @@ export default function Styles() {
       .tz-dlv-radar .tz-dlv-cancelar { margin-top: 10px; }
 
       /* PIN + QR + cancelar, todos en la misma línea, empaquetados a la izquierda */
+      /* Retiro en tienda: PIN del cliente a mano + Confirmar. */
+      .tz-retiro-pin { display: flex; gap: 8px; margin-top: 10px; }
+      .tz-retiro-pin .tz-text-input { flex: 1; text-align: center; letter-spacing: 0.4em; font-size: 18px; }
+      .tz-retiro-pin .tz-scan-btn { flex-shrink: 0; width: auto; padding: 0 16px; }
       .tz-dlv-pin-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
       .tz-dlv-pin {
         flex: 0 0 auto;                 /* solo lo que ocupa el contenido */

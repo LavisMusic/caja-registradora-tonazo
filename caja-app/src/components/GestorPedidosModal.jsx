@@ -8,6 +8,7 @@ import { useEntregasNoLeidos } from "../hooks/useEntregasNoLeidos";
 import ChatPedidoModal from "./ChatPedidoModal";
 import AnimacionExitoNeon from "./AnimacionExitoNeon";
 import EntregaCajaModal from "./delivery/EntregaCajaModal";
+import RetiroTiendaModal from "./delivery/RetiroTiendaModal";
 import TicketBoleta from "./TicketBoleta";
 import { formatSoles, formatDate, formatTime } from "../utils/format";
 import { buildWhatsappLink } from "../lib/whatsapp";
@@ -66,6 +67,8 @@ export default function GestorPedidosModal({
   // pedido puntual. null = sin filtrar (todos).
   const [filtroEstado, setFiltroEstado] = useState(null); // 'en_carrera' | 'entregado' | 'cancelado' | null
   const [comprobanteVer, setComprobanteVer] = useState(null); // url
+  // Retiro en tienda abierto en "Ver entrega" (mapa + QR/PIN del cliente).
+  const [retiroPedido, setRetiroPedido] = useState(null);
   const [animacionExito, setAnimacionExito] = useState(null); // texto del título, o null
   // Sucursal que el cliente eligió al hacer el pedido — es la misma
   // 'sucursalId' operativa del cajero (los pedidos ya vienen filtrados
@@ -262,8 +265,9 @@ export default function GestorPedidosModal({
     setAccionError("");
     setProcesandoId(pedido.id);
     try {
-      // Retiro en tienda → la venta ya se registró al aceptar la petición.
-      // Delivery → la venta se registra con "Confirmar recojo y cobro"
+      // Solo delivery: el retiro en tienda se entrega con el PIN/QR del
+      // cliente (finalizarRetiro). En delivery la venta se registra con
+      // "Confirmar recojo y cobro"
       // (cobrarRecojo) y el cierre lo hace el webhook del repartidor; este
       // botón queda solo como cierre manual de respaldo.
       const { error: updateError } = await supabase
@@ -367,17 +371,12 @@ export default function GestorPedidosModal({
   };
 
   // Retiro en tienda: verificar el comprobante y aceptar/rechazar la
-  // petición. Al ACEPTAR se registra la venta (descuenta stock, suma a
-  // las métricas del día) — el pago ya está verificado.
+  // petición. La venta ya NO se registra al aceptar: se registra cuando el
+  // cliente llega y la tienda verifica su PIN o QR (finalizarRetiro).
   const resolverRetiro = async (pedido, aceptar) => {
     setAccionError("");
     setProcesandoId(pedido.id);
     try {
-      if (aceptar) {
-        const { error: rpcError } = await registrarVentaPedido(pedido);
-        if (rpcError) throw rpcError; // p.ej. stock insuficiente → no se acepta
-        onVentaRegistrada?.(); // refresca historial/stock/métricas en App
-      }
       const nuevoEstado = aceptar ? "en_atencion" : "cancelado";
       const { error } = await supabase.from("pedidos").update({ estado: nuevoEstado }).eq("id", pedido.id);
       if (error) throw error;
@@ -403,6 +402,32 @@ export default function GestorPedidosModal({
       setAccionError(err?.message || "No se pudo procesar la petición.");
     } finally {
       setProcesandoId(null);
+    }
+  };
+
+  // Retiro verificado (PIN o QR del cliente, RetiroTiendaModal): recién acá
+  // se registra la venta (si el pedido es de antes de este cambio ya la
+  // tiene) y el pedido pasa a confirmado. Devuelve { error, message }.
+  const finalizarRetiro = async (pedido) => {
+    try {
+      if (!pedido.ventaPurchaseId) {
+        const { error: rpcError } = await registrarVentaPedido(pedido);
+        if (rpcError) throw rpcError; // p.ej. stock insuficiente
+        onVentaRegistrada?.();
+      }
+      const { error: updateError } = await supabase.from("pedidos").update({ estado: "confirmado" }).eq("id", pedido.id);
+      if (updateError) throw updateError;
+      await supabase.from("pedido_mensajes").insert([
+        { pedido_id: pedido.id, remitente: "sistema", mensaje: "✅ Retiraste tu pedido. ¡Gracias por tu compra!" },
+      ]);
+      setRetiroPedido(null);
+      setAnimacionExito("¡Entrega confirmada!");
+      refetch();
+      return { error: null };
+    } catch (err) {
+      console.error("[GestorPedidosModal] Error entregando el retiro:", err);
+      refetch();
+      return { error: err, message: err?.message || "Verificado, pero no se pudo registrar la venta." };
     }
   };
 
@@ -719,7 +744,19 @@ export default function GestorPedidosModal({
                       )}
                     {activo && (
                       <>
-                        {!(pedido.requiereDelivery && pedido.entregaSessionToken) && (
+                        {/* Retiro en tienda: se entrega solo verificando el
+                            PIN/QR del cliente en "Ver entrega". */}
+                        {!pedido.requiereDelivery && (
+                          <button
+                            type="button"
+                            className="tz-pedido-action-btn tz-pedido-action-confirmar"
+                            onClick={() => setRetiroPedido(pedido)}
+                            disabled={procesando}
+                          >
+                            <Store size={14} /> Ver entrega
+                          </button>
+                        )}
+                        {pedido.requiereDelivery && !pedido.entregaSessionToken && (
                           <button
                             type="button"
                             className="tz-pedido-action-btn tz-pedido-action-confirmar"
@@ -758,6 +795,15 @@ export default function GestorPedidosModal({
           </div>
         )}
       </div>
+
+      {retiroPedido && (
+        <RetiroTiendaModal
+          pedidoId={retiroPedido.id}
+          rol="cajero"
+          onVerificado={() => finalizarRetiro(retiroPedido)}
+          onClose={() => setRetiroPedido(null)}
+        />
+      )}
 
       {comprobanteVer && (
         <div className="tz-modal-backdrop" style={{ zIndex: 80 }}>
