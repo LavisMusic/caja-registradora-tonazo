@@ -1104,6 +1104,7 @@ export default function App() {
         cerradaEn: r.cerrada_en != null ? Number(r.cerrada_en) : null,
         extendidaHasta: r.extendida_hasta != null ? Number(r.extendida_hasta) : null,
         extensiones: Number(r.extensiones) || 0,
+        montoPredeterminado: r.monto_inicial_predeterminado != null ? Number(r.monto_inicial_predeterminado) : null,
       }))
     );
     setJerarquiaError("");
@@ -1292,7 +1293,7 @@ export default function App() {
   const eliminarSucursal = async (sucursal) => {
     if (
       !window.confirm(
-        `¿Eliminar la sucursal "${sucursal.nombre}"? Esta acción no se puede deshacer.`
+        `¿Eliminar la sucursal "${sucursal.nombre}"?\n\nSe borra TODO lo suyo: su caja, pedidos y chats, ventas, cierres, comprobantes, pagos pendientes, fiados e inventario. Sus cajeros quedan sin sucursal para reasignarlos.\n\nEsta acción no se puede deshacer.`
       )
     ) {
       return;
@@ -1301,21 +1302,24 @@ export default function App() {
     setEliminandoSucursalId(sucursal.id);
     setGestorCajaError("");
 
-    const { error } = await supabase.from("sucursales").delete().eq("id", sucursal.id);
+    // Vacía y elimina en la base, todo junto (migración 0110).
+    const { data, error } = await supabase.rpc("caja_eliminar_sucursal", { p_sucursal_id: sucursal.id });
 
     setEliminandoSucursalId(null);
 
-    if (error) {
-      console.error("Error al eliminar sucursal:", error);
+    if (error || data?.estado !== "ok") {
+      console.error("Error al eliminar sucursal:", error || data);
       setGestorCajaError(
-        /foreign key|violat/i.test(error.message || "")
-          ? `No se pudo eliminar "${sucursal.nombre}": todavía tiene cajas, ventas, pedidos o cajeros asociados. Primero hay que vaciarla o reasignar eso.`
-          : `No se pudo eliminar "${sucursal.nombre}": ${error.message || "error desconocido"}`
+        data?.estado === "sin_permiso"
+          ? `Solo el admin del negocio puede eliminar "${sucursal.nombre}".`
+          : `No se pudo eliminar "${sucursal.nombre}": ${error?.message || "error desconocido"}`
       );
       return;
     }
 
     setSucursales((prev) => prev.filter((s) => s.id !== sucursal.id));
+    setCajas((prev) => prev.filter((c) => c.sucursalId !== sucursal.id));
+    refetchJerarquia();
   };
 
   /* ---- Coordenadas de la sucursal (punto A del delivery). Se pega el
@@ -1384,6 +1388,22 @@ export default function App() {
   // Confirmación en el Gestor después de que el admin cierra una caja.
   const [gestorCajaAviso, setGestorCajaAviso] = useState("");
 
+  // Fondo inicial guardado por caja (migración 0110): al salir del campo se
+  // guarda sin abrir la caja; con él se abre sola a la hora de apertura.
+  const guardarMontoPredeterminado = async (caja) => {
+    const texto = gestorCajaMontoInputs[caja.id];
+    if (texto === undefined) return;
+    const monto = texto.trim() === "" ? null : parseFloat(texto);
+    if (monto !== null && (isNaN(monto) || monto < 0)) return;
+    if (monto === caja.montoPredeterminado) return;
+    const { error } = await supabase.from("cajas").update({ monto_inicial_predeterminado: monto }).eq("id", caja.id);
+    if (error) {
+      console.error("Error guardando el fondo inicial de la caja:", error);
+      return;
+    }
+    setCajas((prev) => prev.map((c) => (c.id === caja.id ? { ...c, montoPredeterminado: monto } : c)));
+  };
+
   const iniciarCajaDesdeGestor = async (caja) => {
     const montoStr = gestorCajaMontoInputs[caja.id] ?? "";
     const monto = parseFloat(montoStr);
@@ -1402,6 +1422,9 @@ export default function App() {
         .update({
           estado: "abierta",
           monto_inicial: monto,
+          // Queda guardado: aparece escrito la próxima vez y con él se abre
+          // sola a la hora de apertura (migración 0110).
+          monto_inicial_predeterminado: monto,
           abierta_por: cajeroNombre || "Admin",
           abierta_en: abiertaEn,
           cerrada_en: null,
@@ -1439,11 +1462,16 @@ export default function App() {
                 abiertaEn: data.abierta_en != null ? Number(data.abierta_en) : abiertaEn,
                 cerradaEn: data.cerrada_en != null ? Number(data.cerrada_en) : null,
                 extendidaHasta: null,
+                montoPredeterminado: monto,
               }
             : c
         )
       );
-      setGestorCajaMontoInputs((prev) => ({ ...prev, [caja.id]: "" }));
+      setGestorCajaMontoInputs((prev) => {
+        const sig = { ...prev };
+        delete sig[caja.id];
+        return sig;
+      });
     } catch (err) {
       console.error("Error inesperado al abrir caja desde el Gestor:", err);
       setGestorCajaError(`No se pudo conectar con Supabase para abrir "${caja.nombre}".`);
@@ -1579,6 +1607,8 @@ export default function App() {
                     abiertaEn: row.abierta_en != null ? Number(row.abierta_en) : null,
                     extendidaHasta: row.extendida_hasta != null ? Number(row.extendida_hasta) : null,
                     extensiones: Number(row.extensiones) || 0,
+                    montoPredeterminado:
+                      row.monto_inicial_predeterminado != null ? Number(row.monto_inicial_predeterminado) : null,
                     cerradaEn: row.cerrada_en != null ? Number(row.cerrada_en) : null,
                   }
                 : c
@@ -7981,11 +8011,7 @@ export default function App() {
                 <TrendingUp size={13} /> Ganancia Neta (hoy)
               </span>
               <span className="tz-stat-value tz-green">{formatSoles(todayStats.gananciaNetaTurno)}</span>
-              <span className="tz-stat-sub">
-                {todayStats.gastosHoyCaja > 0
-                  ? `− ${formatSoles(todayStats.gastosHoyCaja)} gastos`
-                  : ""}
-              </span>
+              <span className="tz-stat-sub">− {formatSoles(todayStats.gastosHoyCaja)} en gastos de hoy</span>
             </div>
             <div className="tz-stat-chip tz-stat-chip-star">
               <span className="tz-stat-label">
@@ -9516,13 +9542,18 @@ export default function App() {
                                   step="0.10"
                                   placeholder="Fondo inicial (S/)"
                                   className="tz-text-input tz-gc-monto-input"
-                                  value={gestorCajaMontoInputs[caja.id] ?? ""}
+                                  value={
+                                    gestorCajaMontoInputs[caja.id] ??
+                                    (caja.montoPredeterminado != null ? String(caja.montoPredeterminado) : "")
+                                  }
+                                  title="Con este monto se abre sola a la hora de apertura de la sucursal"
                                   onChange={(e) =>
                                     setGestorCajaMontoInputs((prev) => ({
                                       ...prev,
                                       [caja.id]: e.target.value,
                                     }))
                                   }
+                                  onBlur={() => guardarMontoPredeterminado(caja)}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") iniciarCajaDesdeGestor(caja);
                                   }}

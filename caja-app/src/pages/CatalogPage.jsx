@@ -400,6 +400,10 @@ export default function CatalogPage() {
   // ya usa App.jsx para el panel del cajero). null mientras carga, para
   // no mostrar "Cerrado" un instante antes de saber la respuesta real.
   const [sucursalEnLinea, setSucursalEnLinea] = useState(null);
+  // Caja cerrada = la sucursal no recibe pedidos hasta que abra el turno
+  // (la base también los rechaza, migración 0110).
+  const tiendaCerrada = sucursalEnLinea === false;
+  const puedePedir = puedeComprar && !tiendaCerrada;
   useEffect(() => {
     if (!publicSucursalId) {
       setSucursalEnLinea(null);
@@ -769,6 +773,17 @@ export default function CatalogPage() {
       )}
 
       <main className="tz-main">
+        {negocio && recibePedidos && tiendaCerrada && (
+          <div className="tz-plan-aviso tz-plan-aviso-gracia tz-catalogo-sin-pedidos" role="status">
+            <span>
+              🔒 Esta sucursal está cerrada: no recibe pedidos hasta que abra su caja.
+              {textoHorarioHoy(perfilPublico.horarios[publicSucursalId])
+                ? ` ${textoHorarioHoy(perfilPublico.horarios[publicSucursalId])}.`
+                : ""}{" "}
+              Puedes ver sus productos igual.
+            </span>
+          </div>
+        )}
         {negocio && !recibePedidos && (
           <div className="tz-plan-aviso tz-plan-aviso-gracia tz-catalogo-sin-pedidos" role="status">
             <span>Este negocio no está recibiendo pedidos online en este momento. Puedes ver sus productos igual.</span>
@@ -882,7 +897,7 @@ export default function CatalogPage() {
                                logueado puede agregar al carrito — la
                                Venta por Peso queda fuera (no hay balanza
                                acá, ver agregarAlCarrito). */}
-                            {puedeComprar && !item.ventaPorPeso && !soldOut && (
+                            {puedePedir && !item.ventaPorPeso && !soldOut && (
                               <div className="tz-card-cart-controls">
                                 {carrito[item.id] ? (
                                   <div className="tz-qty-stepper">
@@ -938,7 +953,7 @@ export default function CatalogPage() {
       {/* Fase 1 "Pedidos Delivery": barra flotante del carrito — solo
          aparece con algo adentro, y con el checkout cerrado (mientras
          el checkout está abierto ya se ve el mismo resumen ahí). */}
-      {puedeComprar && carritoTotalItems > 0 && !checkoutOpen && (
+      {puedePedir && carritoTotalItems > 0 && !checkoutOpen && (
         <button
           type="button"
           className="tz-cart-floating-bar"
