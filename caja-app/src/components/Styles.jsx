@@ -665,6 +665,8 @@ export default function Styles() {
           padding-bottom: 0;
           -webkit-mask-image: none;
           mask-image: none;
+          /* Las categorías suben 5 px más (el relleno ya está en 0). */
+          margin-bottom: -5px;
         }
       }
       /* Localidad + Sucursal + botón Taxi-PE, agrupados juntos — así
