@@ -662,9 +662,9 @@ export default function Styles() {
          aire; el relleno y el desvanecido son más cortos. */
       @media (max-width: 767px) {
         .tz-header + .tz-admin-filterbar:has(.tz-filtrobar-grid) {
-          padding-bottom: 8px;
-          -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 7px), transparent);
-          mask-image: linear-gradient(to bottom, #000 calc(100% - 7px), transparent);
+          padding-bottom: 3px;
+          -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 3px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 3px), transparent);
         }
       }
       /* Localidad + Sucursal + botón Taxi-PE, agrupados juntos — así
