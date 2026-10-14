@@ -149,7 +149,7 @@ export function useEntregaCaja(sessionToken, { rol = "cajero" } = {}) {
       });
       if (!error && data?.status === "ok") {
         channelRef.current
-          ?.send({ type: "broadcast", event: "mensaje", payload: { hilo } })
+          ?.send({ type: "broadcast", event: "mensaje", payload: { hilo, rol } })
           .catch(() => {});
         await cargar();
         return { error: null };

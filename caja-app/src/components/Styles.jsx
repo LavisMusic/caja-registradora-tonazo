@@ -70,9 +70,12 @@ export default function Styles() {
            cambiaba de tono. Debajo de esa primera pantalla sigue el
            mismo color en que termina el degradado. */
         background:
+          linear-gradient(to bottom, transparent 72%, var(--bg-1) 100%),
           radial-gradient(ellipse 900px 500px at 20% -10%, rgba(var(--cyan-rgb),0.10), transparent 60%),
           radial-gradient(ellipse 900px 500px at 90% 10%, rgba(var(--pink-rgb),0.10), transparent 60%),
           linear-gradient(160deg, var(--bg-1), var(--bg-2) 55%, var(--bg-1));
+        /* La primera capa funde el final del degradado con el color de
+           abajo: sin ella, en páginas largas se veía un corte recto. */
         background-size: 100% 100vh;
         background-repeat: no-repeat;
         background-color: var(--bg-1);
@@ -219,12 +222,12 @@ export default function Styles() {
            borde superior de la pantalla en mobile, cortado en vez de
            desvanecerse. */
         padding: 40px 14px 22px;
-        /* Borde inferior tipo láser: 2 px, brillante al centro y que se
+        /* Borde inferior tipo láser: 1.5 px, 2 px sobre el borde, brillante al centro y que se
            desvanece en punta hacia los costados (capa de fondo, no
            pseudo-elemento: los temáticos ya usan ::before/::after). */
         background:
-          linear-gradient(90deg, transparent 0%, rgba(var(--cyan-rgb),0.22) 14%, rgba(var(--cyan-rgb),0.75) 50%, rgba(var(--cyan-rgb),0.22) 86%, transparent 100%) bottom / 100% 2px no-repeat,
-          linear-gradient(90deg, transparent 8%, rgba(var(--cyan-rgb),0.08) 35%, rgba(var(--cyan-rgb),0.14) 50%, rgba(var(--cyan-rgb),0.08) 65%, transparent 92%) bottom / 100% 7px no-repeat,
+          linear-gradient(90deg, transparent 0%, rgba(var(--cyan-rgb),0.22) 14%, rgba(var(--cyan-rgb),0.75) 50%, rgba(var(--cyan-rgb),0.22) 86%, transparent 100%) center bottom 2px / 100% 1.5px no-repeat,
+          linear-gradient(90deg, transparent 8%, rgba(var(--cyan-rgb),0.08) 35%, rgba(var(--cyan-rgb),0.14) 50%, rgba(var(--cyan-rgb),0.08) 65%, transparent 92%) center bottom 2px / 100% 7px no-repeat,
           rgba(var(--base-rgb), 0.85);
         border-bottom: none;
       }

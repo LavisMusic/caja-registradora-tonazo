@@ -126,10 +126,16 @@ export default function GestorPedidosModal({
     const ids = [...new Set(pedidos.map((p) => p.clienteId).filter(Boolean))];
     if (ids.length === 0) return;
     let active = true;
+    // RPC (migración 0106): el cajero solo puede leer los clientes de SU
+    // sucursal, y quien pide online desde otra le salía como "Cliente".
+    // Si la RPC todavía no existe, se lee la tabla como antes.
     supabase
-      .from("clientes_fiado")
-      .select("auth_user_id, nombre, whatsapp")
-      .in("auth_user_id", ids)
+      .rpc("caja_clientes_de_pedidos", { p_ids: ids })
+      .then((res) =>
+        res.error
+          ? supabase.from("clientes_fiado").select("auth_user_id, nombre, whatsapp").in("auth_user_id", ids)
+          : res
+      )
       .then(({ data, error: err }) => {
         if (!active) return;
         if (err) {
@@ -566,7 +572,7 @@ export default function GestorPedidosModal({
                   <div key={pedido.id} className="tz-pedido-card tz-peticion-card">
                     <div className="tz-pedido-card-head">
                       <span className="tz-peticion-badge">Petición de retiro</span>
-                      <span className="tz-pedido-cliente-nombre">{cliente?.nombre || "Cliente"}</span>
+                      <span className="tz-pedido-cliente-nombre">{cliente?.nombre || pedido.contactoNombre || "Cliente"}</span>
                     </div>
                     <div className="tz-pedido-card-meta">
                       {formatDate(pedido.createdAt)} {formatTime(pedido.createdAt)} ·{" "}
@@ -612,7 +618,7 @@ export default function GestorPedidosModal({
                   <div className="tz-pedido-card-head">
                     <span className={`tz-chat-dot ${activo ? "tz-chat-dot-activo" : ""}`} />
                     <span className="tz-pedido-cliente-nombre tz-pedido-cliente-nombre-fijo">
-                      {cliente?.nombre || "Cliente"}
+                      {cliente?.nombre || pedido.contactoNombre || "Cliente"}
                     </span>
                     <div className="tz-pedido-card-tags">
                       {sucursalNombre && (

@@ -9,7 +9,7 @@ import MapaEntregaCaja from "./MapaEntregaCaja";
 import { formatSoles } from "../../utils/format";
 
 // Pedidos de reparto que un repartidor de Taxi-PE acepta a la vez.
-const MAX_REPARTOS = 5;
+const MAX_REPARTOS = 3;
 
 // Montos rápidos para la tarifa de envío — MISMOS valores que
 // TARIFAS_RAPIDAS en el chat del conductor de Taxi-PE (mensajes
