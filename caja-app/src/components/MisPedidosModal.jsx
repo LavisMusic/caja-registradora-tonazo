@@ -11,6 +11,7 @@ import { formatSoles, formatDate, formatTime } from "../utils/format";
 import { buildWhatsappLink } from "../lib/whatsapp";
 import { copiarBoletaAlPortapapeles } from "../lib/boleta";
 import { usePedidosNoLeidos } from "../hooks/usePedidosNoLeidos";
+import { useEntregasNoLeidos } from "../hooks/useEntregasNoLeidos";
 
 const METODO_LABELS = { YAPE: "Yape", PLIN: "Plin", OTROS: "Otros", EFECTIVO: "Efectivo", FIADO: "Fiado" };
 
@@ -54,6 +55,11 @@ export default function MisPedidosModal({ session, onClose }) {
   // terminar el trabajo async — si se llama window.open() después de un
   // await, mobile Chrome lo bloquea como popup.
   const whatsappWinRef = useRef(null);
+  // Mensajes del repartidor sin leer, por entrega (punto rojo en "Seguir mi pedido").
+  const { counts: noLeidosRepartidor, refrescar: refrescarNoLeidosRepartidor } = useEntregasNoLeidos(
+    pedidos.map((p) => p.entrega_session_token),
+    "cliente"
+  );
   const { counts: noLeidos, refrescar: refrescarNoLeidos } = usePedidosNoLeidos(
     pedidos.map((p) => p.id),
     "cliente"
@@ -301,12 +307,18 @@ export default function MisPedidosModal({ session, onClose }) {
                     <button
                       type="button"
                       className="tz-pedido-action-btn"
+                      style={{ position: "relative" }}
                       onClick={() => {
                         setEntregaToken(pedido.entrega_session_token);
                         setEntregaPedidoId(pedido.id);
                       }}
                     >
                       <Bike size={14} /> {["confirmado", "cancelado"].includes(pedido.estado) ? "Ver entrega" : "Seguir mi pedido"}
+                      {noLeidosRepartidor[pedido.entrega_session_token] > 0 && (
+                        <span className="tz-badge-dot" aria-label="Mensajes nuevos del repartidor">
+                          {noLeidosRepartidor[pedido.entrega_session_token] > 9 ? "9+" : noLeidosRepartidor[pedido.entrega_session_token]}
+                        </span>
+                      )}
                     </button>
                   ) : (
                     pedido.estado !== "confirmado" && pedido.estado !== "cancelado" && (
@@ -424,6 +436,7 @@ export default function MisPedidosModal({ session, onClose }) {
           onClose={() => {
             setEntregaToken(null);
             load();
+            refrescarNoLeidosRepartidor();
           }}
           onEntregado={() => {
             // Cierra el modal de seguimiento ANTES de festejar — la

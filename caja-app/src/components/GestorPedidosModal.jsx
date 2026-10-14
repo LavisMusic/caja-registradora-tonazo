@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 import { supabaseTaxi } from "../lib/supabaseTaxi";
 import { usePedidos } from "../hooks/usePedidos";
 import { usePedidosNoLeidos } from "../hooks/usePedidosNoLeidos";
+import { useEntregasNoLeidos } from "../hooks/useEntregasNoLeidos";
 import ChatPedidoModal from "./ChatPedidoModal";
 import AnimacionExitoNeon from "./AnimacionExitoNeon";
 import EntregaCajaModal from "./delivery/EntregaCajaModal";
@@ -89,6 +90,11 @@ export default function GestorPedidosModal({
       active = false;
     };
   }, [sucursalId]);
+  // Mensajes del repartidor sin leer, por entrega (punto rojo en "Ver entrega").
+  const { counts: noLeidosRepartidor, refrescar: refrescarNoLeidosRepartidor } = useEntregasNoLeidos(
+    pedidos.map((p) => p.entregaSessionToken),
+    "cajero"
+  );
   const { counts: noLeidos, refrescar: refrescarNoLeidos } = usePedidosNoLeidos(
     pedidos.map((p) => p.id),
     "cajero"
@@ -678,11 +684,17 @@ export default function GestorPedidosModal({
                       <button
                         type="button"
                         className="tz-pedido-action-btn"
+                        style={{ position: "relative" }}
                         onClick={() => asignarRepartidor(pedido)}
                         disabled={asignandoId === pedido.id}
                       >
                         {asignandoId === pedido.id ? <Loader2 size={14} className="tz-spin" /> : <Bike size={14} />}
                         {pedido.entregaSessionToken ? "Ver entrega" : "Asignar repartidor"}
+                        {noLeidosRepartidor[pedido.entregaSessionToken] > 0 && (
+                          <span className="tz-badge-dot" aria-label="Mensajes nuevos del repartidor">
+                            {noLeidosRepartidor[pedido.entregaSessionToken] > 9 ? "9+" : noLeidosRepartidor[pedido.entregaSessionToken]}
+                          </span>
+                        )}
                       </button>
                     )}
                     {pedido.requiereDelivery &&
@@ -771,6 +783,7 @@ export default function GestorPedidosModal({
           onClose={() => {
             setEntregaModal(null);
             refetch();
+            refrescarNoLeidosRepartidor();
           }}
           onEntregado={() => {
             // Cierra el modal de seguimiento de la entrega ANTES de
@@ -779,6 +792,7 @@ export default function GestorPedidosModal({
             // ventana que sigue abierta detrás.
             setEntregaModal(null);
             refetch();
+            refrescarNoLeidosRepartidor();
             setAnimacionExito("¡Entrega confirmada!");
           }}
         />

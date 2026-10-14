@@ -222,12 +222,11 @@ export default function Styles() {
            borde superior de la pantalla en mobile, cortado en vez de
            desvanecerse. */
         padding: 40px 14px 22px;
-        /* Borde inferior tipo láser: 1.5 px, 2 px sobre el borde, brillante al centro y que se
+        /* Borde inferior tipo láser: 1.5 px, brillante al centro y que se
            desvanece en punta hacia los costados (capa de fondo, no
            pseudo-elemento: los temáticos ya usan ::before/::after). */
         background:
-          linear-gradient(90deg, transparent 0%, rgba(var(--cyan-rgb),0.22) 14%, rgba(var(--cyan-rgb),0.75) 50%, rgba(var(--cyan-rgb),0.22) 86%, transparent 100%) center bottom 2px / 100% 1.5px no-repeat,
-          linear-gradient(90deg, transparent 8%, rgba(var(--cyan-rgb),0.08) 35%, rgba(var(--cyan-rgb),0.14) 50%, rgba(var(--cyan-rgb),0.08) 65%, transparent 92%) center bottom 2px / 100% 7px no-repeat,
+          linear-gradient(90deg, transparent 0%, rgba(var(--cyan-rgb),0.22) 14%, rgba(var(--cyan-rgb),0.75) 50%, rgba(var(--cyan-rgb),0.22) 86%, transparent 100%) center bottom / 100% 1.5px no-repeat,
           rgba(var(--base-rgb), 0.85);
         border-bottom: none;
       }
