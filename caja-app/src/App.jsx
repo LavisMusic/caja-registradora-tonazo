@@ -92,6 +92,7 @@ import { puedeRenovar, inicioRenovacion, formatFechaCorta } from "./lib/planes";
 import { venceCaja, cajaVencida, MAX_EXTENSIONES_CAJERO, MAX_EXTENSIONES_ADMIN } from "./lib/turnoCaja";
 
 import logo from "./assets/logo.webp";
+import Select from "./components/Select";
 
 /* ------------------------------------------------------------------ */
 /* CATALOGO DINAMICO: la carga (categorias/productos/stock desde       */
@@ -7838,7 +7839,7 @@ export default function App() {
           <div className="tz-admin-filter-group tz-admin-filtro-localidad-group">
             <label className="tz-admin-filter-label tz-admin-filtro-localidad-label">Localidad</label>
             <div className="tz-admin-filter-row">
-              <select
+              <Select
                 className="tz-admin-filter-select"
                 value={localidadFiltroId}
                 onChange={(e) => {
@@ -7853,7 +7854,7 @@ export default function App() {
                     {loc.nombre}
                   </option>
                 ))}
-              </select>
+              </Select>
               <button
                 type="button"
                 className="tz-admin-filter-add-btn"
@@ -7873,7 +7874,7 @@ export default function App() {
             <div className="tz-admin-filter-group tz-admin-filtro-sucursal-group">
               <label className="tz-admin-filter-label tz-admin-filtro-sucursal-label">Sucursal / Caja</label>
               <div className="tz-admin-filter-row">
-                <select
+                <Select
                   className="tz-admin-filter-select"
                   value={cajaActivaId}
                   onChange={(e) => elegirCajaActiva(e.target.value)}
@@ -7886,7 +7887,7 @@ export default function App() {
                       </option>
                     ))
                   )}
-                </select>
+                </Select>
                 <button
                   type="button"
                   className="tz-admin-filter-add-btn"
@@ -8906,7 +8907,7 @@ export default function App() {
                     {checkoutMetodo === "FIADO" && (
                       <div className="tz-checkout-fiado">
                         {clientesVisibles.length > 0 && !checkoutFiadoAddingNew && (
-                          <select
+                          <Select
                             className="tz-text-input"
                             value={checkoutFiadoClienteId || ""}
                             onChange={(e) => setCheckoutFiadoClienteId(e.target.value || null)}
@@ -8917,7 +8918,7 @@ export default function App() {
                                 {c.nombre}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         )}
 
                         {/* Crear cliente nuevo desde el checkout: SOLO admin — un
@@ -10664,7 +10665,7 @@ export default function App() {
               )}
 
               {filtroRolUsuarios === "cajero" && (
-                <select
+                <Select
                   className="tz-text-input"
                   style={{ marginBottom: 12 }}
                   value={filtroSucursalUsuarios}
@@ -10676,7 +10677,7 @@ export default function App() {
                       {s.nombre}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
 
               {usuarioActionError && <p className="tz-error">{usuarioActionError}</p>}
@@ -10719,7 +10720,7 @@ export default function App() {
                           <div className="tz-add-entry" style={{ marginTop: 8 }}>
                             <label className="tz-field-label">Localidad</label>
                             <div className="tz-admin-filter-row">
-                              <select
+                              <Select
                                 className="tz-text-input"
                                 value={reasignarLocalidadId}
                                 onChange={(e) => {
@@ -10733,7 +10734,7 @@ export default function App() {
                                     {l.nombre}
                                   </option>
                                 ))}
-                              </select>
+                              </Select>
                               <button
                                 type="button"
                                 className="tz-admin-filter-add-btn"
@@ -10749,7 +10750,7 @@ export default function App() {
                             </div>
                             <label className="tz-field-label">Sucursal</label>
                             <div className="tz-admin-filter-row">
-                              <select
+                              <Select
                                 className="tz-text-input"
                                 value={reasignarSucursalId}
                                 onChange={(e) => setReasignarSucursalId(e.target.value)}
@@ -10761,7 +10762,7 @@ export default function App() {
                                     {s.nombre}
                                   </option>
                                 ))}
-                              </select>
+                              </Select>
                               <button
                                 type="button"
                                 className="tz-admin-filter-add-btn"
@@ -10885,7 +10886,7 @@ export default function App() {
                   />
                   <label className="tz-field-label">Localidad</label>
                   <div className="tz-admin-filter-row">
-                    <select
+                    <Select
                       className="tz-text-input"
                       value={newCajeroLocalidadId}
                       onChange={(e) => {
@@ -10899,7 +10900,7 @@ export default function App() {
                           {l.nombre}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <button
                       type="button"
                       className="tz-admin-filter-add-btn"
@@ -10915,7 +10916,7 @@ export default function App() {
                   </div>
                   <label className="tz-field-label">Sucursal</label>
                   <div className="tz-admin-filter-row">
-                    <select
+                    <Select
                       className="tz-text-input"
                       value={newCajeroSucursalId}
                       onChange={(e) => setNewCajeroSucursalId(e.target.value)}
@@ -10929,7 +10930,7 @@ export default function App() {
                           {s.nombre}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <button
                       type="button"
                       className="tz-admin-filter-add-btn"
@@ -12569,7 +12570,7 @@ export default function App() {
                 <div className="tz-admin-filter-pareja">
                   <div className="tz-admin-filter-group">
                     <label className="tz-admin-filter-label">Localidad</label>
-                    <select
+                    <Select
                       className="tz-admin-filter-select"
                       value={historialCierresLocalidadId}
                       onChange={(e) => {
@@ -12583,12 +12584,12 @@ export default function App() {
                           {loc.nombre}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   {historialCierresLocalidadId && (
                     <div className="tz-admin-filter-group">
                       <label className="tz-admin-filter-label">Sucursal / Caja</label>
-                      <select
+                      <Select
                         className="tz-admin-filter-select"
                         value={historialCierresCajaId}
                         onChange={(e) => setHistorialCierresCajaId(e.target.value)}
@@ -12601,7 +12602,7 @@ export default function App() {
                             </option>
                           ))
                         )}
-                      </select>
+                      </Select>
                     </div>
                   )}
                 </div>

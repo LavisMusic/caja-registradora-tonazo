@@ -3153,7 +3153,7 @@ export default function Styles() {
       }
       /* Contador de créditos del cliente (ContadorCreditos.jsx): 20 px más
          a la derecha dentro de la barra. */
-      .tz-filtrobar-saldo { position: relative; left: 25px; }
+      .tz-filtrobar-saldo { position: relative; left: 20px; }
       /* Gemas (créditos): la palabra centrada encima de la gema. */
       .tz-gemas { display: flex; flex-direction: column; align-items: center; gap: 2px; }
       /* La palabra va del color de las gemas que representa. */
@@ -4318,6 +4318,108 @@ export default function Styles() {
         text-align: left;
       }
       .tz-text-input:focus { outline: none; border-color: var(--cyan); }
+
+      /* ---------- Desplegable propio (Dropdown.jsx / Select.jsx) ---------- */
+      .tz-dropdown { position: relative; width: 100%; min-width: 0; }
+      .tz-dropdown-trigger {
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 11px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(var(--cyan-rgb),0.35);
+        background: rgba(var(--fg-rgb),0.05);
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+      }
+      .tz-dropdown-trigger:focus,
+      .tz-dropdown-nativo:focus-visible {
+        outline: none;
+        border-color: var(--cyan);
+        box-shadow: 0 0 0 1.5px var(--cyan), 0 0 16px rgba(var(--cyan-rgb),0.3);
+      }
+      .tz-dropdown-trigger:disabled { opacity: 0.55; cursor: not-allowed; }
+      .tz-dropdown-valor { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tz-dropdown-placeholder { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tz-dropdown-chevron { flex-shrink: 0; color: var(--text-dim); transition: transform 0.15s ease; }
+      .tz-dropdown-chevron-open { transform: rotate(180deg); }
+      .tz-dropdown-list {
+        max-height: 280px;
+        overflow-y: auto;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border-radius: 12px;
+        background: var(--panel-solid);
+        border: 1px solid rgba(var(--cyan-rgb),0.35);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4), 0 0 18px rgba(var(--cyan-rgb),0.12);
+      }
+      .tz-dropdown-list .tz-buscador-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 11px 14px;
+        border: none;
+        border-bottom: 1px solid var(--border-soft);
+        background: transparent;
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+      }
+      .tz-dropdown-list li:last-child .tz-buscador-item { border-bottom: none; }
+      .tz-dropdown-list .tz-buscador-item:hover { background: rgba(var(--cyan-rgb),0.1); }
+      .tz-dropdown-list .tz-buscador-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tz-dropdown-item.tz-dropdown-item-activo { background: rgba(var(--cyan-rgb),0.12); color: var(--cyan); }
+      .tz-dropdown-list .tz-buscador-empty { margin: 0; padding: 12px 14px; color: var(--text-dim); font-size: 13px; }
+
+      /* Desplegable propio en lugar de un <select> (Select.jsx): el botón
+         toma la clase del select que reemplaza; acá solo el acomodo y la
+         flecha. :where() = sin especificidad, la clase del select manda. */
+      :where(.tz-dropdown-nativo) {
+        font: inherit;
+        color: inherit;
+        background: transparent;
+        border: 1px solid transparent;
+      }
+      .tz-dropdown-nativo {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        box-sizing: border-box;
+        text-align: left;
+        cursor: pointer;
+        background-image: none !important;
+        min-width: 0;
+      }
+      .tz-dropdown .tz-dropdown-nativo { padding-right: 10px; }
+      .tz-dropdown-nativo:disabled { opacity: 0.55; cursor: not-allowed; }
+      .tz-dropdown-nativo .tz-dropdown-chevron { color: currentColor; opacity: 0.75; }
+      .tz-dropdown-nativo .tz-dropdown-valor,
+      .tz-dropdown-nativo .tz-dropdown-placeholder { min-width: 0; }
+      /* La lista flota sobre todo (portal con posición fija): no la recorta
+         el scroll de un modal ni de una tabla. */
+      .tz-dropdown-list.tz-dropdown-flotante {
+        position: fixed;
+        top: auto;
+        right: auto;
+        z-index: 10050;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+      .tz-dropdown-item:disabled { opacity: 0.45; cursor: not-allowed; }
       /* <select> pinta su propio menú desplegable con los estilos del
          sistema operativo — sin esto, las <option> salen con fondo
          blanco y texto blanco (ilegibles) aunque el <select> se vea
@@ -6592,7 +6694,7 @@ export default function Styles() {
       .tz-plan-total strong { color: var(--green); font-size: 15px; }
       .tz-plan-total-desc { color: var(--yellow); }
       .tz-plan-total-uso { color: var(--cyan); }
-      .tz-plan-fila-confirmar select { margin: 6px 0; }
+      .tz-plan-fila-confirmar .tz-dropdown { margin: 6px 0; }
       @media (max-width: 520px) {
         .tz-plan-fila { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .tz-plan-fila .tz-toggle,

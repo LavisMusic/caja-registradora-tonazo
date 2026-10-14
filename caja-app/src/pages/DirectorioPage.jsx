@@ -25,6 +25,7 @@ import { buildWhatsappLink } from "../lib/whatsapp";
 import ContadorCreditos from "../components/ContadorCreditos";
 import AnimacionExitoNeon from "../components/AnimacionExitoNeon";
 import { usePedidoEntregadoAviso } from "../hooks/usePedidoEntregadoAviso";
+import Select from "../components/Select";
 
 const TAXI_PE_URL = import.meta.env.VITE_TAXI_PE_URL || "https://taxi-pe-app.vercel.app";
 
@@ -291,7 +292,7 @@ export default function DirectorioPage() {
             <div className="tz-admin-filter-pareja">
               <div className="tz-admin-filter-group tz-filtro-localidad-group">
                 <label className="tz-admin-filter-label tz-filtro-localidad-label">Localidad</label>
-                <select
+                <Select
                   className="tz-admin-filter-select"
                   value={localidadFiltro}
                   onChange={(e) => {
@@ -305,12 +306,12 @@ export default function DirectorioPage() {
                       {grupo.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               {localidadFiltro !== "todas" && sucursalesDeLocalidad.length > 0 && (
                 <div className="tz-admin-filter-group tz-filtro-sucursal-group">
                   <label className="tz-admin-filter-label tz-filtro-sucursal-label">Sucursal</label>
-                  <select
+                  <Select
                     className="tz-admin-filter-select"
                     value={sucursalFiltro}
                     onChange={(e) => setSucursalFiltro(e.target.value)}
@@ -321,7 +322,7 @@ export default function DirectorioPage() {
                         {s.nombre}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               )}
             </div>

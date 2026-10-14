@@ -6,6 +6,7 @@ import { X, Loader2, Plus, Trash2, Store, GripVertical, Search, AlertTriangle, B
 import { supabase } from "../supabaseClient";
 import Styles from "../components/Styles";
 import { ESTADOS_PLAN, calcularEstadoPlan } from "../lib/planes";
+import Select from "../components/Select";
 
 // Gestor de negocios del super admin (cabecera): crear negocios, buscar,
 // mostrar/ocultar en el directorio, reordenar (arrastrando) y ELIMINAR.
@@ -241,11 +242,11 @@ export default function GestorNegociosModal({ negocios, setNegocios, rubros, onC
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
           />
-          <select className="tz-text-input" value={rubroId} onChange={(e) => setRubroId(e.target.value)}>
+          <Select className="tz-text-input" value={rubroId} onChange={(e) => setRubroId(e.target.value)}>
             {rubros.map((r) => (
               <option key={r.id} value={r.id}>{r.nombre}</option>
             ))}
-          </select>
+          </Select>
           <button type="button" className="tz-cliente-action-btn tz-cliente-action-pago" onClick={crear} disabled={creando}>
             {creando ? <Loader2 size={13} className="tz-spin" /> : <Plus size={13} />} Crear
           </button>

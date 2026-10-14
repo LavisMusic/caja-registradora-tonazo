@@ -29,6 +29,7 @@ import { planPermiteOnline, calcularEstadoPlan } from "../lib/planes";
 import ContadorCreditos from "../components/ContadorCreditos";
 import AnimacionExitoNeon from "../components/AnimacionExitoNeon";
 import { usePedidoEntregadoAviso } from "../hooks/usePedidoEntregadoAviso";
+import Select from "../components/Select";
 
 // URL pública de Taxi-PE — botón del filtro abre en pestaña nueva, no
 // toca la sesión de Caja para nada (login ya unificado del otro lado).
@@ -705,7 +706,7 @@ export default function CatalogPage() {
             <div className="tz-admin-filter-pareja">
               <div className="tz-admin-filter-group tz-filtro-localidad-group">
                 <label className="tz-admin-filter-label tz-filtro-localidad-label">Localidad</label>
-                <select
+                <Select
                   className="tz-admin-filter-select"
                   value={publicLocalidadId}
                   onChange={(e) => {
@@ -727,7 +728,7 @@ export default function CatalogPage() {
                       {loc.nombre}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div className="tz-admin-filter-group tz-filtro-sucursal-group">
                 <label className="tz-admin-filter-label tz-filtro-sucursal-label">Sucursal</label>
@@ -738,7 +739,7 @@ export default function CatalogPage() {
                    la pareja, los dos labels terminaban a alturas
                    distintas. */}
                 <div className="tz-admin-filter-row">
-                  <select
+                  <Select
                     className="tz-admin-filter-select"
                     value={publicSucursalId}
                     onChange={(e) => setPublicSucursalId(e.target.value)}
@@ -749,7 +750,7 @@ export default function CatalogPage() {
                         {suc.nombre}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   {publicSucursalId && sucursalEnLinea !== null && (
                     <span className={`tz-admin-filter-tag tz-filtro-estado-tag ${sucursalEnLinea ? "is-abierta" : "is-cerrada"}`}>
                       <span className="tz-admin-filter-tag-dot" />

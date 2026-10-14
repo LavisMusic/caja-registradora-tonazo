@@ -5,6 +5,7 @@ import Styles from "../components/Styles";
 import ListaArrastrable from "../components/ListaArrastrable";
 import { formatSoles } from "../utils/format";
 import { precioPlan, duracionPlan, grupoDuracion } from "../lib/planes";
+import Select from "../components/Select";
 
 // Gestor de planes de suscripción (super admin, Fase 4) — mismo diseño
 // que "Configurar Membresías" de Taxi-PE: pestañas Mensual / Anual /
@@ -189,14 +190,14 @@ function PlanRow({ plan, planes, enUso, onGuardado, onEliminado }) {
             {enUso > 0 ? ` Lo usan ${enUso} negocio${enUso === 1 ? "" : "s"}: elige a qué plan pasarlos.` : ""}
           </p>
           {enUso > 0 && (
-            <select className="tz-text-input" value={reemplazo} onChange={(e) => setReemplazo(e.target.value)}>
+            <Select className="tz-text-input" value={reemplazo} onChange={(e) => setReemplazo(e.target.value)}>
               <option value="">Pasar sus negocios a…</option>
               {otrosPlanes.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nombre} ({duracionPlan(p.meses)})
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           <div className="tz-vis-confirm-actions">
             <button type="button" className="tz-cliente-action-btn tz-cliente-action-deuda" onClick={eliminar} disabled={eliminando}>

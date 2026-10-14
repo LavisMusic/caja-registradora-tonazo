@@ -7,6 +7,7 @@ import { COLORES } from "../pages/NegociosDirectorio";
 import { DIAS_SEMANA, horarioVacio, HORA_ABRE_DEFECTO, HORA_CIERRA_DEFECTO } from "../lib/horario";
 import logoTonazo from "../assets/logo.webp";
 import TemaEditor from "./TemaEditor";
+import Select from "./Select";
 
 // "Perfil" del negocio (botón de la cabecera, solo admin). Apartados:
 //   * Datos: logo (se adapta a cuadrado / horizontal / vertical con
@@ -358,14 +359,14 @@ export default function PerfilNegocioModal({ onClose, apartadoInicial = "datos",
                 ) : (
                   <div className="tz-add-entry">
                     <label className="tz-field-label">Sucursal</label>
-                    <select className="tz-text-input" value={sucursalId} onChange={(e) => elegirSucursal(e.target.value)}>
+                    <Select className="tz-text-input" value={sucursalId} onChange={(e) => elegirSucursal(e.target.value)}>
                       {sucursales.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.nombre}
                           {s.horario ? "" : " (sin horario)"}
                         </option>
                       ))}
-                    </select>
+                    </Select>
 
                     <div className="tz-horario-dias">
                       {DIAS_SEMANA.map((d) => {

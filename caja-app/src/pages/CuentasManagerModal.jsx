@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { X, Loader2, Search } from "lucide-react";
 import { supabase } from "../supabaseClient";
 import Styles from "../components/Styles";
+import Select from "../components/Select";
 
 /* Gestor de Cuentas del super-admin: solo lectura (altas/bajas/reset de
    PIN siguen siendo trabajo del admin de cada negocio, o del propio
@@ -140,7 +141,7 @@ export default function CuentasManagerModal({ negocios, onClose }) {
               onChange={(e) => setBusqueda(e.target.value)}
             />
           </div>
-          <select
+          <Select
             className="tz-text-input"
             value={filtroRol}
             onChange={(e) => setFiltroRol(e.target.value)}
@@ -149,8 +150,8 @@ export default function CuentasManagerModal({ negocios, onClose }) {
             <option value="admin">Solo admins</option>
             <option value="cajero">Solo cajeros</option>
             <option value="cliente">Solo clientes</option>
-          </select>
-          <select
+          </Select>
+          <Select
             className="tz-text-input"
             value={filtroNegocioId}
             onChange={(e) => setFiltroNegocioId(e.target.value)}
@@ -161,7 +162,7 @@ export default function CuentasManagerModal({ negocios, onClose }) {
                 {n.nombre}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {loading ? (
