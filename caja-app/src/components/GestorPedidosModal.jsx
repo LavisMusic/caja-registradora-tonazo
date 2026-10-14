@@ -382,14 +382,20 @@ export default function GestorPedidosModal({
       const { error } = await supabase.from("pedidos").update({ estado: nuevoEstado }).eq("id", pedido.id);
       if (error) throw error;
 
+      // Al aceptar, el mensaje va como de la tienda (lo pidió el dueño);
+      // el rechazo sigue como aviso del sistema.
       await supabase.from("pedido_mensajes").insert([
-        {
-          pedido_id: pedido.id,
-          remitente: "sistema",
-          mensaje: aceptar
-            ? "✅ La tienda confirmó tu pago. Estamos preparando tu pedido para el retiro."
-            : "❌ La tienda no pudo verificar tu comprobante. El pedido fue cancelado.",
-        },
+        aceptar
+          ? {
+              pedido_id: pedido.id,
+              remitente: "cajero",
+              mensaje: "🛍️ Tu pedido está alistándose, te esperamos. Ven lo más pronto posible.",
+            }
+          : {
+              pedido_id: pedido.id,
+              remitente: "sistema",
+              mensaje: "❌ La tienda no pudo verificar tu comprobante. El pedido fue cancelado.",
+            },
       ]);
       refetch();
     } catch (err) {
