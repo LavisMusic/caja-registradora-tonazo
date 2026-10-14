@@ -6,6 +6,8 @@ import { useEntregaCaja } from "../../hooks/useEntregaCaja";
 import { useRadarReparto } from "../../hooks/useRadarReparto";
 import { supabaseTaxi } from "../../lib/supabaseTaxi";
 import MapaEntregaCaja from "./MapaEntregaCaja";
+import { useEscribiendo } from "../../hooks/useEscribiendo";
+import PuntosEscribiendo from "../PuntosEscribiendo";
 import { formatSoles } from "../../utils/format";
 
 // Pedidos de reparto que un repartidor de Taxi-PE acepta a la vez.
@@ -56,11 +58,23 @@ export function QrVisorModal({ pin, onClose, texto = "Mostrá este QR al reparti
   );
 }
 
-function Chat({ hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
+const QUIEN = { conductor: "El repartidor", cajero: "La tienda", cliente: "El cliente" };
+
+function Chat({ entregaId, hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
   const [hilo, setHilo] = useState(hilos[0].key);
+  // "Escribiendo…" (canal de Taxi-PE, donde también está el repartidor).
+  const { escribiendo, avisar, apagar } = useEscribiendo(
+    supabaseTaxi,
+    entregaId ? `entrega-${entregaId}-${hilo}` : null,
+    propioRol
+  );
   const [texto, setTexto] = useState("");
   const [busy, setBusy] = useState(false);
   const delHilo = mensajes.filter((m) => m.hilo === hilo);
+  const ultimoMsg = delHilo[delHilo.length - 1];
+  useEffect(() => {
+    if (ultimoMsg && ultimoMsg.emisor_rol !== propioRol) apagar();
+  }, [ultimoMsg?.id, ultimoMsg?.emisor_rol, propioRol, apagar]);
   const noLeidosDeOtro = delHilo.filter(
     (m) => !["sistema"].includes(m.emisor_rol) && m.emisor_rol !== propioRol && !m.leido
   ).length;
@@ -128,12 +142,16 @@ function Chat({ hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
           })
         )}
       </div>
+      {escribiendo && <PuntosEscribiendo quien={QUIEN[escribiendo]} />}
       <div className="tz-dlv-chat-input">
         <input
           className="tz-input"
           placeholder="Escribe un mensaje…"
           value={texto}
-          onChange={(e) => setTexto(e.target.value)}
+          onChange={(e) => {
+            setTexto(e.target.value);
+            if (e.target.value.trim()) avisar();
+          }}
           onKeyDown={(e) => e.key === "Enter" && onEnviar()}
         />
         <button className="tz-dlv-send" onClick={onEnviar} disabled={busy || !texto.trim()}>
@@ -502,7 +520,14 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                   )}
                 </div>
 
-                <Chat hilos={hilos} mensajes={mensajes} enviarMensaje={enviarMensaje} marcarLeido={marcarLeido} propioRol={rol} />
+                <Chat
+                  entregaId={entrega?.id}
+                  hilos={hilos}
+                  mensajes={mensajes}
+                  enviarMensaje={enviarMensaje}
+                  marcarLeido={marcarLeido}
+                  propioRol={rol}
+                />
               </>
             )}
 

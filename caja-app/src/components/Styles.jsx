@@ -6382,6 +6382,39 @@ export default function Styles() {
       .tz-retiro-pin { display: flex; gap: 8px; margin-top: 10px; }
       .tz-retiro-pin .tz-text-input { flex: 1; text-align: center; letter-spacing: 0.4em; font-size: 18px; }
       .tz-retiro-pin .tz-scan-btn { flex-shrink: 0; width: auto; padding: 0 16px; }
+      /* ---- "Escribiendo…": tres puntitos (PuntosEscribiendo.jsx) ---- */
+      .tz-escribiendo {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        align-self: flex-start;
+        margin: 4px 0 2px;
+        padding: 9px 12px;
+        border-radius: 14px 14px 14px 4px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+        width: fit-content;
+      }
+      .tz-escribiendo-puntos { display: inline-flex; gap: 4px; }
+      .tz-escribiendo-puntos i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--pink);
+        animation: tz-escribiendo-salto 1.1s ease-in-out infinite;
+      }
+      .tz-escribiendo-puntos i:nth-child(2) { animation-delay: 0.15s; }
+      .tz-escribiendo-puntos i:nth-child(3) { animation-delay: 0.3s; }
+      .tz-escribiendo-quien {
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-dim);
+      }
+      @keyframes tz-escribiendo-salto {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+        30% { transform: translateY(-4px); opacity: 1; }
+      }
       .tz-dlv-pin-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
       .tz-dlv-pin {
         flex: 0 0 auto;                 /* solo lo que ocupa el contenido */

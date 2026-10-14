@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Send, Loader2, Check, CheckCheck } from "lucide-react";
 import { usePedidoMensajes, REMITENTE_SISTEMA } from "../hooks/usePedidoMensajes";
+import { useEscribiendo } from "../hooks/useEscribiendo";
+import { supabase } from "../supabaseClient";
+import PuntosEscribiendo from "./PuntosEscribiendo";
 
 // Chat de un pedido puntual. Lo usan cliente y cajero/admin — mismo
 // estilo que el chat de la entrega (burbujas, acento rosa a la derecha,
@@ -10,11 +13,16 @@ export default function ChatPedidoModal({ pedidoId, remitentePropio, tituloChat,
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const listRef = useRef(null);
+  const { escribiendo, avisar, apagar } = useEscribiendo(supabase, pedidoId ? `pedido-${pedidoId}` : null, remitentePropio);
 
   const ultimoId = mensajes.length ? mensajes[mensajes.length - 1].id : null;
+  const ultimoRemitente = mensajes.length ? mensajes[mensajes.length - 1].remitente : null;
   useEffect(() => {
     if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
-  }, [ultimoId, loading]);
+  }, [ultimoId, loading, escribiendo]);
+  useEffect(() => {
+    if (ultimoRemitente && ultimoRemitente !== remitentePropio) apagar();
+  }, [ultimoId, ultimoRemitente, remitentePropio, apagar]);
 
   // Marca leídos los del otro lado al abrir y cuando llegan nuevos.
   const noLeidosDeOtro = mensajes.filter(
@@ -71,6 +79,7 @@ export default function ChatPedidoModal({ pedidoId, remitentePropio, tituloChat,
                 </div>
               );
             })}
+            {escribiendo && <PuntosEscribiendo quien={escribiendo === "cajero" ? "La tienda" : "El cliente"} />}
           </div>
         )}
 
@@ -80,7 +89,10 @@ export default function ChatPedidoModal({ pedidoId, remitentePropio, tituloChat,
             className="tz-input"
             placeholder="Escribe un mensaje…"
             value={texto}
-            onChange={(e) => setTexto(e.target.value)}
+            onChange={(e) => {
+              setTexto(e.target.value);
+              if (e.target.value.trim()) avisar();
+            }}
             onKeyDown={(e) => e.key === "Enter" && handleEnviar()}
             disabled={enviando}
           />
