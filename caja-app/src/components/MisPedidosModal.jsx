@@ -450,6 +450,9 @@ export default function MisPedidosModal({ session, onClose }) {
             setRetiroPedidoId(null);
             setAnimacionExito("¡Pedido entregado!");
             load();
+            // La tienda cierra el pedido apenas termina de registrar la
+            // venta: una segunda lectura por si llegamos antes que ella.
+            setTimeout(load, 4000);
           }}
           onClose={() => {
             setRetiroPedidoId(null);

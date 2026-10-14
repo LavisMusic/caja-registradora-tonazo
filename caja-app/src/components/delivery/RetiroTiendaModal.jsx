@@ -16,6 +16,7 @@ import { formatTime } from "../../utils/format";
 //     bloqueado 10 minutos.
 // El PIN nunca le llega al cajero: lo verifica la base.
 const SONDEO_MS = 3000;
+const SONDEO_CLIENTE_MS = 1500;
 const ENVIO_UBICACION_MS = 4000;
 
 export default function RetiroTiendaModal({ pedidoId, rol, onVerificado, onConfirmadoCliente, onClose }) {
@@ -50,9 +51,9 @@ export default function RetiroTiendaModal({ pedidoId, rol, onVerificado, onConfi
     cargar();
     const t = setInterval(() => {
       if (document.visibilityState === "visible") cargar();
-    }, SONDEO_MS);
+    }, esCliente ? SONDEO_CLIENTE_MS : SONDEO_MS);
     return () => clearInterval(t);
-  }, [cargar]);
+  }, [cargar, esCliente]);
 
   // Cliente: comparte su ubicación mientras la ventana está abierta.
   const ultimoEnvio = useRef(0);
@@ -156,12 +157,13 @@ export default function RetiroTiendaModal({ pedidoId, rol, onVerificado, onConfi
                   <p className="tz-stock-editor-sub" style={{ textAlign: "center", marginTop: 10 }}>
                     Al llegar, muestra tu QR o dicta tu PIN en la caja para recibir tu pedido.
                   </p>
+                  {/* Mismo PIN + botón QR que ve el cliente en el delivery. */}
                   <div className="tz-dlv-pin-row">
-                    <p className="tz-dlv-pin">
+                    <span className="tz-dlv-pin">
                       PIN <b>{String(info.pin).split("").join(" ")}</b>
-                    </p>
-                    <button type="button" className="tz-btn-mini" onClick={() => setQrOpen(true)}>
-                      <QrCode size={14} /> Mostrar QR
+                    </span>
+                    <button className="tz-dlv-qr-btn" onClick={() => setQrOpen(true)} aria-label="Ver QR" title="Ver QR">
+                      <QrCode size={18} />
                     </button>
                   </div>
                 </>
