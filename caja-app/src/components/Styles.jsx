@@ -662,11 +662,15 @@ export default function Styles() {
          aire; el relleno y el desvanecido son más cortos. */
       @media (max-width: 767px) {
         .tz-header + .tz-admin-filterbar:has(.tz-filtrobar-grid) {
-          padding-bottom: 0;
-          -webkit-mask-image: none;
-          mask-image: none;
-          /* Las categorías suben 5 px más (el relleno ya está en 0). */
-          margin-bottom: -5px;
+          /* El fondo se desvanece en sus últimos 12 px (solo relleno, no
+             toca las gemas ni el botón) y el margen negativo sube las
+             categorías por debajo de ese desvanecido: quedan 7 px más
+             cerca que con el relleno en 0, sin un corte duro entre las
+             dos secciones. */
+          padding-bottom: 12px;
+          -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 12px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 12px), transparent);
+          margin-bottom: -19px;
         }
       }
       /* Localidad + Sucursal + botón Taxi-PE, agrupados juntos — así
