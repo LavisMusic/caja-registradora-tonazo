@@ -5,6 +5,7 @@ import Styles from "../components/Styles";
 import ListaArrastrable from "../components/ListaArrastrable";
 import { formatSoles } from "../utils/format";
 import { precioPlan, duracionPlan, grupoDuracion } from "../lib/planes";
+import Select from "../components/Select";
 
 // Gestor de planes de suscripción (super admin, Fase 4) — mismo diseño
 // que "Configurar Membresías" de Taxi-PE: pestañas Mensual / Anual /
@@ -29,6 +30,7 @@ function PlanForm({ initial, onGuardar, onCancelar, saving }) {
   const [descuento, setDescuento] = useState(String(initial?.descuento_pct ?? 0));
   const [maxSuc, setMaxSuc] = useState(initial?.max_sucursales == null ? "" : String(initial.max_sucursales));
   const [activo, setActivo] = useState(initial?.activo !== false);
+  const [historialIlimitado, setHistorialIlimitado] = useState(!!initial?.historial_ilimitado);
   const [error, setError] = useState("");
 
   const total = precioPlan({
@@ -49,7 +51,15 @@ function PlanForm({ initial, onGuardar, onCancelar, saving }) {
     if (!Number.isFinite(d) || d < 0 || d >= 100) return setError("El descuento va de 0 a 99 %.");
     if (m !== null && (!Number.isInteger(m) || m < 1)) return setError("El límite debe ser 1 o más (vacío = sin límite).");
     setError("");
-    onGuardar({ nombre: n, precio_mensual: p, meses: me, descuento_pct: d, max_sucursales: m, activo });
+    onGuardar({
+      nombre: n,
+      precio_mensual: p,
+      meses: me,
+      descuento_pct: d,
+      max_sucursales: m,
+      activo,
+      historial_ilimitado: historialIlimitado,
+    });
   };
 
   return (
@@ -91,6 +101,24 @@ function PlanForm({ initial, onGuardar, onCancelar, saving }) {
         </label>
         <span className="tz-sa-negocio-toggle-label" style={{ fontSize: 13 }}>
           {activo ? "Disponible para los negocios" : "Oculto (no aparece al renovar)"}
+        </span>
+      </div>
+      {/* Privilegio del plan: sin él, las ventas, los cierres y los chats
+          de pedidos de más de 3 meses se borran solos (migración 0105). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+        <label className="tz-toggle">
+          <input
+            type="checkbox"
+            checked={historialIlimitado}
+            onChange={(e) => setHistorialIlimitado(e.target.checked)}
+            aria-label="Historial sin límite"
+          />
+          <span className="tz-toggle-slider" />
+        </label>
+        <span className="tz-sa-negocio-toggle-label" style={{ fontSize: 13 }}>
+          {historialIlimitado
+            ? "Historial sin límite (ventas, cierres y chats no se borran)"
+            : "Historial de 3 meses (lo más antiguo se borra solo)"}
         </span>
       </div>
 
@@ -161,6 +189,7 @@ function PlanRow({ plan, planes, enUso, onGuardado, onEliminado }) {
             {formatSoles(precioPlan(plan))} · {duracionPlan(plan.meses)}
             {Number(plan.descuento_pct) > 0 ? ` · −${Number(plan.descuento_pct)}%` : ""} ·{" "}
             {plan.max_sucursales == null ? "sucursales sin límite" : `hasta ${plan.max_sucursales} sucursal(es)`}
+            {plan.historial_ilimitado ? " · historial sin límite" : " · historial de 3 meses"}
             {enUso > 0 ? ` · ${enUso} negocio${enUso === 1 ? "" : "s"}` : ""}
           </span>
         </span>
@@ -189,14 +218,14 @@ function PlanRow({ plan, planes, enUso, onGuardado, onEliminado }) {
             {enUso > 0 ? ` Lo usan ${enUso} negocio${enUso === 1 ? "" : "s"}: elige a qué plan pasarlos.` : ""}
           </p>
           {enUso > 0 && (
-            <select className="tz-text-input" value={reemplazo} onChange={(e) => setReemplazo(e.target.value)}>
+            <Select className="tz-text-input" value={reemplazo} onChange={(e) => setReemplazo(e.target.value)}>
               <option value="">Pasar sus negocios a…</option>
               {otrosPlanes.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nombre} ({duracionPlan(p.meses)})
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           <div className="tz-vis-confirm-actions">
             <button type="button" className="tz-cliente-action-btn tz-cliente-action-deuda" onClick={eliminar} disabled={eliminando}>

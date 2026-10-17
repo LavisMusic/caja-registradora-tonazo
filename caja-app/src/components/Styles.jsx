@@ -64,10 +64,21 @@ export default function Styles() {
 
         min-height: 100vh;
         width: 100%;
+        /* El degradado mide lo mismo que la pantalla (no todo el
+           documento): antes se estiraba con el largo de la página y, al
+           elegir una categoría con menos productos, el fondo de arriba
+           cambiaba de tono. Debajo de esa primera pantalla sigue el
+           mismo color en que termina el degradado. */
         background:
+          linear-gradient(to bottom, transparent 72%, var(--bg-1) 100%),
           radial-gradient(ellipse 900px 500px at 20% -10%, rgba(var(--cyan-rgb),0.10), transparent 60%),
           radial-gradient(ellipse 900px 500px at 90% 10%, rgba(var(--pink-rgb),0.10), transparent 60%),
           linear-gradient(160deg, var(--bg-1), var(--bg-2) 55%, var(--bg-1));
+        /* La primera capa funde el final del degradado con el color de
+           abajo: sin ella, en páginas largas se veía un corte recto. */
+        background-size: 100% 100vh;
+        background-repeat: no-repeat;
+        background-color: var(--bg-1);
         color: var(--text);
         font-family: 'Rajdhani', sans-serif;
         box-sizing: border-box;
@@ -211,8 +222,13 @@ export default function Styles() {
            borde superior de la pantalla en mobile, cortado en vez de
            desvanecerse. */
         padding: 40px 14px 22px;
-        background: rgba(var(--base-rgb), 0.85);
-        border-bottom: 1px solid rgba(var(--cyan-rgb),0.15);
+        /* Borde inferior tipo láser: 1.5 px, brillante al centro y que se
+           desvanece en punta hacia los costados (capa de fondo, no
+           pseudo-elemento: los temáticos ya usan ::before/::after). */
+        background:
+          linear-gradient(90deg, transparent 0%, rgba(var(--cyan-rgb),0.22) 14%, rgba(var(--cyan-rgb),0.75) 50%, rgba(var(--cyan-rgb),0.22) 86%, transparent 100%) center bottom / 100% 1.5px no-repeat,
+          rgba(var(--base-rgb), 0.85);
+        border-bottom: none;
       }
       /* Distribución en 3 zonas: columna izquierda (Fiados / Top
          Clientes) / centro (logo) / columna derecha (Salir / Pagos /
@@ -280,11 +296,15 @@ export default function Styles() {
         gap: 4px;
         overflow: visible;
       }
+      /* translateZ(0): el brillo se pinta en su propia capa — evita que
+         Safari del iPhone dibuje la zona del filtro como un recuadro
+         oscuro al cargar (no cambia cómo se ve). */
       .tz-logo {
         max-width: 130px;
         width: 100%;
         height: auto;
         overflow: visible;
+        transform: translateZ(0);
         filter:
           drop-shadow(0 0 18px rgba(var(--cyan-rgb),0.55))
           drop-shadow(0 0 34px rgba(var(--pink-rgb),0.35));
@@ -301,7 +321,11 @@ export default function Styles() {
         color: var(--yellow);
         text-align: center;
         white-space: nowrap;
-        text-shadow: 0 0 8px rgba(var(--yellow-rgb),0.85), 0 0 18px rgba(var(--yellow-rgb),0.55);
+        /* Brillo sutil de las letras, de su mismo color (antes un aura
+           neón de hasta 18 px que, recortada por el límite de 2 líneas, se
+           veía como un recuadro). Los temáticos lo cambian por su
+           pastilla oscura (lib/tematicos.js). */
+        text-shadow: 0 0 6px rgba(var(--yellow-rgb),0.8), 0 0 12px rgba(var(--yellow-rgb),0.45);
       }
       .tz-conn-indicator {
         display: flex;
@@ -649,6 +673,21 @@ export default function Styles() {
         padding-bottom: 40px;
         -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
         mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent);
+      }
+      /* Tienda en celular: debajo de la fila de Taxi-PE y el saldo sobraba
+         aire; el relleno y el desvanecido son más cortos. */
+      @media (max-width: 767px) {
+        .tz-header + .tz-admin-filterbar:has(.tz-filtrobar-grid) {
+          /* El fondo se desvanece en sus últimos 12 px (solo relleno, no
+             toca las gemas ni el botón) y el margen negativo sube las
+             categorías por debajo de ese desvanecido: quedan 7 px más
+             cerca que con el relleno en 0, sin un corte duro entre las
+             dos secciones. */
+          padding-bottom: 12px;
+          -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 12px), transparent);
+          mask-image: linear-gradient(to bottom, #000 calc(100% - 12px), transparent);
+          margin-bottom: -19px;
+        }
       }
       /* Localidad + Sucursal + botón Taxi-PE, agrupados juntos — así
          tz-admin-filterbar (arriba) solo tiene que centrar ESTE bloque
@@ -1063,6 +1102,9 @@ export default function Styles() {
         flex-direction: column;
         gap: 16px;
       }
+      /* 18 px menos entre la barra de filtros/saldo y los rubros (selector
+         doble: el 'margin: 0 auto' de .tz-main en tablet/PC no lo pisa). */
+      .tz-main.tz-dir-main { margin-top: -18px; }
       .tz-dir-sidebar {
         display: flex;
         flex-direction: row;
@@ -2768,6 +2810,31 @@ export default function Styles() {
         font-size: 11.5px;
         color: var(--text-dim);
       }
+      /* Caja que ya debió cerrarse (lib/turnoCaja.js): aviso y botón para
+         extender el turno 30 minutos. */
+      .tz-gc-caja-aviso {
+        display: inline-flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: var(--yellow);
+      }
+      .tz-gc-extender-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        border: 1px solid rgba(var(--yellow-rgb), 0.55);
+        background: rgba(var(--yellow-rgb), 0.1);
+        color: var(--yellow);
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .tz-gc-extender-btn:disabled { opacity: 0.6; cursor: default; }
       .tz-gc-btn {
         display: flex;
         align-items: center;
@@ -3106,6 +3173,21 @@ export default function Styles() {
           transform: translateY(-50%);
         }
       }
+      /* Contador de créditos del cliente (ContadorCreditos.jsx): 20 px más
+         a la derecha dentro de la barra. */
+      .tz-filtrobar-saldo { position: relative; left: 13px; }
+      /* Gemas (créditos): la palabra centrada encima de la gema. */
+      .tz-gemas { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+      /* La palabra va del color de las gemas que representa. */
+      .tz-gemas-label {
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--cyan);
+        text-shadow: 0 0 6px rgba(var(--cyan-rgb), 0.45);
+      }
+      .tz-gemas .tz-cc { top: 0; }
       .tz-filtrobar-saldo .tz-stat-chip { min-width: 80px; padding: 6px 7px; gap: 2px; }
       .tz-filtrobar-saldo .tz-stat-label { font-size: 10px; gap: 3px; }
       .tz-filtrobar-saldo .tz-stat-value { font-size: 15px; }
@@ -4258,6 +4340,108 @@ export default function Styles() {
         text-align: left;
       }
       .tz-text-input:focus { outline: none; border-color: var(--cyan); }
+
+      /* ---------- Desplegable propio (Dropdown.jsx / Select.jsx) ---------- */
+      .tz-dropdown { position: relative; width: 100%; min-width: 0; }
+      .tz-dropdown-trigger {
+        width: 100%;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 11px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(var(--cyan-rgb),0.35);
+        background: rgba(var(--fg-rgb),0.05);
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+      }
+      .tz-dropdown-trigger:focus,
+      .tz-dropdown-nativo:focus-visible {
+        outline: none;
+        border-color: var(--cyan);
+        box-shadow: 0 0 0 1.5px var(--cyan), 0 0 16px rgba(var(--cyan-rgb),0.3);
+      }
+      .tz-dropdown-trigger:disabled { opacity: 0.55; cursor: not-allowed; }
+      .tz-dropdown-valor { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tz-dropdown-placeholder { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tz-dropdown-chevron { flex-shrink: 0; color: var(--text-dim); transition: transform 0.15s ease; }
+      .tz-dropdown-chevron-open { transform: rotate(180deg); }
+      .tz-dropdown-list {
+        max-height: 280px;
+        overflow-y: auto;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+        border-radius: 12px;
+        background: var(--panel-solid);
+        border: 1px solid rgba(var(--cyan-rgb),0.35);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4), 0 0 18px rgba(var(--cyan-rgb),0.12);
+      }
+      .tz-dropdown-list .tz-buscador-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 11px 14px;
+        border: none;
+        border-bottom: 1px solid var(--border-soft);
+        background: transparent;
+        color: var(--text);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 14px;
+        font-weight: 600;
+        text-align: left;
+        cursor: pointer;
+      }
+      .tz-dropdown-list li:last-child .tz-buscador-item { border-bottom: none; }
+      .tz-dropdown-list .tz-buscador-item:hover { background: rgba(var(--cyan-rgb),0.1); }
+      .tz-dropdown-list .tz-buscador-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .tz-dropdown-item.tz-dropdown-item-activo { background: rgba(var(--cyan-rgb),0.12); color: var(--cyan); }
+      .tz-dropdown-list .tz-buscador-empty { margin: 0; padding: 12px 14px; color: var(--text-dim); font-size: 13px; }
+
+      /* Desplegable propio en lugar de un <select> (Select.jsx): el botón
+         toma la clase del select que reemplaza; acá solo el acomodo y la
+         flecha. :where() = sin especificidad, la clase del select manda. */
+      :where(.tz-dropdown-nativo) {
+        font: inherit;
+        color: inherit;
+        background: transparent;
+        border: 1px solid transparent;
+      }
+      .tz-dropdown-nativo {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        box-sizing: border-box;
+        text-align: left;
+        cursor: pointer;
+        background-image: none !important;
+        min-width: 0;
+      }
+      .tz-dropdown .tz-dropdown-nativo { padding-right: 10px; }
+      .tz-dropdown-nativo:disabled { opacity: 0.55; cursor: not-allowed; }
+      .tz-dropdown-nativo .tz-dropdown-chevron { color: currentColor; opacity: 0.75; }
+      .tz-dropdown-nativo .tz-dropdown-valor,
+      .tz-dropdown-nativo .tz-dropdown-placeholder { min-width: 0; }
+      /* La lista flota sobre todo (portal con posición fija): no la recorta
+         el scroll de un modal ni de una tabla. */
+      .tz-dropdown-list.tz-dropdown-flotante {
+        position: fixed;
+        top: auto;
+        right: auto;
+        z-index: 10050;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+      .tz-dropdown-item:disabled { opacity: 0.45; cursor: not-allowed; }
       /* <select> pinta su propio menú desplegable con los estilos del
          sistema operativo — sin esto, las <option> salen con fondo
          blanco y texto blanco (ilegibles) aunque el <select> se vea
@@ -4806,6 +4990,58 @@ export default function Styles() {
         color: var(--yellow);
         font-weight: 600;
         line-height: 1.4;
+      }
+      /* Turno vencido: aviso arriba del cierre con el botón para extender
+         30 minutos. */
+      /* Filtros dentro de un modal (ej. Historial de Cierres): sin el
+         fondo, borde, máscara ni brillo que el tema le pone a la barra de
+         la cabecera — antes se veía un recuadro iluminado alrededor. */
+      .tz-modal .tz-admin-filterbar,
+      .tz-modal .tz-admin-filterbar::before,
+      .tz-modal .tz-admin-filterbar::after {
+        background: none !important;
+        border: none !important;
+        box-shadow: none !important;
+        -webkit-mask-image: none !important;
+        mask-image: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+      }
+      .tz-modal .tz-admin-filterbar::before,
+      .tz-modal .tz-admin-filterbar::after { display: none !important; }
+      .tz-modal .tz-admin-filterbar { padding-bottom: 0 !important; }
+      /* Turno sin extensiones: el cierre va encima de cualquier otro modal. */
+      .tz-modal-backdrop.tz-cierre-obligatorio {
+        z-index: 450;
+      }
+      .tz-cierre-extensiones {
+        margin: 0;
+        font-size: 12px;
+        color: var(--text-dim);
+      }
+      .tz-cierre-vencido {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 0 0 12px;
+        padding: 12px;
+        border-radius: 12px;
+        border: 1px solid rgba(var(--yellow-rgb), 0.45);
+        background: rgba(var(--yellow-rgb), 0.06);
+      }
+      /* Punto amarillo de aviso en un botón (cajas sin cerrar). */
+      .tz-btn-aviso { position: relative; }
+      .tz-btn-aviso::after {
+        content: "";
+        position: absolute;
+        top: -3px;
+        right: -3px;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: var(--yellow);
+        box-shadow: 0 0 8px rgba(var(--yellow-rgb), 0.9);
+        animation: tz-subtitle-parpadeo 1.2s steps(1) infinite;
       }
 
       /* ---------- CRM WHATSAPP EN EL COBRO ---------- */
@@ -5985,6 +6221,7 @@ export default function Styles() {
       .tz-dlv-tarifa-quickrow {
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
         gap: 8px;
         margin-top: 4px;
       }
@@ -6029,6 +6266,42 @@ export default function Styles() {
       .tz-dlv-radar-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px;
         padding: 8px 10px; border: 1px solid rgba(var(--fg-rgb),0.12); border-radius: 10px; font-size: 13.5px; }
       .tz-dlv-radar-list em { opacity: 0.65; font-style: normal; }
+      /* Repartidor como mini tarjeta: foto en su recuadro, nombre/placa y
+         el botón a la derecha. Compacta (una fila). */
+      .tz-dlv-radar-list li.tz-dlv-rep-card {
+        justify-content: flex-start;
+        gap: 10px;
+        padding: 7px 9px;
+        background: linear-gradient(135deg, rgba(var(--cyan-rgb),0.07), rgba(var(--fg-rgb),0.02));
+        border-color: rgba(var(--cyan-rgb),0.28);
+        box-shadow: 0 0 10px rgba(var(--cyan-rgb),0.08);
+      }
+      .tz-dlv-rep-card > button,
+      .tz-dlv-rep-card > .tz-dlv-tag-espera { margin-left: auto; flex-shrink: 0; }
+      .tz-dlv-rep-foto {
+        width: 40px;
+        height: 40px;
+        flex-shrink: 0;
+        border-radius: 10px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--cyan);
+        background: rgba(var(--fg-rgb),0.05);
+        border: 1px solid rgba(var(--cyan-rgb),0.45);
+        box-shadow: 0 0 8px rgba(var(--cyan-rgb),0.25);
+      }
+      .tz-dlv-rep-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .tz-dlv-rep-info { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+      .tz-dlv-rep-info strong {
+        font-size: 13.5px;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tz-dlv-rep-placa { font-size: 11.5px; color: var(--text-dim); }
       /* Cuenta regresiva de 30s por conductor ofertado — misma barra
          verde que ve el repartidor en su propia tarjeta de oferta. */
       .tz-dlv-radar-item-timeout { position: relative; overflow: hidden; padding-bottom: 11px; }
@@ -6041,6 +6314,50 @@ export default function Styles() {
         transition: width 0.25s linear;
       }
       .tz-dlv-tag-ocupado { color: #ff9d3d; font-size: 11px; font-weight: 700; }
+      /* Título de la lista de repartidores con "Recargar" a la derecha. */
+      .tz-dlv-rep-titulo {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .tz-dlv-rep-titulo .tz-field-label { margin: 0; min-width: 0; }
+      .tz-dlv-recargar {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        flex-shrink: 0;
+        padding: 4px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(var(--cyan-rgb),0.45);
+        background: rgba(var(--cyan-rgb),0.08);
+        color: var(--cyan);
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .tz-dlv-recargar:hover { background: rgba(var(--cyan-rgb),0.16); }
+      .tz-dlv-recargar:disabled { opacity: 0.6; cursor: wait; }
+      /* Estado del repartidor en su tarjeta (Taxi-PE): disponible,
+         repartiendo n/5 o en carrera (bloqueada, no se le puede ofrecer). */
+      .tz-dlv-rep-estado {
+        display: inline-block;
+        margin-top: 3px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        border: 1px solid currentColor;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        width: fit-content;
+      }
+      .tz-dlv-rep-estado.is-disponible { color: var(--green); }
+      .tz-dlv-rep-estado.is-repartiendo { color: #ff9d3d; }
+      .tz-dlv-rep-estado.is-carrera { color: var(--danger); }
+      .tz-dlv-radar-list li.tz-dlv-rep-card.tz-dlv-rep-bloqueado { opacity: 0.6; }
       .tz-dlv-tag-rechazo { color: var(--danger); font-size: 11px; font-weight: 700; }
       .tz-dlv-tag-espera { font-size: 11px; font-weight: 700; color: var(--text-dim); }
       .tz-dlv-rechazos { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
@@ -6061,6 +6378,43 @@ export default function Styles() {
       .tz-dlv-radar .tz-dlv-cancelar { margin-top: 10px; }
 
       /* PIN + QR + cancelar, todos en la misma línea, empaquetados a la izquierda */
+      /* Retiro en tienda: PIN del cliente a mano + Confirmar. */
+      .tz-retiro-pin { display: flex; gap: 8px; margin-top: 10px; }
+      .tz-retiro-pin .tz-text-input { flex: 1; text-align: center; letter-spacing: 0.4em; font-size: 18px; }
+      .tz-retiro-pin .tz-scan-btn { flex-shrink: 0; width: auto; padding: 0 16px; }
+      /* ---- "Escribiendo…": tres puntitos (PuntosEscribiendo.jsx) ---- */
+      .tz-escribiendo {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        align-self: flex-start;
+        margin: 4px 0 2px;
+        padding: 9px 12px;
+        border-radius: 14px 14px 14px 4px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+        width: fit-content;
+      }
+      .tz-escribiendo-puntos { display: inline-flex; gap: 4px; }
+      .tz-escribiendo-puntos i {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--pink);
+        animation: tz-escribiendo-salto 1.1s ease-in-out infinite;
+      }
+      .tz-escribiendo-puntos i:nth-child(2) { animation-delay: 0.15s; }
+      .tz-escribiendo-puntos i:nth-child(3) { animation-delay: 0.3s; }
+      .tz-escribiendo-quien {
+        font-family: 'Rajdhani', sans-serif;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text-dim);
+      }
+      @keyframes tz-escribiendo-salto {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+        30% { transform: translateY(-4px); opacity: 1; }
+      }
       .tz-dlv-pin-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
       .tz-dlv-pin {
         flex: 0 0 auto;                 /* solo lo que ocupa el contenido */
@@ -6425,7 +6779,7 @@ export default function Styles() {
       .tz-plan-total strong { color: var(--green); font-size: 15px; }
       .tz-plan-total-desc { color: var(--yellow); }
       .tz-plan-total-uso { color: var(--cyan); }
-      .tz-plan-fila-confirmar select { margin: 6px 0; }
+      .tz-plan-fila-confirmar .tz-dropdown { margin: 6px 0; }
       @media (max-width: 520px) {
         .tz-plan-fila { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .tz-plan-fila .tz-toggle,
@@ -6786,7 +7140,11 @@ export default function Styles() {
       /* --tz-sub-dy: en la tienda se centra entre el logo y la barra de
          filtros (CatalogPage lo mide); "translate" no toca a "transform"
          ni mueve nada más. */
-      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); --tz-sub-ajuste: -23px; }
+      .tz-subtitle-maquina { min-height: 1.6em; white-space: pre; translate: 0 var(--tz-sub-dy, 0px); --tz-sub-ajuste: -8px; }
+      /* (--tz-sub-ajuste: centrado a ojo; en celular, 2 px más arriba.) */
+      @media (max-width: 767px) {
+        .tz-subtitle-maquina { --tz-sub-ajuste: -10px; }
+      }
       /* Tienda: el texto flota centrado sobre un espacio de alto fijo (una
          línea), así pasar a 2 líneas no empuja el borde de la cabecera. */
       .tz-subtitle-slot { position: relative; width: 100%; height: 24px; flex: 0 0 auto; }
@@ -6805,7 +7163,9 @@ export default function Styles() {
         /* El centro del hueco (donde va el texto) queda 8 px más arriba;
            su borde de abajo —y la etiqueta de estado— no se mueven. */
         height: 58px;
-        margin-top: -50px;
+        /* -11 px (antes -50): el nombre y la etiqueta de estado quedan
+           debajo del dibujo del logo (admin y cajero; la cabecera crece). */
+        margin-top: -11px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -6814,9 +7174,13 @@ export default function Styles() {
       .tz-header-center > .tz-conn-indicator { margin-top: 0; }
       /* Más de ~20 caracteres → pasa a una 2.ª línea (como máximo 2), en
          la caja y en los mensajes programados de la tienda. */
+      /* (+24 px de aire interno: el brillo de las letras cabe dentro de
+         la caja, que recorta para limitar a 2 líneas, y no se ve como un
+         recuadro.) */
       .tz-subtitle-hueco .tz-subtitle,
       .tz-header .tz-subtitle-maquina {
-        max-width: min(100%, 230px);
+        max-width: calc(min(100%, 230px) + 24px);
+        padding: 8px 12px;
         box-sizing: border-box;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
@@ -6831,7 +7195,8 @@ export default function Styles() {
       @media (max-width: 767px) {
         .tz-header .tz-subtitle {
           white-space: pre-wrap;
-          max-width: 100%;
+          max-width: calc(100% + 24px);
+          padding: 8px 12px;
           box-sizing: border-box;
           overflow-wrap: anywhere;
           font-size: 10px;

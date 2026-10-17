@@ -1,12 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Bike, MapPin, ShoppingBag, Send, Loader2, Ban, QrCode, Check, CheckCheck, PackageX, Plus } from "lucide-react";
+import { X, Bike, MapPin, ShoppingBag, Send, Loader2, Ban, QrCode, Check, CheckCheck, PackageX, Plus, RefreshCw } from "lucide-react";
 import QRCode from "qrcode";
 import { useEntregaCaja } from "../../hooks/useEntregaCaja";
 import { useRadarReparto } from "../../hooks/useRadarReparto";
 import { supabaseTaxi } from "../../lib/supabaseTaxi";
 import MapaEntregaCaja from "./MapaEntregaCaja";
+import { useEscribiendo } from "../../hooks/useEscribiendo";
+import PuntosEscribiendo from "../PuntosEscribiendo";
 import { formatSoles } from "../../utils/format";
+
+// Pedidos de reparto que un repartidor de Taxi-PE acepta a la vez.
+const MAX_REPARTOS = 3;
 
 // Montos rápidos para la tarifa de envío — MISMOS valores que
 // TARIFAS_RAPIDAS en el chat del conductor de Taxi-PE (mensajes
@@ -24,7 +29,7 @@ const TARIFAS_RAPIDAS_ENVIO = [1.5, 3, 4.5];
 //   entregado/cancelado/no_entregado → cierre
 // Ver DELIVERY.md §7.
 
-function QrVisorModal({ pin, onClose }) {
+export function QrVisorModal({ pin, onClose, texto = "Mostrá este QR al repartidor para confirmar la entrega." }) {
   const [dataUrl, setDataUrl] = useState("");
   useEffect(() => {
     QRCode.toDataURL(String(pin), { width: 420, margin: 2 }).then(setDataUrl).catch(() => {});
@@ -38,7 +43,7 @@ function QrVisorModal({ pin, onClose }) {
           <X size={18} />
         </button>
         <h2>Código de la entrega</h2>
-        <p className="tz-stock-editor-sub">Mostrá este QR al repartidor para confirmar la entrega.</p>
+        <p className="tz-stock-editor-sub">{texto}</p>
         {dataUrl ? (
           <img src={dataUrl} alt="QR de la entrega" style={{ width: "100%", maxWidth: 280, margin: "8px auto", borderRadius: 12, background: "#fff", padding: 8 }} />
         ) : (
@@ -53,11 +58,23 @@ function QrVisorModal({ pin, onClose }) {
   );
 }
 
-function Chat({ hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
+const QUIEN = { conductor: "El repartidor", cajero: "La tienda", cliente: "El cliente" };
+
+function Chat({ entregaId, hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
   const [hilo, setHilo] = useState(hilos[0].key);
+  // "Escribiendo…" (canal de Taxi-PE, donde también está el repartidor).
+  const { escribiendo, avisar, apagar } = useEscribiendo(
+    supabaseTaxi,
+    entregaId ? `entrega-${entregaId}-${hilo}` : null,
+    propioRol
+  );
   const [texto, setTexto] = useState("");
   const [busy, setBusy] = useState(false);
   const delHilo = mensajes.filter((m) => m.hilo === hilo);
+  const ultimoMsg = delHilo[delHilo.length - 1];
+  useEffect(() => {
+    if (ultimoMsg && ultimoMsg.emisor_rol !== propioRol) apagar();
+  }, [ultimoMsg?.id, ultimoMsg?.emisor_rol, propioRol, apagar]);
   const noLeidosDeOtro = delHilo.filter(
     (m) => !["sistema"].includes(m.emisor_rol) && m.emisor_rol !== propioRol && !m.leido
   ).length;
@@ -125,12 +142,16 @@ function Chat({ hilos, mensajes, enviarMensaje, marcarLeido, propioRol }) {
           })
         )}
       </div>
+      {escribiendo && <PuntosEscribiendo quien={QUIEN[escribiendo]} />}
       <div className="tz-dlv-chat-input">
         <input
           className="tz-input"
           placeholder="Escribe un mensaje…"
           value={texto}
-          onChange={(e) => setTexto(e.target.value)}
+          onChange={(e) => {
+            setTexto(e.target.value);
+            if (e.target.value.trim()) avisar();
+          }}
           onKeyDown={(e) => e.key === "Enter" && onEnviar()}
         />
         <button className="tz-dlv-send" onClick={onEnviar} disabled={busy || !texto.trim()}>
@@ -145,7 +166,7 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
   const { entrega, mensajes, ofertas, loading, ofertar, expirarOferta, cancelar, enviarMensaje, marcarLeido, recargar } =
     useEntregaCaja(sessionToken, { rol });
   const buscando = entrega?.estado === "buscando";
-  const { conductores } = useRadarReparto(buscando);
+  const { conductores, recargar: recargarRepartidores, recargando: recargandoRepartidores } = useRadarReparto(buscando);
 
   // Al confirmar la entrega (transición real, no al abrir un pedido que
   // ya estaba entregado de antes) se avisa al padre en vez de festejar
@@ -232,7 +253,9 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
     setAviso("");
     const r = await ofertar(id, tarifaNum);
     setBusyId(null);
-    if (r.status && r.status !== "ok") setAviso(`No se pudo ofrecer (${r.status}).`);
+    if (r.status === "conductor_en_carrera") setAviso("Ese repartidor está en carrera con un pasajero: elige otro.");
+    else if (r.status === "limite_repartos") setAviso(`Ese repartidor ya lleva ${MAX_REPARTOS} pedidos: elige otro.`);
+    else if (r.status && r.status !== "ok") setAviso(`No se pudo ofrecer (${r.status}).`);
   };
 
   const onCancelar = async () => {
@@ -383,9 +406,18 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                     El repartidor la ve antes de aceptar, aparte del monto del pedido que cobra en el mostrador.
                   </p>
                 </div>
-                <p className="tz-field-label" style={{ marginTop: 10 }}>
-                  Repartidores en línea y verificados ({conductores.length})
-                </p>
+                <div className="tz-dlv-rep-titulo">
+                  <p className="tz-field-label">Repartidores en línea y verificados ({conductores.length})</p>
+                  <button
+                    type="button"
+                    className="tz-dlv-recargar"
+                    onClick={recargarRepartidores}
+                    disabled={recargandoRepartidores}
+                    title="Recargar la lista de repartidores"
+                  >
+                    <RefreshCw size={13} className={recargandoRepartidores ? "tz-spin" : ""} /> Recargar
+                  </button>
+                </div>
                 {conductores.length === 0 ? (
                   <p className="tz-stock-editor-sub">Ninguno disponible ahora. Se actualiza solo.</p>
                 ) : (
@@ -397,14 +429,39 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                         est === "pendiente" && infoOferta?.created_at
                           ? Math.max(0, Math.min(1, 1 - (ahora - new Date(infoOferta.created_at).getTime()) / TIMEOUT_OFERTA_MS))
                           : null;
+                      const lleno = c.repartosActivos >= MAX_REPARTOS;
+                      const noDisponible = c.enCarrera || lleno;
                       return (
-                        <li key={c.id} className={pct != null ? "tz-dlv-radar-item-timeout" : ""}>
-                          <span>
-                            {c.nombre} <em>· {c.placa || "s/placa"}</em>
-                            {c.estado === "ocupado" && <span className="tz-dlv-tag-ocupado"> en carrera</span>}
-                            {est === "rechazada" && <span className="tz-dlv-tag-rechazo"> rechazó</span>}
+                        <li
+                          key={c.id}
+                          className={`tz-dlv-rep-card ${pct != null ? "tz-dlv-radar-item-timeout" : ""} ${
+                            noDisponible ? "tz-dlv-rep-bloqueado" : ""
+                          }`}
+                        >
+                          <span className="tz-dlv-rep-foto">
+                            {c.foto_url ? <img src={c.foto_url} alt="" /> : <Bike size={18} />}
                           </span>
-                          {est === "pendiente" ? (
+                          <span className="tz-dlv-rep-info">
+                            <strong>{c.nombre}</strong>
+                            <span className="tz-dlv-rep-placa">
+                              {c.placa || "s/placa"}
+                              {est === "rechazada" && <span className="tz-dlv-tag-rechazo"> · rechazó</span>}
+                            </span>
+                            <span
+                              className={`tz-dlv-rep-estado ${
+                                c.enCarrera ? "is-carrera" : c.repartosActivos > 0 ? "is-repartiendo" : "is-disponible"
+                              }`}
+                            >
+                              {c.enCarrera
+                                ? "En carrera"
+                                : c.repartosActivos > 0
+                                  ? `Repartiendo ${c.repartosActivos}/${MAX_REPARTOS}`
+                                  : "Disponible"}
+                            </span>
+                          </span>
+                          {noDisponible && est !== "pendiente" ? (
+                            <span className="tz-dlv-tag-espera">{c.enCarrera ? "No disponible" : "Lleno"}</span>
+                          ) : est === "pendiente" ? (
                             <span className="tz-dlv-tag-espera">Esperando…</span>
                           ) : (
                             <button
@@ -463,7 +520,14 @@ export default function EntregaCajaModal({ sessionToken, rol = "cajero", esAdmin
                   )}
                 </div>
 
-                <Chat hilos={hilos} mensajes={mensajes} enviarMensaje={enviarMensaje} marcarLeido={marcarLeido} propioRol={rol} />
+                <Chat
+                  entregaId={entrega?.id}
+                  hilos={hilos}
+                  mensajes={mensajes}
+                  enviarMensaje={enviarMensaje}
+                  marcarLeido={marcarLeido}
+                  propioRol={rol}
+                />
               </>
             )}
 

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { flushSync } from "react-dom";
 import {
+  Clock,
   Pencil,
   X,
   Plus,
@@ -88,8 +89,10 @@ import { AvisoPlan, PantallaPlanSuspendido } from "./components/AvisoPlanNegocio
 import RenovarPlanModal from "./components/RenovarPlanModal";
 import { useMiPeticionPlan } from "./hooks/usePeticionesPlan";
 import { puedeRenovar, inicioRenovacion, formatFechaCorta } from "./lib/planes";
+import { venceCaja, cajaVencida, MAX_EXTENSIONES_CAJERO, MAX_EXTENSIONES_ADMIN } from "./lib/turnoCaja";
 
 import logo from "./assets/logo.webp";
+import Select from "./components/Select";
 
 /* ------------------------------------------------------------------ */
 /* CATALOGO DINAMICO: la carga (categorias/productos/stock desde       */
@@ -186,6 +189,7 @@ function mapCierreRow(row) {
     ingresoEfectivo: row.ingreso_efectivo != null ? Number(row.ingreso_efectivo) : null,
     ingresoDigital: row.ingreso_digital != null ? Number(row.ingreso_digital) : null,
     cajeroNombre: row.cajero_nombre || null,
+    cerradoPorRol: row.cerrado_por_rol || null,
     fondoInicial: row.fondo_inicial != null ? Number(row.fondo_inicial) : null,
     abiertaEn: row.abierta_en != null ? Number(row.abierta_en) : null,
     // Multi-Sucursal (migración 0049): a qué caja/sucursal pertenece
@@ -1085,6 +1089,7 @@ export default function App() {
         orden: r.orden,
         lat: r.lat != null ? Number(r.lat) : null,
         lng: r.lng != null ? Number(r.lng) : null,
+        horario: r.horario || null,
       }))
     );
     setCajas(
@@ -1097,6 +1102,9 @@ export default function App() {
         abiertaPor: r.abierta_por || null,
         abiertaEn: r.abierta_en != null ? Number(r.abierta_en) : null,
         cerradaEn: r.cerrada_en != null ? Number(r.cerrada_en) : null,
+        extendidaHasta: r.extendida_hasta != null ? Number(r.extendida_hasta) : null,
+        extensiones: Number(r.extensiones) || 0,
+        montoPredeterminado: r.monto_inicial_predeterminado != null ? Number(r.monto_inicial_predeterminado) : null,
       }))
     );
     setJerarquiaError("");
@@ -1285,7 +1293,7 @@ export default function App() {
   const eliminarSucursal = async (sucursal) => {
     if (
       !window.confirm(
-        `¿Eliminar la sucursal "${sucursal.nombre}"? Esta acción no se puede deshacer.`
+        `¿Eliminar la sucursal "${sucursal.nombre}"?\n\nSe borra TODO lo suyo: su caja, pedidos y chats, ventas, cierres, comprobantes, pagos pendientes, fiados e inventario. Sus cajeros quedan sin sucursal para reasignarlos.\n\nEsta acción no se puede deshacer.`
       )
     ) {
       return;
@@ -1294,21 +1302,24 @@ export default function App() {
     setEliminandoSucursalId(sucursal.id);
     setGestorCajaError("");
 
-    const { error } = await supabase.from("sucursales").delete().eq("id", sucursal.id);
+    // Vacía y elimina en la base, todo junto (migración 0110).
+    const { data, error } = await supabase.rpc("caja_eliminar_sucursal", { p_sucursal_id: sucursal.id });
 
     setEliminandoSucursalId(null);
 
-    if (error) {
-      console.error("Error al eliminar sucursal:", error);
+    if (error || data?.estado !== "ok") {
+      console.error("Error al eliminar sucursal:", error || data);
       setGestorCajaError(
-        /foreign key|violat/i.test(error.message || "")
-          ? `No se pudo eliminar "${sucursal.nombre}": todavía tiene cajas, ventas, pedidos o cajeros asociados. Primero hay que vaciarla o reasignar eso.`
-          : `No se pudo eliminar "${sucursal.nombre}": ${error.message || "error desconocido"}`
+        data?.estado === "sin_permiso"
+          ? `Solo el admin del negocio puede eliminar "${sucursal.nombre}".`
+          : `No se pudo eliminar "${sucursal.nombre}": ${error?.message || "error desconocido"}`
       );
       return;
     }
 
     setSucursales((prev) => prev.filter((s) => s.id !== sucursal.id));
+    setCajas((prev) => prev.filter((c) => c.sucursalId !== sucursal.id));
+    refetchJerarquia();
   };
 
   /* ---- Coordenadas de la sucursal (punto A del delivery). Se pega el
@@ -1374,6 +1385,24 @@ export default function App() {
   const [gestorCajaMontoInputs, setGestorCajaMontoInputs] = useState({});
   const [gestorCajaSaving, setGestorCajaSaving] = useState(null);
   const [gestorCajaError, setGestorCajaError] = useState("");
+  // Confirmación en el Gestor después de que el admin cierra una caja.
+  const [gestorCajaAviso, setGestorCajaAviso] = useState("");
+
+  // Fondo inicial guardado por caja (migración 0110): al salir del campo se
+  // guarda sin abrir la caja; con él se abre sola a la hora de apertura.
+  const guardarMontoPredeterminado = async (caja) => {
+    const texto = gestorCajaMontoInputs[caja.id];
+    if (texto === undefined) return;
+    const monto = texto.trim() === "" ? null : parseFloat(texto);
+    if (monto !== null && (isNaN(monto) || monto < 0)) return;
+    if (monto === caja.montoPredeterminado) return;
+    const { error } = await supabase.from("cajas").update({ monto_inicial_predeterminado: monto }).eq("id", caja.id);
+    if (error) {
+      console.error("Error guardando el fondo inicial de la caja:", error);
+      return;
+    }
+    setCajas((prev) => prev.map((c) => (c.id === caja.id ? { ...c, montoPredeterminado: monto } : c)));
+  };
 
   const iniciarCajaDesdeGestor = async (caja) => {
     const montoStr = gestorCajaMontoInputs[caja.id] ?? "";
@@ -1393,9 +1422,13 @@ export default function App() {
         .update({
           estado: "abierta",
           monto_inicial: monto,
+          // Queda guardado: aparece escrito la próxima vez y con él se abre
+          // sola a la hora de apertura (migración 0110).
+          monto_inicial_predeterminado: monto,
           abierta_por: cajeroNombre || "Admin",
           abierta_en: abiertaEn,
           cerrada_en: null,
+          extendida_hasta: null,
         })
         .eq("id", caja.id)
         .select()
@@ -1428,11 +1461,17 @@ export default function App() {
                 abiertaPor: data.abierta_por ?? null,
                 abiertaEn: data.abierta_en != null ? Number(data.abierta_en) : abiertaEn,
                 cerradaEn: data.cerrada_en != null ? Number(data.cerrada_en) : null,
+                extendidaHasta: null,
+                montoPredeterminado: monto,
               }
             : c
         )
       );
-      setGestorCajaMontoInputs((prev) => ({ ...prev, [caja.id]: "" }));
+      setGestorCajaMontoInputs((prev) => {
+        const sig = { ...prev };
+        delete sig[caja.id];
+        return sig;
+      });
     } catch (err) {
       console.error("Error inesperado al abrir caja desde el Gestor:", err);
       setGestorCajaError(`No se pudo conectar con Supabase para abrir "${caja.nombre}".`);
@@ -1451,6 +1490,7 @@ export default function App() {
      ya sabe cerrar usando 'cajaOperativaId' sin importar si quien lo
      abrió fue el cajero o el admin. ---- */
   const abrirArqueoDesdeGestor = (caja) => {
+    setGestorCajaAviso("");
     elegirCajaActiva(caja.id);
     setGestorCajasOpen(false);
     setCierreModalOpen(true);
@@ -1480,6 +1520,43 @@ export default function App() {
     () => (cajaOperativaId ? cajas.find((c) => c.id === cajaOperativaId) || null : null),
     [cajas, cajaOperativaId]
   );
+  /* ---- Cierre con aviso: cada caja abierta debe cerrarse a la hora de
+     cierre de su sucursal (Perfil → Horarios; sin horario, a las 00:00 —
+     ver lib/turnoCaja.js). Al vencer, al cajero se le abre el cierre
+     solo (pide el efectivo) y el admin ve el aviso en el Gestor de Cajas
+     (y un punto amarillo en su botón). Cualquiera de los dos puede
+     extender el turno 30 minutos (el cajero hasta 3 veces, el admin hasta
+     5; ver caja_extender_turno). 'relojTurno'
+     se actualiza cada 30 s para que el aviso salga a la hora. ---- */
+  const [relojTurno, setRelojTurno] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setRelojTurno(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  const sucursalDeCaja = (caja) => sucursales.find((s) => s.id === caja?.sucursalId);
+  const cajasVencidas = useMemo(
+    () => cajas.filter((c) => cajaVencida(c, sucursales.find((s) => s.id === c.sucursalId), relojTurno)),
+    [cajas, sucursales, relojTurno]
+  );
+  const [extendiendoCajaId, setExtendiendoCajaId] = useState(null);
+  const extenderTurnoCaja = async (caja) => {
+    setExtendiendoCajaId(caja.id);
+    const { data, error } = await supabase.rpc("caja_extender_turno", { p_caja_id: caja.id });
+    setExtendiendoCajaId(null);
+    if (data?.estado === "limite") {
+      setCajas((prev) => prev.map((c) => (c.id === caja.id ? { ...c, extensiones: Number(data.extensiones) || 0 } : c)));
+    }
+    if (error || data?.estado !== "ok") return { error: error || new Error(data?.estado || "error") };
+    setCajas((prev) =>
+      prev.map((c) =>
+        c.id === caja.id
+          ? { ...c, extendidaHasta: Number(data.extendida_hasta), extensiones: Number(data.extensiones) || 0 }
+          : c
+      )
+    );
+    setRelojTurno(Date.now());
+    return { error: null };
+  };
   const estadoCaja = useMemo(() => {
     if (!miCaja) return null;
     return {
@@ -1528,6 +1605,10 @@ export default function App() {
                     montoInicial: row.monto_inicial != null ? Number(row.monto_inicial) : 0,
                     abiertaPor: row.abierta_por || null,
                     abiertaEn: row.abierta_en != null ? Number(row.abierta_en) : null,
+                    extendidaHasta: row.extendida_hasta != null ? Number(row.extendida_hasta) : null,
+                    extensiones: Number(row.extensiones) || 0,
+                    montoPredeterminado:
+                      row.monto_inicial_predeterminado != null ? Number(row.monto_inicial_predeterminado) : null,
                     cerradaEn: row.cerrada_en != null ? Number(row.cerrada_en) : null,
                   }
                 : c
@@ -1542,6 +1623,68 @@ export default function App() {
       });
 
     return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin, isCajero]);
+
+  /* ---- Respaldo del tiempo real (cajas, ventas, gastos, cierres): si la
+     conexión se corta (pestaña en segundo plano, pantalla bloqueada,
+     cambio de red), el canal se reconecta solo pero los cambios de ese
+     rato se pierden — el admin no veía que el cajero cerró su caja hasta
+     recargar. Se pone al día al volver a la pestaña, al recuperar la red
+     y cada 30 s mientras está a la vista. ---- */
+  const refetchJerarquiaRef = useRef(refetchJerarquia);
+  refetchJerarquiaRef.current = refetchJerarquia;
+  useEffect(() => {
+    if (!isAdmin && !isCajero) return undefined;
+    const ponerAlDia = () => {
+      if (document.visibilityState !== "visible") return;
+      refetchJerarquiaRef.current?.();
+      recargarDatosRef.current?.();
+    };
+    const sondeo = setInterval(ponerAlDia, 30000);
+    document.addEventListener("visibilitychange", ponerAlDia);
+    window.addEventListener("online", ponerAlDia);
+    return () => {
+      clearInterval(sondeo);
+      document.removeEventListener("visibilitychange", ponerAlDia);
+      window.removeEventListener("online", ponerAlDia);
+    };
+  }, [isAdmin, isCajero]);
+
+  /* ---- Horario de las sucursales en vivo: si el admin lo cambia en
+     Perfil → Horarios (en otro dispositivo), la caja del cajero recalcula
+     al toque a qué hora debe cerrarse. ---- */
+  useEffect(() => {
+    if (!isAdmin && !isCajero) return undefined;
+    const channel = supabase
+      .channel(`sucursales-horario-${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sucursales" }, (payload) => {
+        const row = payload.new;
+        if (!row) return;
+        setSucursales((prev) => prev.map((s) => (s.id === row.id ? { ...s, horario: row.horario || null } : s)));
+      })
+      .subscribe();
+    // Respaldo (por si el tiempo real no llega): se vuelven a leer los
+    // horarios cada 60 s y al volver a la pestaña.
+    const releer = async () => {
+      if (document.visibilityState !== "visible") return;
+      const { data } = await supabase.from("sucursales").select("id, horario");
+      if (!data) return;
+      const porId = new Map(data.map((r) => [r.id, r.horario || null]));
+      setSucursales((prev) =>
+        prev.map((s) =>
+          porId.has(s.id) && JSON.stringify(porId.get(s.id)) !== JSON.stringify(s.horario || null)
+            ? { ...s, horario: porId.get(s.id) }
+            : s
+        )
+      );
+    };
+    const sondeo = setInterval(releer, 60000);
+    document.addEventListener("visibilitychange", releer);
+    return () => {
+      clearInterval(sondeo);
+      document.removeEventListener("visibilitychange", releer);
       supabase.removeChannel(channel);
     };
   }, [isAdmin, isCajero]);
@@ -1595,6 +1738,17 @@ export default function App() {
   }, []);
 
   const [cierreModalOpen, setCierreModalOpen] = useState(false);
+  // Al cajero se le abre el cierre solo cuando su caja ya debió cerrarse
+  // (y vuelve a abrirse mientras siga vencida y no la extienda).
+  const miCajaVencida = isCajero && !!miCaja && cajaVencida(miCaja, sucursalDeCaja(miCaja), relojTurno);
+  useEffect(() => {
+    if (miCajaVencida) setCierreModalOpen(true);
+  }, [miCajaVencida, relojTurno]);
+  // Sin extensiones (usó las 3): el cierre queda encima y no se puede
+  // cerrar hasta cerrar el turno (el admin todavía puede extenderla desde
+  // el Gestor de Cajas, hasta 5).
+  const miCajaObligatoria = miCajaVencida && (miCaja?.extensiones ?? 0) >= MAX_EXTENSIONES_CAJERO;
+  const [extensionError, setExtensionError] = useState("");
   const [confirmCierreOpen, setConfirmCierreOpen] = useState(false);
   const [cierreSaving, setCierreSaving] = useState(false);
   const [cierreError, setCierreError] = useState("");
@@ -5855,9 +6009,67 @@ export default function App() {
     setAnulandoVentaId(purchaseId);
     setAnularError("");
     const { error } = await revertirVenta(purchaseId);
-    if (error) setAnularError("No se pudo anular la venta. Intenta de nuevo.");
+    if (error) {
+      setAnularError("No se pudo anular la venta. Intenta de nuevo.");
+    } else {
+      await cancelarPedidoDeVentaAnulada(purchaseId);
+    }
     setAnulandoVentaId(null);
   };
+
+  /* ---- Si la venta anulada vino de un pedido online, el pedido también
+     queda anulado: pasa a 'cancelado' (deja de verse como entregado para
+     el admin y el cliente) con venta_revertida = true (la venta ya se
+     revirtió acá, la reversión automática no la repite). La base avisa a
+     Taxi-PE para restar los puntos de esa compra (fase B). ---- */
+  const cancelarPedidoDeVentaAnulada = async (purchaseId) => {
+    const { data: pedido } = await supabase
+      .from("pedidos")
+      .select("id, estado")
+      .eq("venta_purchase_id", purchaseId)
+      .maybeSingle();
+    if (!pedido || pedido.estado === "cancelado") return;
+    const { error: updErr } = await supabase
+      .from("pedidos")
+      .update({ estado: "cancelado", venta_revertida: true })
+      .eq("id", pedido.id);
+    if (updErr) {
+      console.error("[anularVenta] no se pudo anular el pedido de la venta:", updErr);
+      return;
+    }
+    await supabase.from("pedido_mensajes").insert([
+      {
+        pedido_id: pedido.id,
+        remitente: "sistema",
+        mensaje: `❌ La tienda anuló la venta ${purchaseId} de este pedido. Se devolvió el stock y se descontaron los puntos de esta compra.`,
+      },
+    ]);
+  };
+
+  /* ---- Ventas, gastos y stock en vivo entre cajero y admin: cuando uno
+     registra algo, el otro recarga sus datos (agrupado: una sola recarga
+     por ráfaga de cambios). Requiere la migración 0103 (tablas en la
+     publicación de Realtime). ---- */
+  const recargarDatosRef = useRef(null);
+  recargarDatosRef.current = recargarDatos;
+  useEffect(() => {
+    if (!isAdmin && !isCajero) return undefined;
+    let espera = null;
+    const programar = () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => recargarDatosRef.current?.(), 1200);
+    };
+    const channel = supabase
+      .channel(`ventas-vivo-${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "historial" }, programar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "gastos" }, programar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "inventario_sucursales" }, programar)
+      .subscribe();
+    return () => {
+      clearTimeout(espera);
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin, isCajero]);
 
   /* ---- Reversión automática de la venta de un pedido que quedó
      CANCELADO (lo canceló el cliente desde su app —que no tiene contexto
@@ -6795,6 +7007,7 @@ export default function App() {
       ingreso_efectivo: todayStats.ingresoEfectivo,
       ingreso_digital: todayStats.ingresoDigital,
       cajero_nombre: cajeroNombre || (isAdmin ? "Admin" : "Cajero"),
+      cerrado_por_rol: isAdmin ? "admin" : "cajero",
       // Fotografía de la caja vigente — fondo inicial y momento exacto
       // de apertura de ESTE turno que se está cerrando ahora.
       fondo_inicial: estadoCaja?.fondoInicial ?? null,
@@ -6841,6 +7054,7 @@ export default function App() {
       ingresoEfectivo: snapshot.ingreso_efectivo,
       ingresoDigital: snapshot.ingreso_digital,
       cajeroNombre: snapshot.cajero_nombre,
+      cerradoPorRol: snapshot.cerrado_por_rol,
       fondoInicial: snapshot.fondo_inicial,
       abiertaEn: snapshot.abierta_en,
       timestamp: Number(row?.fecha ?? timestamp),
@@ -6858,7 +7072,7 @@ export default function App() {
     // 'cajas' siempre existe de antemano.
     const { data: cajaCloseData, error: cajaCloseError } = await supabase
       .from("cajas")
-      .update({ estado: "cerrada", cerrada_en: timestamp })
+      .update({ estado: "cerrada", cerrada_en: timestamp, extendida_hasta: null })
       .eq("id", cajaOperativaId)
       .select()
       .maybeSingle();
@@ -6881,9 +7095,19 @@ export default function App() {
     } else {
       setCajas((prev) =>
         prev.map((c) =>
-          c.id === cajaOperativaId ? { ...c, estado: "cerrada", cerradaEn: timestamp } : c
+          c.id === cajaOperativaId ? { ...c, estado: "cerrada", cerradaEn: timestamp, extendidaHasta: null } : c
         )
       );
+      // Admin: cierra el modal de cierre y vuelve al Gestor de Cajas con
+      // la confirmación, para que vea la caja ya cerrada.
+      if (isAdmin) {
+        const nombreCaja = cajas.find((c) => c.id === cajaOperativaId)?.nombre || "La caja";
+        setCierreModalOpen(false);
+        setConfirmCierreOpen(false);
+        setGestorCajaError("");
+        setGestorCajaAviso(`"${nombreCaja}" se cerró correctamente. El cierre quedó guardado en el historial.`);
+        setGestorCajasOpen(true);
+      }
     }
   };
 
@@ -7433,7 +7657,16 @@ export default function App() {
         />
       )}
 
-      {perfilOpen && <PerfilNegocioModal apartadoInicial={perfilOpen} onClose={() => setPerfilOpen(null)} />}
+      {perfilOpen && (
+        <PerfilNegocioModal
+          apartadoInicial={perfilOpen}
+          sucursalInicialId={sucursalActivaId}
+          onHorarioGuardado={(id, horario) =>
+            setSucursales((prev) => prev.map((s) => (s.id === id ? { ...s, horario } : s)))
+          }
+          onClose={() => setPerfilOpen(null)}
+        />
+      )}
 
       {/* El viejo modal obligatorio de "Apertura de Caja" para admin
          (bloqueaba TODO detrás de un backdrop) fue retirado: el admin
@@ -7453,12 +7686,13 @@ export default function App() {
                suya propia desde su pantalla de bloqueo). */}
             {isAdmin && (
               <button
-                className="tz-header-btn"
+                className={`tz-header-btn ${cajasVencidas.length > 0 ? "tz-btn-aviso" : ""}`}
                 onClick={() => {
                   setGestorCajaError("");
+                  setGestorCajaAviso("");
                   setGestorCajasOpen(true);
                 }}
-                aria-label="Gestor de Cajas"
+                aria-label={cajasVencidas.length > 0 ? "Gestor de Cajas (hay cajas sin cerrar)" : "Gestor de Cajas"}
               >
                 <Landmark size={19} />
                 <span className="tz-header-btn-label">Gestor de Cajas</span>
@@ -7635,7 +7869,7 @@ export default function App() {
           <div className="tz-admin-filter-group tz-admin-filtro-localidad-group">
             <label className="tz-admin-filter-label tz-admin-filtro-localidad-label">Localidad</label>
             <div className="tz-admin-filter-row">
-              <select
+              <Select
                 className="tz-admin-filter-select"
                 value={localidadFiltroId}
                 onChange={(e) => {
@@ -7650,7 +7884,7 @@ export default function App() {
                     {loc.nombre}
                   </option>
                 ))}
-              </select>
+              </Select>
               <button
                 type="button"
                 className="tz-admin-filter-add-btn"
@@ -7670,7 +7904,7 @@ export default function App() {
             <div className="tz-admin-filter-group tz-admin-filtro-sucursal-group">
               <label className="tz-admin-filter-label tz-admin-filtro-sucursal-label">Sucursal / Caja</label>
               <div className="tz-admin-filter-row">
-                <select
+                <Select
                   className="tz-admin-filter-select"
                   value={cajaActivaId}
                   onChange={(e) => elegirCajaActiva(e.target.value)}
@@ -7683,7 +7917,7 @@ export default function App() {
                       </option>
                     ))
                   )}
-                </select>
+                </Select>
                 <button
                   type="button"
                   className="tz-admin-filter-add-btn"
@@ -7777,11 +8011,7 @@ export default function App() {
                 <TrendingUp size={13} /> Ganancia Neta (hoy)
               </span>
               <span className="tz-stat-value tz-green">{formatSoles(todayStats.gananciaNetaTurno)}</span>
-              <span className="tz-stat-sub">
-                {todayStats.gastosHoyCaja > 0
-                  ? `− ${formatSoles(todayStats.gastosHoyCaja)} gastos`
-                  : ""}
-              </span>
+              <span className="tz-stat-sub">− {formatSoles(todayStats.gastosHoyCaja)} en gastos de hoy</span>
             </div>
             <div className="tz-stat-chip tz-stat-chip-star">
               <span className="tz-stat-label">
@@ -8703,7 +8933,7 @@ export default function App() {
                     {checkoutMetodo === "FIADO" && (
                       <div className="tz-checkout-fiado">
                         {clientesVisibles.length > 0 && !checkoutFiadoAddingNew && (
-                          <select
+                          <Select
                             className="tz-text-input"
                             value={checkoutFiadoClienteId || ""}
                             onChange={(e) => setCheckoutFiadoClienteId(e.target.value || null)}
@@ -8714,7 +8944,7 @@ export default function App() {
                                 {c.nombre}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         )}
 
                         {/* Crear cliente nuevo desde el checkout: SOLO admin — un
@@ -9139,6 +9369,7 @@ export default function App() {
 
             {jerarquiaError && <p className="tz-error">{jerarquiaError}</p>}
             {gestorCajaError && <p className="tz-error">{gestorCajaError}</p>}
+            {gestorCajaAviso && <p className="tz-success">✓ {gestorCajaAviso}</p>}
 
             {localidades.length === 0 && !jerarquiaError && (
               <p className="tz-stock-editor-sub">Cargando localidades…</p>
@@ -9268,6 +9499,31 @@ export default function App() {
                                   {caja.abiertaPor ? ` · ${caja.abiertaPor}` : ""}
                                 </span>
                               )}
+                              {abierta && cajasVencidas.some((c) => c.id === caja.id) && (
+                                <span className="tz-gc-caja-aviso">
+                                  <Clock size={12} /> Debía cerrarse a las {formatTime(venceCaja(caja, sucursalDeCaja(caja)))}
+                                  {" · "}Extensiones {caja.extensiones ?? 0}/{MAX_EXTENSIONES_ADMIN}
+                                  {(caja.extensiones ?? 0) < MAX_EXTENSIONES_ADMIN && (
+                                  <button
+                                    type="button"
+                                    className="tz-gc-extender-btn"
+                                    disabled={extendiendoCajaId === caja.id}
+                                    onClick={async () => {
+                                      const { error } = await extenderTurnoCaja(caja);
+                                      if (error)
+                                        setGestorCajaError(
+                                          error.message === "limite"
+                                            ? `"${caja.nombre}" ya usó todas sus extensiones: hay que cerrar el turno.`
+                                            : `No se pudo extender el turno de "${caja.nombre}".`
+                                        );
+                                    }}
+                                  >
+                                    {extendiendoCajaId === caja.id ? <Loader2 size={11} className="tz-spin" /> : null}
+                                    Extender 30 min
+                                  </button>
+                                  )}
+                                </span>
+                              )}
                             </div>
 
                             {abierta ? (
@@ -9286,13 +9542,18 @@ export default function App() {
                                   step="0.10"
                                   placeholder="Fondo inicial (S/)"
                                   className="tz-text-input tz-gc-monto-input"
-                                  value={gestorCajaMontoInputs[caja.id] ?? ""}
+                                  value={
+                                    gestorCajaMontoInputs[caja.id] ??
+                                    (caja.montoPredeterminado != null ? String(caja.montoPredeterminado) : "")
+                                  }
+                                  title="Con este monto se abre sola a la hora de apertura de la sucursal"
                                   onChange={(e) =>
                                     setGestorCajaMontoInputs((prev) => ({
                                       ...prev,
                                       [caja.id]: e.target.value,
                                     }))
                                   }
+                                  onBlur={() => guardarMontoPredeterminado(caja)}
                                   onKeyDown={(e) => {
                                     if (e.key === "Enter") iniciarCajaDesdeGestor(caja);
                                   }}
@@ -10435,7 +10696,7 @@ export default function App() {
               )}
 
               {filtroRolUsuarios === "cajero" && (
-                <select
+                <Select
                   className="tz-text-input"
                   style={{ marginBottom: 12 }}
                   value={filtroSucursalUsuarios}
@@ -10447,7 +10708,7 @@ export default function App() {
                       {s.nombre}
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
 
               {usuarioActionError && <p className="tz-error">{usuarioActionError}</p>}
@@ -10490,7 +10751,7 @@ export default function App() {
                           <div className="tz-add-entry" style={{ marginTop: 8 }}>
                             <label className="tz-field-label">Localidad</label>
                             <div className="tz-admin-filter-row">
-                              <select
+                              <Select
                                 className="tz-text-input"
                                 value={reasignarLocalidadId}
                                 onChange={(e) => {
@@ -10504,7 +10765,7 @@ export default function App() {
                                     {l.nombre}
                                   </option>
                                 ))}
-                              </select>
+                              </Select>
                               <button
                                 type="button"
                                 className="tz-admin-filter-add-btn"
@@ -10520,7 +10781,7 @@ export default function App() {
                             </div>
                             <label className="tz-field-label">Sucursal</label>
                             <div className="tz-admin-filter-row">
-                              <select
+                              <Select
                                 className="tz-text-input"
                                 value={reasignarSucursalId}
                                 onChange={(e) => setReasignarSucursalId(e.target.value)}
@@ -10532,7 +10793,7 @@ export default function App() {
                                     {s.nombre}
                                   </option>
                                 ))}
-                              </select>
+                              </Select>
                               <button
                                 type="button"
                                 className="tz-admin-filter-add-btn"
@@ -10656,7 +10917,7 @@ export default function App() {
                   />
                   <label className="tz-field-label">Localidad</label>
                   <div className="tz-admin-filter-row">
-                    <select
+                    <Select
                       className="tz-text-input"
                       value={newCajeroLocalidadId}
                       onChange={(e) => {
@@ -10670,7 +10931,7 @@ export default function App() {
                           {l.nombre}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <button
                       type="button"
                       className="tz-admin-filter-add-btn"
@@ -10686,7 +10947,7 @@ export default function App() {
                   </div>
                   <label className="tz-field-label">Sucursal</label>
                   <div className="tz-admin-filter-row">
-                    <select
+                    <Select
                       className="tz-text-input"
                       value={newCajeroSucursalId}
                       onChange={(e) => setNewCajeroSucursalId(e.target.value)}
@@ -10700,7 +10961,7 @@ export default function App() {
                           {s.nombre}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <button
                       type="button"
                       className="tz-admin-filter-add-btn"
@@ -12057,16 +12318,18 @@ export default function App() {
       )}
 
       {/* ---------------- MODAL: CIERRE DE CAJA ---------------- */}
-      {cierreModalOpen && (
-        <div className="tz-modal-backdrop">
+      {(cierreModalOpen || miCajaObligatoria) && (
+        <div className={`tz-modal-backdrop ${miCajaObligatoria ? "tz-cierre-obligatorio" : ""}`}>
           <div className="tz-modal tz-modal-wide" onClick={(e) => e.stopPropagation()}>
-            <button
-              className="tz-modal-close"
-              onClick={() => setCierreModalOpen(false)}
-              aria-label="Cerrar"
-            >
-              <X size={18} />
-            </button>
+            {!miCajaObligatoria && (
+              <button
+                className="tz-modal-close"
+                onClick={() => setCierreModalOpen(false)}
+                aria-label="Cerrar"
+              >
+                <X size={18} />
+              </button>
+            )}
             <div className="tz-payment-modal">
               <h2>
                 <Receipt size={17} /> Cierre de Caja
@@ -12224,6 +12487,43 @@ export default function App() {
                    admin reconcilia todo lo demás después con el detalle
                    completo de su propia vista. ---- */
                 <>
+                  {miCajaVencida && (
+                    <div className="tz-cierre-vencido">
+                      <p className="tz-cierre-warning" style={{ margin: 0 }}>
+                        <Clock size={14} /> Tu turno terminó a las{" "}
+                        {formatTime(venceCaja(miCaja, sucursalDeCaja(miCaja)))}.{" "}
+                        {miCajaObligatoria
+                          ? "Ya usaste todas tus extensiones: cuenta tu efectivo y cierra el turno para seguir."
+                          : "Cuenta tu efectivo y cierra la caja, o extiende el turno 30 minutos."}
+                      </p>
+                      <p className="tz-cierre-extensiones">
+                        Extensiones usadas: {Math.min(miCaja.extensiones ?? 0, MAX_EXTENSIONES_CAJERO)} de{" "}
+                        {MAX_EXTENSIONES_CAJERO}
+                      </p>
+                      {extensionError && <p className="tz-error" style={{ margin: 0 }}>{extensionError}</p>}
+                      {!miCajaObligatoria && (
+                      <button
+                        type="button"
+                        className="tz-camera-cancel"
+                        disabled={extendiendoCajaId === miCaja.id}
+                        onClick={async () => {
+                          setExtensionError("");
+                          const { error } = await extenderTurnoCaja(miCaja);
+                          if (error)
+                            setExtensionError(
+                              error.message === "limite"
+                                ? "Ya usaste todas tus extensiones: cierra el turno."
+                                : "No se pudo extender el turno."
+                            );
+                          else setCierreModalOpen(false);
+                        }}
+                      >
+                        {extendiendoCajaId === miCaja.id ? <Loader2 size={15} className="tz-spin" /> : <Clock size={15} />}{" "}
+                        Extender 30 min
+                      </button>
+                      )}
+                    </div>
+                  )}
                   <div className="tz-receipt">
                     <div className="tz-receipt-header">
                       <span className="tz-receipt-title">Turno actual</span>
@@ -12301,7 +12601,7 @@ export default function App() {
                 <div className="tz-admin-filter-pareja">
                   <div className="tz-admin-filter-group">
                     <label className="tz-admin-filter-label">Localidad</label>
-                    <select
+                    <Select
                       className="tz-admin-filter-select"
                       value={historialCierresLocalidadId}
                       onChange={(e) => {
@@ -12315,12 +12615,12 @@ export default function App() {
                           {loc.nombre}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   {historialCierresLocalidadId && (
                     <div className="tz-admin-filter-group">
                       <label className="tz-admin-filter-label">Sucursal / Caja</label>
-                      <select
+                      <Select
                         className="tz-admin-filter-select"
                         value={historialCierresCajaId}
                         onChange={(e) => setHistorialCierresCajaId(e.target.value)}
@@ -12333,7 +12633,7 @@ export default function App() {
                             </option>
                           ))
                         )}
-                      </select>
+                      </Select>
                     </div>
                   )}
                 </div>
@@ -12367,6 +12667,15 @@ export default function App() {
                             </span>
                           </div>
                           <div className="tz-receipt-divider" />
+                          {(c.cajeroNombre || c.cerradoPorRol) && (
+                            <div className="tz-receipt-row">
+                              <span>Cerró la caja</span>
+                              <strong>
+                                {c.cajeroNombre || "—"}
+                                {c.cerradoPorRol ? ` (${c.cerradoPorRol === "admin" ? "Admin" : "Cajero"})` : ""}
+                              </strong>
+                            </div>
+                          )}
                           {c.fondoInicial != null && (
                             <div className="tz-receipt-row">
                               <span>Fondo Inicial</span>

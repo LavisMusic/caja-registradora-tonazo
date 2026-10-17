@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CreditCard, CalendarClock, Store } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { BookOpen, LogIn, LogOut, Loader2, ShoppingCart, Plus, Minus, ClipboardList, CalendarClock, Store, ArrowLeft } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import TextoMaquina from "../components/TextoMaquina";
 import TemaNegocio from "../components/TemaNegocio";
@@ -26,6 +26,10 @@ import { distanciaMetros } from "../lib/haversine";
 import logo from "../assets/logo.webp";
 import logoTaxiPe from "../assets/logo-taxipe.webp";
 import { planPermiteOnline, calcularEstadoPlan } from "../lib/planes";
+import ContadorCreditos from "../components/ContadorCreditos";
+import AnimacionExitoNeon from "../components/AnimacionExitoNeon";
+import { usePedidoEntregadoAviso } from "../hooks/usePedidoEntregadoAviso";
+import Select from "../components/Select";
 
 // URL pública de Taxi-PE — botón del filtro abre en pestaña nueva, no
 // toca la sesión de Caja para nada (login ya unificado del otro lado).
@@ -99,6 +103,7 @@ export default function CatalogPage() {
      mostrar el catálogo de OTRO negocio por error — termina en un
      estado de error explícito, nunca en una lista vacía silenciosa. */
   const { slug } = useParams();
+  const navigate = useNavigate();
   // El texto bajo el logo queda centrado entre el logo y la barra.
   const headerRef = useCentrarSubtitulo();
   const [negocio, setNegocio] = useState(null);
@@ -158,6 +163,8 @@ export default function CatalogPage() {
       supabase.removeChannel(canal);
     };
   }, [negocioIdActual]);
+  // Pedido entregado/retirado: celebración al volver a la tienda (fase C).
+  const pedidoEntregado = usePedidoEntregadoAviso(isCliente && session ? session.user.id : null);
   const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
     session?.user?.id,
     isCliente
@@ -204,12 +211,20 @@ export default function CatalogPage() {
         </span>
         <span className="tz-stat-value tz-green">{formatDate(saldoTaxi.membresia_vencimiento)}</span>
       </div>
-    ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente && Number(saldoTaxi.creditos_disponibles) > 0 ? (
-      <div className="tz-stat-chip">
-        <span className="tz-stat-label">
-          <CreditCard size={13} /> Créditos
+    ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente ? (
+      // Gemas (créditos, fase C): el recuadro de siempre con la palabra
+      // centrada encima de la gema y el número, también en 0. Lo nuevo se
+      // anima recién cuando el cliente ve la tienda (ver ContadorCreditos.jsx).
+      <div className="tz-stat-chip tz-gemas">
+        <span className="tz-gemas-label">Gemas</span>
+        <span className="tz-stat-value">
+          <ContadorCreditos
+            valor={Number(saldoTaxi.creditos_disponibles) || 0}
+            clave={`tz-creditos-visto-${session.user.id}`}
+            titulo="Gemas"
+            className="tz-cc-heredado"
+          />
         </span>
-        <span className="tz-stat-value tz-cyan">{saldoTaxi.creditos_disponibles}</span>
       </div>
     ) : null;
 
@@ -386,6 +401,10 @@ export default function CatalogPage() {
   // ya usa App.jsx para el panel del cajero). null mientras carga, para
   // no mostrar "Cerrado" un instante antes de saber la respuesta real.
   const [sucursalEnLinea, setSucursalEnLinea] = useState(null);
+  // Caja cerrada = la sucursal no recibe pedidos hasta que abra el turno
+  // (la base también los rechaza, migración 0110).
+  const tiendaCerrada = sucursalEnLinea === false;
+  const puedePedir = puedeComprar && !tiendaCerrada;
   useEffect(() => {
     if (!publicSucursalId) {
       setSucursalEnLinea(null);
@@ -394,20 +413,20 @@ export default function CatalogPage() {
     let active = true;
     setSucursalEnLinea(null);
 
+    // El cliente no puede leer la tabla 'cajas' (solo el personal): la
+    // base responde si la sucursal tiene una caja abierta
+    // (caja_sucursal_en_linea). Antes se leía 'cajas' directo y, para el
+    // cliente, siempre salía "cerrada".
     const cargarEstado = () =>
-      supabase
-        .from("cajas")
-        .select("estado")
-        .eq("sucursal_id", publicSucursalId)
-        .then(({ data, error }) => {
-          if (!active || error) return;
-          setSucursalEnLinea((data || []).some((c) => c.estado === "abierta"));
-        });
+      supabase.rpc("caja_sucursal_en_linea", { p_sucursal_id: publicSucursalId }).then(({ data, error }) => {
+        if (!active || error) return;
+        setSucursalEnLinea(!!data);
+      });
 
     cargarEstado();
 
-    // Realtime: un cajero puede abrir/cerrar su caja MIENTRAS el
-    // cliente ya tiene la tienda abierta mirando esta misma sucursal.
+    // Realtime de 'cajas' (le llega al personal) + consulta cada 20 s y al
+    // volver a la pestaña (al cliente no le llegan los cambios de 'cajas').
     const channel = supabase
       .channel(`cajas-en-linea-${publicSucursalId}`)
       .on(
@@ -416,9 +435,18 @@ export default function CatalogPage() {
         cargarEstado
       )
       .subscribe();
+    const sondeo = setInterval(() => {
+      if (document.visibilityState === "visible") cargarEstado();
+    }, 20000);
+    const alVolver = () => {
+      if (document.visibilityState === "visible") cargarEstado();
+    };
+    document.addEventListener("visibilitychange", alVolver);
 
     return () => {
       active = false;
+      clearInterval(sondeo);
+      document.removeEventListener("visibilitychange", alVolver);
       supabase.removeChannel(channel);
     };
   }, [publicSucursalId]);
@@ -563,6 +591,17 @@ export default function CatalogPage() {
     <div className="tz-root">
       <Styles />
       <TemaNegocio tema={temaTienda} />
+      {!mostrarBienvenida && pedidoEntregado.pedido && (
+        <AnimacionExitoNeon
+          titulo="¡Pedido entregado!"
+          descripcion={
+            Math.round(Number(pedidoEntregado.pedido.total) || 0) > 0
+              ? `Gracias por tu compra. Ganaste ${Math.round(Number(pedidoEntregado.pedido.total) || 0)} créditos.`
+              : "Gracias por tu compra."
+          }
+          onTerminar={pedidoEntregado.cerrar}
+        />
+      )}
       {mostrarBienvenida && (
         <AnimacionNeonBienvenida
           eyebrow={`✦ Bienvenido a ${negocio.nombre} ✦`}
@@ -602,6 +641,17 @@ export default function CatalogPage() {
                 )}
               </button>
             )}
+            {/* Volver al directorio de negocios — siempre debajo de Mis
+               Pedidos (y baja con él cuando aparece Fiados). */}
+            <button
+              className="tz-header-btn"
+              onClick={() => navigate("/directorio")}
+              aria-label="Volver al directorio"
+              title="Volver al directorio"
+            >
+              <ArrowLeft size={19} />
+              <span className="tz-header-btn-label">Directorio</span>
+            </button>
           </div>
 
           <div className="tz-header-center">
@@ -672,7 +722,7 @@ export default function CatalogPage() {
             <div className="tz-admin-filter-pareja">
               <div className="tz-admin-filter-group tz-filtro-localidad-group">
                 <label className="tz-admin-filter-label tz-filtro-localidad-label">Localidad</label>
-                <select
+                <Select
                   className="tz-admin-filter-select"
                   value={publicLocalidadId}
                   onChange={(e) => {
@@ -694,7 +744,7 @@ export default function CatalogPage() {
                       {loc.nombre}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div className="tz-admin-filter-group tz-filtro-sucursal-group">
                 <label className="tz-admin-filter-label tz-filtro-sucursal-label">Sucursal</label>
@@ -705,7 +755,7 @@ export default function CatalogPage() {
                    la pareja, los dos labels terminaban a alturas
                    distintas. */}
                 <div className="tz-admin-filter-row">
-                  <select
+                  <Select
                     className="tz-admin-filter-select"
                     value={publicSucursalId}
                     onChange={(e) => setPublicSucursalId(e.target.value)}
@@ -716,7 +766,7 @@ export default function CatalogPage() {
                         {suc.nombre}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                   {publicSucursalId && sucursalEnLinea !== null && (
                     <span className={`tz-admin-filter-tag tz-filtro-estado-tag ${sucursalEnLinea ? "is-abierta" : "is-cerrada"}`}>
                       <span className="tz-admin-filter-tag-dot" />
@@ -735,6 +785,17 @@ export default function CatalogPage() {
       )}
 
       <main className="tz-main">
+        {negocio && recibePedidos && tiendaCerrada && (
+          <div className="tz-plan-aviso tz-plan-aviso-gracia tz-catalogo-sin-pedidos" role="status">
+            <span>
+              🔒 Esta sucursal está cerrada: no recibe pedidos hasta que abra su caja.
+              {textoHorarioHoy(perfilPublico.horarios[publicSucursalId])
+                ? ` ${textoHorarioHoy(perfilPublico.horarios[publicSucursalId])}.`
+                : ""}{" "}
+              Puedes ver sus productos igual.
+            </span>
+          </div>
+        )}
         {negocio && !recibePedidos && (
           <div className="tz-plan-aviso tz-plan-aviso-gracia tz-catalogo-sin-pedidos" role="status">
             <span>Este negocio no está recibiendo pedidos online en este momento. Puedes ver sus productos igual.</span>
@@ -848,7 +909,7 @@ export default function CatalogPage() {
                                logueado puede agregar al carrito — la
                                Venta por Peso queda fuera (no hay balanza
                                acá, ver agregarAlCarrito). */}
-                            {puedeComprar && !item.ventaPorPeso && !soldOut && (
+                            {puedePedir && !item.ventaPorPeso && !soldOut && (
                               <div className="tz-card-cart-controls">
                                 {carrito[item.id] ? (
                                   <div className="tz-qty-stepper">
@@ -904,7 +965,7 @@ export default function CatalogPage() {
       {/* Fase 1 "Pedidos Delivery": barra flotante del carrito — solo
          aparece con algo adentro, y con el checkout cerrado (mientras
          el checkout está abierto ya se ve el mismo resumen ahí). */}
-      {puedeComprar && carritoTotalItems > 0 && !checkoutOpen && (
+      {puedePedir && carritoTotalItems > 0 && !checkoutOpen && (
         <button
           type="button"
           className="tz-cart-floating-bar"

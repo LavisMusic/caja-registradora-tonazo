@@ -180,7 +180,10 @@ function movil(S, d) {
 // sobre la barra (franjas montadas, el auto) van en ::before/::after de
 // la CABECERA: la máscara recorta lo que sale de la barra.
 const bordeSuaveBarra = (S) =>
-  `${BARRA(S)} { border-bottom: none !important; box-shadow: none !important; padding-bottom: 40px !important; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); }`;
+  `${BARRA(S)} { border-bottom: none !important; box-shadow: none !important; padding-bottom: 40px !important; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 34px), transparent); }
+@media (max-width: 767px) {
+  ${BARRA(S, ":has(.tz-filtrobar-grid)")} { padding-bottom: 16px !important; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent); }
+}`;
 const pastillaSubtitulo = (S) =>
   `${en(S, ".tz-header .tz-subtitle")} { background: rgba(10,8,14,0.62) !important; color: #fff6e0 !important; text-shadow: 0 0 8px rgba(255,255,255,0.25) !important; padding: 3px 12px !important; border-radius: 14px !important; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }`;
 

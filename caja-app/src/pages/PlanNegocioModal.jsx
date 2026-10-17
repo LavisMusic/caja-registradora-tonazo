@@ -17,6 +17,7 @@ import {
   puedeRenovar,
   inicioRenovacion,
 } from "../lib/planes";
+import Select from "../components/Select";
 
 // Gestor del plan de UN negocio (super admin — botón ⚡ de la tarjeta).
 // Separado en apartados:
@@ -245,7 +246,7 @@ function RecargaRapida({ negocio, planes, onPagado }) {
         </div>
       )}
       <label className="tz-field-label">Plan</label>
-      <select className="tz-text-input" value={planId} onChange={(e) => setPlanId(e.target.value)}>
+      <Select className="tz-text-input" value={planId} onChange={(e) => setPlanId(e.target.value)}>
         <option value="">{visibles.length === 0 ? "No hay planes en este filtro" : "Elige un plan…"}</option>
         {visibles.map((p) => (
           <option key={p.id} value={p.id}>
@@ -253,7 +254,7 @@ function RecargaRapida({ negocio, planes, onPagado }) {
             {Number(p.descuento_pct) > 0 ? ` (−${Number(p.descuento_pct)}%)` : ""}
           </option>
         ))}
-      </select>
+      </Select>
       {plan && (
         <p className="tz-plan-total" style={{ margin: "8px 0 0" }}>
           Total: <strong>{formatSoles(total)}</strong> · {plan.meses} {plan.meses === 1 ? "mes" : "meses"}
@@ -481,7 +482,7 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, sucu
           <div className="tz-plan-seccion">
             <label className="tz-plan-campo tz-plan-campo-ancho">
               <span>Plan asignado (sin cobrar)</span>
-              <select
+              <Select
                 className="tz-text-input"
                 value={suspendido ? "" : negocio.plan_id || ""}
                 onChange={(e) => actualizarCampos({ plan_id: e.target.value || null }, "plan")}
@@ -496,7 +497,7 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, sucu
                       {p.max_sucursales == null ? "sucursales sin límite" : `hasta ${p.max_sucursales} sucursal(es)`}
                     </option>
                   ))}
-              </select>
+              </Select>
               {suspendido && (
                 <small className="tz-stock-editor-sub">
                   Suspendido: queda sin plan. Al registrar una recarga vuelve a tener el plan que pague.
@@ -505,7 +506,7 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, sucu
             </label>
             <label className="tz-plan-campo tz-plan-campo-ancho">
               <span>Estado</span>
-              <select
+              <Select
                 className="tz-text-input"
                 value={modoDe(negocio)}
                 disabled={guardando === "modo"}
@@ -523,7 +524,7 @@ export default function PlanNegocioModal({ negocio: negocioInicial, planes, sucu
                 <option value="automatico">Automático (según la fecha de vencimiento)</option>
                 <option value="exento">Exento (sin vencimiento ni límites)</option>
                 <option value="suspendido">Suspendido manualmente (aunque tenga días pagados)</option>
-              </select>
+              </Select>
             </label>
           </div>
           </>

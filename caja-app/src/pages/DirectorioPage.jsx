@@ -8,7 +8,6 @@ import {
   LogIn,
   LogOut,
   ClipboardList,
-  CreditCard,
   CalendarClock,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -23,6 +22,10 @@ import logoTaxiPe from "../assets/logo-taxipe.webp";
 import { planPermiteOnline, calcularEstadoPlan } from "../lib/planes";
 import { useContactoPlataforma } from "../hooks/useContactoPlataforma";
 import { buildWhatsappLink } from "../lib/whatsapp";
+import ContadorCreditos from "../components/ContadorCreditos";
+import AnimacionExitoNeon from "../components/AnimacionExitoNeon";
+import { usePedidoEntregadoAviso } from "../hooks/usePedidoEntregadoAviso";
+import Select from "../components/Select";
 
 const TAXI_PE_URL = import.meta.env.VITE_TAXI_PE_URL || "https://taxi-pe-app.vercel.app";
 
@@ -58,6 +61,8 @@ export default function DirectorioPage() {
   // (session.user.id) con la del catálogo de cada negocio
   // (CatalogPage.jsx), así sale UNA sola vez: en el primer lugar donde
   // entre, directorio o catálogo.
+  // Pedido entregado/retirado: celebración al volver a la tienda (fase C).
+  const pedidoEntregado = usePedidoEntregadoAviso(isCliente && session ? session.user.id : null);
   const { mostrar: mostrarBienvenida, marcarVista: marcarBienvenidaVista } = useBienvenidaNeon(
     session?.user?.id,
     isCliente
@@ -76,12 +81,17 @@ export default function DirectorioPage() {
         </span>
         <span className="tz-stat-value tz-green">{formatDate(saldoTaxi.membresia_vencimiento)}</span>
       </div>
-    ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente && Number(saldoTaxi.creditos_disponibles) > 0 ? (
-      <div className="tz-stat-chip">
-        <span className="tz-stat-label">
-          <CreditCard size={13} /> Créditos
-        </span>
-        <span className="tz-stat-value tz-cyan">{saldoTaxi.creditos_disponibles}</span>
+    ) : isCliente && session && saldoTaxi && !membresiaTaxiVigente ? (
+      // Gemas (créditos, fase C): la palabra centrada encima de la gema y
+      // el número, sin recuadro, también en 0. Lo nuevo se anima recién
+      // cuando el cliente ve la tienda (ver ContadorCreditos.jsx).
+      <div className="tz-gemas">
+        <span className="tz-gemas-label">Gemas</span>
+        <ContadorCreditos
+          valor={Number(saldoTaxi.creditos_disponibles) || 0}
+          clave={`tz-creditos-visto-${session.user.id}`}
+          titulo="Gemas"
+        />
       </div>
     ) : null;
 
@@ -202,6 +212,17 @@ export default function DirectorioPage() {
   return (
     <div className="tz-root">
       <Styles />
+      {!mostrarBienvenida && pedidoEntregado.pedido && (
+        <AnimacionExitoNeon
+          titulo="¡Pedido entregado!"
+          descripcion={
+            Math.round(Number(pedidoEntregado.pedido.total) || 0) > 0
+              ? `Gracias por tu compra. Ganaste ${Math.round(Number(pedidoEntregado.pedido.total) || 0)} créditos.`
+              : "Gracias por tu compra."
+          }
+          onTerminar={pedidoEntregado.cerrar}
+        />
+      )}
       {mostrarBienvenida && (
         <AnimacionNeonBienvenida
           eyebrow="✦ Bienvenido a Tonazo ✦"
@@ -271,7 +292,7 @@ export default function DirectorioPage() {
             <div className="tz-admin-filter-pareja">
               <div className="tz-admin-filter-group tz-filtro-localidad-group">
                 <label className="tz-admin-filter-label tz-filtro-localidad-label">Localidad</label>
-                <select
+                <Select
                   className="tz-admin-filter-select"
                   value={localidadFiltro}
                   onChange={(e) => {
@@ -285,12 +306,12 @@ export default function DirectorioPage() {
                       {grupo.label}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
               {localidadFiltro !== "todas" && sucursalesDeLocalidad.length > 0 && (
                 <div className="tz-admin-filter-group tz-filtro-sucursal-group">
                   <label className="tz-admin-filter-label tz-filtro-sucursal-label">Sucursal</label>
-                  <select
+                  <Select
                     className="tz-admin-filter-select"
                     value={sucursalFiltro}
                     onChange={(e) => setSucursalFiltro(e.target.value)}
@@ -301,7 +322,7 @@ export default function DirectorioPage() {
                         {s.nombre}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               )}
             </div>

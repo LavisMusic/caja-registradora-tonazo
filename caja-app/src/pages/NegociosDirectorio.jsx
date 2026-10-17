@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { ChevronDown, ChevronUp, Pencil, Zap, Users, Loader2, ImagePlus, Store, Save, UserPlus, Check, X } from "lucide-react";
 import { ESTADOS_PLAN, DIAS_AVISO, calcularEstadoPlan, diasHasta, duracionPlan, formatFechaCorta } from "../lib/planes";
 import { slugify } from "./GestorNegociosModal.jsx";
+import Select from "../components/Select";
 
 // Directorio de negocios del super admin — mismo diseño que el
 // Directorio de Conductores del admin de Taxi-PE:
@@ -174,11 +175,11 @@ function TarjetaNegocio({ negocio, rubros, plan, sucursales, onUpdate, onLogoCha
                     placeholder="WhatsApp del negocio (ej. 987654321)"
                     aria-label="WhatsApp del negocio"
                   />
-                  <select className="tz-text-input" value={rubroId} onChange={(e) => setRubroId(e.target.value)}>
+                  <Select className="tz-text-input" value={rubroId} onChange={(e) => setRubroId(e.target.value)}>
                     {rubros.map((r) => (
                       <option key={r.id} value={r.id}>{r.nombre}</option>
                     ))}
-                  </select>
+                  </Select>
                   <div className="tz-card-negocio-colores">
                     {COLORES.map((c) => (
                       <button
@@ -276,7 +277,7 @@ function TarjetaNegocio({ negocio, rubros, plan, sucursales, onUpdate, onLogoCha
               ) : null}
               {!negocio.activo && <span className="tz-tag tz-tag-danger">Oculto en el directorio</span>}
             </div>
-            <select
+            <Select
               className="tz-estado-select"
               data-estado={modoDe(negocio) === "automatico" ? estado : modoDe(negocio)}
               value={modoDe(negocio)}
@@ -287,7 +288,7 @@ function TarjetaNegocio({ negocio, rubros, plan, sucursales, onUpdate, onLogoCha
               <option value="automatico">Automático · {infoEstado.label}</option>
               <option value="exento">Exento</option>
               <option value="suspendido">Suspendido</option>
-            </select>
+            </Select>
           </div>
         </div>
       </div>

@@ -159,9 +159,15 @@ Deno.serve(async (req) => {
     return jsonResponse(500, { error: "no se pudo verificar el cliente existente" });
   }
 
-  // Ya tiene cuenta de login en Caja — solo actualizar el PIN (por si
-  // cambió en Taxi-PE) y confirmar que ya tiene PIN configurado.
+  // Ya tiene cuenta de login en Caja. Su PIN solo se pisa si Taxi-PE
+  // confirma un cambio de PIN real (`sobrescribir_pin`: lo eligió con el
+  // código que el Admin le mandó por WhatsApp, ver mirror-a-caja). Un
+  // alta o un ingreso en Taxi-PE NO lo cambian: si no, cualquiera podría
+  // registrarse allá con el número de otro y quedarse con su cuenta acá.
   if (existente?.auth_user_id) {
+    if ((env.data as Record<string, unknown>)?.sobrescribir_pin !== true) {
+      return jsonResponse(200, { status: "ok", accion: "ya_existe" });
+    }
     const { error: updErr } = await admin.auth.admin.updateUserById(existente.auth_user_id, { password: pin });
     if (updErr) return jsonResponse(500, { error: updErr.message });
     await admin.from("profiles").update({ pin_configurado: true }).eq("id", existente.auth_user_id);

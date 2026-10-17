@@ -4,12 +4,15 @@ import { supabase } from "../supabaseClient";
 import { supabaseTaxi } from "../lib/supabaseTaxi";
 import ChatPedidoModal from "./ChatPedidoModal";
 import EntregaCajaModal from "./delivery/EntregaCajaModal";
+import RetiroTiendaModal from "./delivery/RetiroTiendaModal";
 import AnimacionExitoNeon from "./AnimacionExitoNeon";
+import { marcarPedidoFestejado } from "../hooks/usePedidoEntregadoAviso";
 import TicketBoleta from "./TicketBoleta";
 import { formatSoles, formatDate, formatTime } from "../utils/format";
 import { buildWhatsappLink } from "../lib/whatsapp";
 import { copiarBoletaAlPortapapeles } from "../lib/boleta";
 import { usePedidosNoLeidos } from "../hooks/usePedidosNoLeidos";
+import { useEntregasNoLeidos } from "../hooks/useEntregasNoLeidos";
 
 const METODO_LABELS = { YAPE: "Yape", PLIN: "Plin", OTROS: "Otros", EFECTIVO: "Efectivo", FIADO: "Fiado" };
 
@@ -39,6 +42,9 @@ export default function MisPedidosModal({ session, onClose }) {
   const [cancelandoId, setCancelandoId] = useState(null);
   const [eliminandoId, setEliminandoId] = useState(null);
   const [entregaToken, setEntregaToken] = useState(null);
+  const [entregaPedidoId, setEntregaPedidoId] = useState(null);
+  // Retiro en tienda aceptado: "Ver entrega" (mapa + PIN + QR).
+  const [retiroPedidoId, setRetiroPedidoId] = useState(null);
   const [animacionExito, setAnimacionExito] = useState(null); // texto del título, o null
   const [misDatos, setMisDatos] = useState(null);
   const [boletaPedido, setBoletaPedido] = useState(null);
@@ -52,6 +58,11 @@ export default function MisPedidosModal({ session, onClose }) {
   // terminar el trabajo async — si se llama window.open() después de un
   // await, mobile Chrome lo bloquea como popup.
   const whatsappWinRef = useRef(null);
+  // Mensajes del repartidor sin leer, por entrega (punto rojo en "Seguir mi pedido").
+  const { counts: noLeidosRepartidor, refrescar: refrescarNoLeidosRepartidor } = useEntregasNoLeidos(
+    pedidos.map((p) => p.entrega_session_token),
+    "cliente"
+  );
   const { counts: noLeidos, refrescar: refrescarNoLeidos } = usePedidosNoLeidos(
     pedidos.map((p) => p.id),
     "cliente"
@@ -299,9 +310,18 @@ export default function MisPedidosModal({ session, onClose }) {
                     <button
                       type="button"
                       className="tz-pedido-action-btn"
-                      onClick={() => setEntregaToken(pedido.entrega_session_token)}
+                      style={{ position: "relative" }}
+                      onClick={() => {
+                        setEntregaToken(pedido.entrega_session_token);
+                        setEntregaPedidoId(pedido.id);
+                      }}
                     >
                       <Bike size={14} /> {["confirmado", "cancelado"].includes(pedido.estado) ? "Ver entrega" : "Seguir mi pedido"}
+                      {noLeidosRepartidor[pedido.entrega_session_token] > 0 && (
+                        <span className="tz-badge-dot" aria-label="Mensajes nuevos del repartidor">
+                          {noLeidosRepartidor[pedido.entrega_session_token] > 9 ? "9+" : noLeidosRepartidor[pedido.entrega_session_token]}
+                        </span>
+                      )}
                     </button>
                   ) : (
                     pedido.estado !== "confirmado" && pedido.estado !== "cancelado" && (
@@ -331,6 +351,15 @@ export default function MisPedidosModal({ session, onClose }) {
                     {boletaPedido?.id === pedido.id ? <Loader2 size={14} className="tz-spin" /> : <Copy size={14} />}
                     Enviar boleta por WhatsApp
                   </button>
+                  {!pedido.requiere_delivery && pedido.estado === "en_atencion" && (
+                    <button
+                      type="button"
+                      className="tz-pedido-action-btn tz-pedido-action-confirmar"
+                      onClick={() => setRetiroPedidoId(pedido.id)}
+                    >
+                      <Store size={14} /> Ver entrega
+                    </button>
+                  )}
                   {(pedido.estado === "nuevo" || pedido.estado === "en_atencion") && (
                     <button
                       type="button"
@@ -411,6 +440,27 @@ export default function MisPedidosModal({ session, onClose }) {
         </div>
       )}
 
+      {retiroPedidoId && (
+        <RetiroTiendaModal
+          pedidoId={retiroPedidoId}
+          rol="cliente"
+          onConfirmadoCliente={() => {
+            // Este festejo es el único: la tienda no lo repite.
+            marcarPedidoFestejado(session?.user?.id, retiroPedidoId);
+            setRetiroPedidoId(null);
+            setAnimacionExito("¡Pedido entregado!");
+            load();
+            // La tienda cierra el pedido apenas termina de registrar la
+            // venta: una segunda lectura por si llegamos antes que ella.
+            setTimeout(load, 4000);
+          }}
+          onClose={() => {
+            setRetiroPedidoId(null);
+            load();
+          }}
+        />
+      )}
+
       {entregaToken && (
         <EntregaCajaModal
           sessionToken={entregaToken}
@@ -419,11 +469,14 @@ export default function MisPedidosModal({ session, onClose }) {
           onClose={() => {
             setEntregaToken(null);
             load();
+            refrescarNoLeidosRepartidor();
           }}
           onEntregado={() => {
             // Cierra el modal de seguimiento ANTES de festejar — la
             // animación de éxito debe ser lo único en pantalla.
             setEntregaToken(null);
+            // Este festejo es el único: la tienda no lo repite.
+            marcarPedidoFestejado(session?.user?.id, entregaPedidoId);
             load();
             setAnimacionExito("¡Entrega confirmada!");
           }}
